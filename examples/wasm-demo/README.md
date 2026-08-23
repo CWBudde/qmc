@@ -3,17 +3,18 @@
 Two pages that run [github.com/cwbudde/qmc](https://github.com/CWBudde/qmc)
 compiled to `js/wasm`:
 
-- **`index.html` — Point Lab.** A scrambled Halton sequence and a pseudo-random
-  one drawn side by side on the same two axes, at the same count, scrubbable in
-  sequence order. Below them a digit inspector: the base-_p_ expansion of an
-  index mirrored around the radix point, the permutation that rewrites each
-  digit when scrambling is on, and the resulting coordinate next to the
-  unscrambled one.
+- **`index.html` — Point Lab.** A quasi-random sequence — Halton or Sobol,
+  with or without a randomization — and a pseudo-random one drawn side by side
+  on the same two axes, at the same count, scrubbable in sequence order. Below
+  them a digit inspector: the base-_p_ expansion of an index mirrored around
+  the radix point, the permutation that rewrites each digit when random-digit
+  scrambling is on, and the resulting coordinate next to the unscrambled one.
+  The inspector is Halton's alone and disappears when Sobol is selected.
 - **`analysis.html` — Discrepancy Bench.** A correlation heatmap over every
-  pair of dimensions, recomputed live as scrambling toggles, and a log–log
-  convergence chart of absolute integration error against _N_ — quasi-Monte
-  Carlo against pseudo-random Monte Carlo, with reference slopes for 1/_N_ and
-  1/√*N*.
+  pair of dimensions, recomputed live as the sequence or its randomization
+  changes, and a log–log convergence chart of absolute integration error
+  against _N_ — quasi-Monte Carlo against pseudo-random Monte Carlo, with
+  reference slopes for 1/_N_ and 1/√*N*.
 
 The organising rule is that **no QMC logic lives in JavaScript**. Every point,
 every prime base, every correlation and every integration error comes out of the
@@ -22,12 +23,41 @@ reimplemented the radical inverse in JS would be demonstrating the JS.
 
 ## The default view
 
-The Point Lab opens on 39 dimensions, axes 37 against 38, scrambling **off**.
-The points sit on a lockstep diagonal ramp, because at 600 points neither
-coordinate has finished its first pass through its prime base — 163 and 167 —
-and the two ramps advance together. Press the scrambling switch and the diagonal
-dissolves into a filled square. That single toggle is the argument the library's
-README makes in a table; this page makes it in one gesture.
+The Point Lab opens on Halton, 39 dimensions, axes 37 against 38, randomization
+**none**. The points sit on a lockstep diagonal ramp, because at 600 points
+neither coordinate has finished its first pass through its prime base — 163 and
+167 — and the two ramps advance together. Pick a randomization and the diagonal
+dissolves into a filled square. That single choice is the argument the library's
+README makes in a table; this page makes it in one gesture. Switching the
+sequence to Sobol makes the other half of the point: it is base 2 in every
+dimension, so it never had a large-base ramp to escape from.
+
+## Sequences and randomizations
+
+The sequence menu and the randomization menu are both built from `info()`, and
+the second is rebuilt whenever the first changes, because the two do not
+overlap:
+
+| Sequence | Randomizations                                          |
+| -------- | ------------------------------------------------------- |
+| Halton   | none, random-digit scrambling, nested affine scrambling |
+| Sobol    | none, digital shift, Owen scrambling                    |
+
+The library's constructors refuse an option that does not apply to the
+generator being built, naming it, and this page does not duplicate that rule —
+it only offers each sequence the menu `info()` reports for it, and falls back to
+the unrandomized entry when a selection does not survive a change of sequence.
+Every menu entry's description is the option's own doc comment, unflattering
+parts included: nested affine scrambling integrates two to three times better
+than random-digit scrambling and has a worse worst-case adjacent-pair
+correlation, and Owen scrambling is nearly free on `At` and three times the cost
+on `Next`.
+
+Two things the page hides rather than guesses. Sobol has no prime bases — it is
+base 2 everywhere — so the base readouts blank out instead of reporting a number
+that would look like an explanation of the picture. And it has no digit alphabet
+to permute, so the digit inspector is removed rather than left showing Halton's
+last values beside Sobol data.
 
 ## Build and run
 
@@ -71,17 +101,28 @@ and `digits` — each taking one options object and returning one plain object.
 `info()` is the capability table: every `<select>` on both pages ships empty in
 the HTML and is filled from it, and every slider's range is overwritten from it
 at boot. Raising a limit in the library raises it in the UI without anyone
-editing markup.
+editing markup, and adding a sequence or a randomization to the table in
+`info.go` puts it in both pages' menus with no JavaScript edit at all. Each
+source reports its own dimension ceiling, whether it has prime bases and whether
+it supports the digit inspector, so the pages hide a panel from data rather than
+from a hard-coded list of source names.
+
+`newGenerator` in `converge.go` is the one place a generator is built, for every
+export. It returns `qmc.Sequence`, so `points`, `correlate` and `converge` carry
+no per-source branch at all. `digits` is the exception: it needs `Bases` and
+`Permutation`, which are Halton's and are deliberately not on the interface, so
+it recovers the concrete type with an assertion and returns an error — never a
+panic — if it is ever reached for anything else.
 
 The palette lives in `style.css` as CSS custom properties, and `render.js` reads
 them back through `getComputedStyle`. Change `--halton` in the stylesheet and the
 scatter glyphs, the legend swatch and the convergence curve all follow; the
 canvas and the stylesheet cannot drift apart.
 
-Halton is a filled circle in teal, pseudo-random is a diagonal cross in amber,
-on every page and in every chart. The pairing is deliberate: colour alone
-excludes roughly one man in twelve, and Halton-against-random is the one
-comparison these pages exist to make.
+The quasi-random sequence is a filled circle in teal, pseudo-random is a
+diagonal cross in amber, on every page and in every chart. The pairing is
+deliberate: colour alone excludes roughly one man in twelve, and
+sequence-against-random is the one comparison these pages exist to make.
 
 ## Reading the numbers
 
@@ -94,8 +135,9 @@ comparison these pages exist to make.
   promises even coverage of the whole box; pairwise correlation catches only the
   most visible way that promise fails. Zero everywhere is necessary, not
   sufficient.
-- **A scrambled run is seed-dependent by design.** Scrambling makes this
-  randomized quasi-Monte Carlo, not plain QMC: each seed gives a different,
+- **A randomized run is seed-dependent by design.** Any of the four
+  randomizations makes this randomized quasi-Monte Carlo, not plain QMC: each
+  seed gives a different,
   equally valid point set, and both the worst correlated pair and the error
   curve wobble between seeds. The library's quoted 0.14 is the worst of five
   seeds, not the best of one. Fix the seed and everything is reproducible again.

@@ -41,9 +41,12 @@
         #corrCount #corrCountOut      points
         #corrSkip #corrSkipOut        burn-in
         #corrSeed                     seed
-        #corrScramble                 toggle, gets aria-pressed
-        #corrScrambleState            the ON/OFF word inside that button
-        #corrNote                     the callout under the toggle
+        #corrSource                   <select> of sequences, from info()
+        #corrRandom                   <select> of randomizations, refilled
+                                      whenever #corrSource changes
+        #corrNote                     the callout under the two menus
+        #corrBaseNote                 the "hover for their prime bases"
+                                      sentence, hidden for a source without
 
       Convergence sweep:
         #integrand #integrandNote     <select> filled from info().integrands
@@ -51,7 +54,7 @@
         #convDims #convDimsOut        dimensions
         #convSkip #convSkipOut        burn-in
         #convSeed                     seed
-        #convScramble #convScrambleState   toggle, gets aria-pressed
+        #convSource #convRandom       sequence and randomization <select>s
         #start #stop                  transport for the sweep
         #progressBar #progressText    progress readout
         #convChart                    the log–log chart
@@ -105,7 +108,8 @@
             set. Correlation is <b>signed</b>, so the scale is diverging and
             centred on zero: cool is negative, warm is positive, ground is
             independent. The diagonal is 1 by construction. Hover any cell for
-            the pair, their prime bases and <i>r</i>.
+            the pair and <i>r</i
+            ><span id="corrBaseNote">, and for their prime bases</span>.
           </p>
 
           <div class="verdict">
@@ -117,8 +121,8 @@
             <div>
               <span class="k">against the documented figures</span>
               <span class="sub" id="docReference">
-                The library reports 0.81 unscrambled and 0.14 scrambled at 39
-                dimensions, 600 points, burn-in 64.
+                The library reports 0.81 unscrambled and 0.14 scrambled for
+                Halton at 39 dimensions, 600 points, burn-in 64.
               </span>
             </div>
           </div>
@@ -126,22 +130,14 @@
           <div class="controls" style="margin-top: 0">
             <div class="control-group">
               <span class="corner-label">The switch</span>
-              <button
-                type="button"
-                class="switch"
-                id="corrScramble"
-                aria-pressed="false"
-                disabled
-              >
-                <span class="switch__led" aria-hidden="true"></span>
-                <span class="switch__text">
-                  <b>
-                    Random-digit scrambling:
-                    <span id="corrScrambleState">off</span>
-                  </b>
-                  <span>recomputes the whole matrix</span>
-                </span>
-              </button>
+              <div class="field field--wide">
+                <label for="corrSource">sequence</label>
+                <select id="corrSource" disabled></select>
+              </div>
+              <div class="field field--wide">
+                <label for="corrRandom">randomization</label>
+                <select id="corrRandom" disabled></select>
+              </div>
               <p class="callout" id="corrNote">—</p>
             </div>
 
@@ -258,19 +254,14 @@
 
             <div class="control-group">
               <span class="corner-label">Sweep</span>
-              <button
-                type="button"
-                class="switch"
-                id="convScramble"
-                aria-pressed="true"
-                disabled
-              >
-                <span class="switch__led" aria-hidden="true"></span>
-                <span class="switch__text">
-                  <b> Scrambling: <span id="convScrambleState">on</span> </b>
-                  <span>randomized QMC</span>
-                </span>
-              </button>
+              <div class="field field--wide">
+                <label for="convSource">sequence</label>
+                <select id="convSource" disabled></select>
+              </div>
+              <div class="field field--wide">
+                <label for="convRandom">randomization</label>
+                <select id="convRandom" disabled></select>
+              </div>
               <div class="field field--wide">
                 <label for="budget">ceiling</label>
                 <select id="budget"></select>
@@ -343,11 +334,11 @@
           everywhere is necessary, not sufficient.
         </p>
         <p>
-          <b>A single seed is a single sample.</b> With scrambling on this is
-          randomized quasi-Monte Carlo: every seed gives a different, equally
-          valid point set, and both the worst pair and the error curve wobble
-          from one to the next. The library's quoted 0.14 is the worst of five
-          seeds, not the best of one.
+          <b>A single seed is a single sample.</b> With any randomization
+          selected this is randomized quasi-Monte Carlo: every seed gives a
+          different, equally valid point set, and both the worst pair and the
+          error curve wobble from one to the next. The library's quoted 0.14 is
+          the worst of five seeds, not the best of one.
         </p>
         <p>
           <b>The sweep loops in JavaScript on purpose.</b> A call into Go blocks

@@ -45,9 +45,10 @@
   const corrSkip = el("corrSkip");
   const corrSkipOut = el("corrSkipOut");
   const corrSeed = el("corrSeed");
-  const corrScramble = el("corrScramble");
-  const corrScrambleState = el("corrScrambleState");
+  const corrSource = el("corrSource");
+  const corrRandom = el("corrRandom");
   const corrNote = el("corrNote");
+  const corrBaseNote = el("corrBaseNote");
 
   const integrandSelect = el("integrand");
   const integrandNote = el("integrandNote");
@@ -57,8 +58,8 @@
   const convSkip = el("convSkip");
   const convSkipOut = el("convSkipOut");
   const convSeed = el("convSeed");
-  const convScramble = el("convScramble");
-  const convScrambleState = el("convScrambleState");
+  const convSource = el("convSource");
+  const convRandom = el("convRandom");
   const startButton = el("start");
   const stopButton = el("stop");
   const progressBar = el("progressBar");
@@ -81,7 +82,12 @@
 
   // The figures the library's README documents, so the big readout can be read
   // against something instead of floating free.
+  // The figures are Halton's, at one configuration, with random-digit
+  // scrambling. Quoting them beside a Sobol run or a nested one would compare
+  // two different measurements, so the readout below checks the source and the
+  // randomization as well as the point set.
   const DOCUMENTED = {
+    source: "halton",
     dims: 39,
     count: 600,
     skip: 64,
@@ -216,13 +222,75 @@
     return Number.isFinite(value) ? value : fallback;
   }
 
-  function pressed(button) {
-    return button.getAttribute("aria-pressed") === "true";
+  // sourceSpec, randomizationsFor and fillSourceSelect are the page's whole
+  // knowledge of what a sequence offers: every menu entry, every ceiling and
+  // every description comes from info(). Neither menu is written out here, and
+  // the two pairs of <select>s — correlation and sweep — are filled by the same
+  // two functions so they cannot drift apart.
+  function sourceSpec(select) {
+    const list = (state.info && state.info.sources) || [];
+
+    return (
+      list.find((spec) => spec.key === select.value) ||
+      list.find((spec) => spec.sequence) ||
+      null
+    );
   }
 
-  function setToggle(button, stateEl, on) {
-    button.setAttribute("aria-pressed", String(on));
-    stateEl.textContent = on ? "on" : "off";
+  function fillSourceSelect(select, preferred) {
+    const list = (state.info && state.info.sources) || [];
+
+    select.innerHTML = "";
+
+    for (const spec of list) {
+      if (!spec.sequence) {
+        continue;
+      }
+
+      const option = document.createElement("option");
+      option.value = spec.key;
+      option.textContent = spec.label;
+      option.title = spec.description || "";
+      select.append(option);
+    }
+
+    if (preferred !== undefined) {
+      select.value = String(preferred);
+    }
+
+    if (!select.value && select.options.length) {
+      select.value = select.options[0].value;
+    }
+  }
+
+  // A randomization the newly selected sequence does not offer falls back to
+  // its unrandomized entry rather than being sent to Go and refused: the
+  // constructors reject a mismatched option by name, and a rejection the user
+  // did not ask for reads as a broken page.
+  function fillRandomizationSelect(sourceSelect, select, preferred) {
+    const spec = sourceSpec(sourceSelect);
+    const list = (spec && spec.randomizations) || [];
+    const wanted = preferred === undefined ? select.value : preferred;
+
+    select.innerHTML = "";
+
+    for (const entry of list) {
+      const option = document.createElement("option");
+      option.value = entry.key;
+      option.textContent = entry.label;
+      option.title = entry.description || "";
+      select.append(option);
+    }
+
+    const keep = list.some((entry) => entry.key === wanted);
+    select.value = keep ? String(wanted) : list.length ? list[0].key : "";
+  }
+
+  function randomizationSpec(sourceSelect, select) {
+    const spec = sourceSpec(sourceSelect);
+    const list = (spec && spec.randomizations) || [];
+
+    return list.find((entry) => entry.key === select.value) || null;
   }
 
   function sci(value) {
@@ -238,6 +306,18 @@
   function populateControls() {
     const info = state.info;
     const defaults = info.defaults || {};
+
+    fillSourceSelect(corrSource, defaults.source);
+    fillRandomizationSelect(corrSource, corrRandom, defaults.randomization);
+    fillSourceSelect(convSource, defaults.source);
+
+    // The sweep opens randomized, because RQMC is what you would actually
+    // ship; the correlation panel opens unrandomized, because that is the
+    // defect it exists to show. Both take whatever the selected sequence's
+    // menu offers rather than a key written here — "scramble" is Halton's
+    // name for it and Sobol has no such entry.
+    fillRandomizationSelect(convSource, convRandom);
+    convRandom.value = firstRandomized(convSource, convRandom);
 
     corrDims.min = "2";
     corrDims.max = String(info.maxCorrelateDims);
@@ -280,11 +360,8 @@
 
     budgetSelect.value = "16384";
 
-    // Correlation starts unscrambled — that is the defect the library
-    // documents, and the toggle is the demonstration. The convergence sweep
-    // starts scrambled, because RQMC is what you would actually ship.
-    setToggle(corrScramble, corrScrambleState, false);
-    setToggle(convScramble, convScrambleState, true);
+    applyCorrSource();
+    applyConvSource();
     updateCorrNote();
     applyIntegrand();
     syncOutputs();
@@ -298,6 +375,51 @@
     corrSkipOut.textContent = corrSkip.value;
     convDimsOut.textContent = convDims.value;
     convSkipOut.textContent = convSkip.value;
+  }
+
+  // firstRandomized is the sweep's opening choice: the first entry of the
+  // selected sequence's menu that actually randomizes, or the unrandomized one
+  // if that is all there is.
+  function firstRandomized(sourceSelect, select) {
+    const spec = sourceSpec(sourceSelect);
+    const list = (spec && spec.randomizations) || [];
+    const randomized = list.find((entry) => entry.key !== "none");
+
+    return randomized ? randomized.key : select.value;
+  }
+
+  // Each source carries its own dimension ceiling, which may be lower than the
+  // shared one. Re-ranging the slider here is what keeps a dragged control from
+  // asking Go for a dimension the direction-number table cannot cover.
+  function applyCorrSource() {
+    const spec = sourceSpec(corrSource);
+
+    if (!spec) {
+      return;
+    }
+
+    const ceiling = Math.max(
+      2,
+      Math.min(state.info.maxCorrelateDims, spec.maxDims),
+    );
+
+    corrDims.max = String(ceiling);
+    corrDims.value = String(Math.min(ceiling, intValue(corrDims, ceiling)));
+
+    // Nothing on this page should print "base ?" beside a sequence that has no
+    // bases, so the sentence promising them goes away with them.
+    corrBaseNote.hidden = !spec.primeBases;
+    syncOutputs();
+  }
+
+  function applyConvSource() {
+    const spec = sourceSpec(convSource);
+
+    if (!spec) {
+      return;
+    }
+
+    applyIntegrand();
   }
 
   function currentIntegrand() {
@@ -318,8 +440,15 @@
     // Each integrand is defined for its own range of dimensions, so the slider
     // is re-ranged rather than left free to ask Go for something it will
     // reject.
+    const source = sourceSpec(convSource);
     const low = Math.max(1, spec.minDims || 1);
-    const high = Math.max(low, spec.maxDims || state.info.maxDims);
+    const high = Math.max(
+      low,
+      Math.min(
+        spec.maxDims || state.info.maxDims,
+        source ? source.maxDims : state.info.maxDims,
+      ),
+    );
 
     convDims.min = String(low);
     convDims.max = String(high);
@@ -331,10 +460,24 @@
     syncOutputs();
   }
 
+  // The description is the library's, forwarded through info(). The band that
+  // the unrandomized Halton view shows is this page's own observation, so it is
+  // appended rather than folded into a claim about the option.
   function updateCorrNote() {
-    corrNote.innerHTML = pressed(corrScramble)
-      ? "<b>On.</b> Every digit position of every dimension is rewritten by an independent uniform permutation. Watch the off-diagonal warmth fall away — and note that it does not fall to exactly zero, because a finite point set never has exactly independent coordinates."
-      : "<b>Off.</b> The bright band hugging the diagonal is adjacent high-dimensional coordinates walking up their prime-base ramps together. Press this switch and the band should collapse.";
+    const entry = randomizationSpec(corrSource, corrRandom);
+
+    if (!entry) {
+      corrNote.textContent = "—";
+
+      return;
+    }
+
+    const aside =
+      entry.key === "none"
+        ? " The bright band hugging the diagonal is adjacent high-dimensional coordinates walking up their ramps together; pick a randomization and it should collapse."
+        : " Watch the off-diagonal warmth fall away — and note that it does not fall to exactly zero, because a finite point set never has exactly independent coordinates.";
+
+    corrNote.innerHTML = `<b>${entry.label}.</b> ${entry.description}${aside}`;
   }
 
   // --- correlation -------------------------------------------------------
@@ -357,10 +500,11 @@
     }
 
     const result = call("correlate", {
+      source: corrSource.value,
+      randomization: corrRandom.value,
       dims: intValue(corrDims, 39),
       count: intValue(corrCount, 600),
       skip: intValue(corrSkip, 64),
-      scramble: pressed(corrScramble),
       seed: intValue(corrSeed, 1),
       out: sinks.correlate,
     });
@@ -378,7 +522,7 @@
     updateVerdict(result);
 
     setStatus(
-      `${result.dims}×${result.dims} correlation over ${result.count.toLocaleString("en-US")} points · scrambling ${result.scramble ? "on" : "off"}`,
+      `${result.dims}×${result.dims} correlation over ${result.count.toLocaleString("en-US")} points · ${result.source} · randomization ${result.randomization}`,
       "ready",
     );
     announce(
@@ -408,18 +552,35 @@
       worst < 0.3 ? "good" : worst > 0.6 ? "bad" : "";
     worstPairLabel.textContent =
       pair.length === 2
-        ? `dimensions ${pair[0]} and ${pair[1]} — bases ${basisOf(result, pair[0])} and ${basisOf(result, pair[1])}`
+        ? `dimensions ${pair[0]} and ${pair[1]}${pairBases(result, pair)}`
         : "—";
 
-    const target = result.scramble ? DOCUMENTED.scrambled : DOCUMENTED.plain;
+    // The README's pair of figures is a Halton measurement with random-digit
+    // scrambling. Comparing a Sobol run or a nested one against it would put
+    // two different experiments in the same sentence, so the comparison is
+    // only offered when every part of the configuration matches.
+    const scrambled = result.randomization === "scramble";
+    const target = scrambled ? DOCUMENTED.scrambled : DOCUMENTED.plain;
     const sameSetup =
+      result.source === DOCUMENTED.source &&
+      (scrambled || result.randomization === "none") &&
       result.dims === DOCUMENTED.dims &&
       result.count === DOCUMENTED.count &&
       result.skip === DOCUMENTED.skip;
 
     docReference.innerHTML = sameSetup
-      ? `At this exact configuration the README quotes <b>${target.toFixed(2)}</b> ${result.scramble ? "(worst of five seeds)" : ""}. You are seeing <b>${worst.toFixed(3)}</b> at seed ${result.seed}.`
-      : `The README's figures — <b>0.81</b> unscrambled, <b>0.14</b> scrambled — are measured at 39 dimensions, 600 points, burn-in 64. This is ${result.dims} dimensions, ${result.count.toLocaleString("en-US")} points, burn-in ${result.skip}, so the numbers are not directly comparable.`;
+      ? `At this exact configuration the README quotes <b>${target.toFixed(2)}</b> ${scrambled ? "(worst of five seeds)" : ""}. You are seeing <b>${worst.toFixed(3)}</b> at seed ${result.seed}.`
+      : `The README's figures — <b>0.81</b> unscrambled, <b>0.14</b> scrambled — are measured on Halton at 39 dimensions, 600 points, burn-in 64. This is ${result.source} with randomization ${result.randomization}, ${result.dims} dimensions, ${result.count.toLocaleString("en-US")} points, burn-in ${result.skip}, so the numbers are not directly comparable.`;
+  }
+
+  // A source without prime bases sends bases: null, so the clause naming them
+  // is dropped rather than filled with question marks.
+  function pairBases(result, pair) {
+    if (!result.bases) {
+      return "";
+    }
+
+    return ` — bases ${basisOf(result, pair[0])} and ${basisOf(result, pair[1])}`;
   }
 
   function basisOf(result, index) {
@@ -471,8 +632,8 @@
 
       cellReadout.innerHTML =
         cell.i === cell.j
-          ? `<b>dim ${cell.i}</b> against itself — base ${basisOf(corr, cell.i)}, r = 1 by construction`
-          : `<b>dim ${cell.i} × dim ${cell.j}</b> — bases ${basisOf(corr, cell.i)} and ${basisOf(corr, cell.j)}, r = <b>${r.toFixed(4)}</b>`;
+          ? `<b>dim ${cell.i}</b> against itself${corr.bases ? ` — base ${basisOf(corr, cell.i)}` : ""}, r = 1 by construction`
+          : `<b>dim ${cell.i} × dim ${cell.j}</b>${pairBases(corr, [cell.i, cell.j])}, r = <b>${r.toFixed(4)}</b>`;
     });
 
     heatmap.addEventListener("mouseleave", () => {
@@ -533,9 +694,10 @@
     const runId = state.runId;
     const ns = sweepPoints(parseInt(budgetSelect.value, 10) || 16384);
     const request = {
+      source: convSource.value,
+      randomization: convRandom.value,
       dims: intValue(convDims, 8),
       skip: intValue(convSkip, 64),
-      scramble: pressed(convScramble),
       seed: intValue(convSeed, 1),
       integrand: integrandSelect.value,
     };
@@ -706,8 +868,14 @@
 
     corrSeed.addEventListener("change", scheduleCorrelate);
 
-    corrScramble.addEventListener("click", () => {
-      setToggle(corrScramble, corrScrambleState, !pressed(corrScramble));
+    corrSource.addEventListener("change", () => {
+      fillRandomizationSelect(corrSource, corrRandom);
+      applyCorrSource();
+      updateCorrNote();
+      scheduleCorrelate();
+    });
+
+    corrRandom.addEventListener("change", () => {
       updateCorrNote();
       scheduleCorrelate();
     });
@@ -721,9 +889,13 @@
       resetSweep();
     });
 
-    convScramble.addEventListener("click", () => {
-      setToggle(convScramble, convScrambleState, !pressed(convScramble));
+    convSource.addEventListener("change", () => {
+      fillRandomizationSelect(convSource, convRandom);
+      applyConvSource();
+      resetSweep();
     });
+
+    convRandom.addEventListener("change", resetSweep);
 
     startButton.addEventListener("click", () => {
       startSweep().catch((err) => {
@@ -849,8 +1021,10 @@
     populateControls();
     wireControls();
 
-    corrScramble.disabled = false;
-    convScramble.disabled = false;
+    corrSource.disabled = false;
+    corrRandom.disabled = false;
+    convSource.disabled = false;
+    convRandom.disabled = false;
     startButton.disabled = false;
 
     setStatus("WASM ready", "ready");

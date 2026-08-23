@@ -299,7 +299,8 @@
   function fillRandomizationSelect(preferred) {
     const spec = currentSource();
     const list = (spec && spec.randomizations) || [];
-    const wanted = preferred === undefined ? randomizationSelect.value : preferred;
+    const wanted =
+      preferred === undefined ? randomizationSelect.value : preferred;
 
     randomizationSelect.innerHTML = "";
 
