@@ -82,25 +82,25 @@ var randomizations = map[string]randomizationSpec{
 	"scramble": {
 		key:         "scramble",
 		label:       "Random-digit scrambling",
-		description: "Halton. One uniform permutation of the digit alphabet per dimension, reused at every digit position. Still low-discrepancy, no longer identical across seeds.",
+		description: "One uniform permutation of the digit alphabet per dimension, reused at every digit position. Still low-discrepancy, no longer identical across seeds.",
 		option:      qmc.WithScrambling,
 	},
 	"nested": {
 		key:         "nested",
 		label:       "Nested affine scrambling",
-		description: "Halton. A fresh affine permutation per digit position, conditioned on the digits above it. At 39 dimensions it integrates two to three times more accurately than random-digit scrambling, but its worst adjacent-pair |r| over 30 seeds was 0.373 against 0.161, and it costs roughly eight times as much per point.",
+		description: "A fresh affine permutation per digit position, conditioned on the digits above it. At 39 dimensions it integrates two to three times more accurately than random-digit scrambling, but its worst adjacent-pair |r| over 30 seeds was 0.373 against 0.161, and it costs roughly eight times as much per point.",
 		option:      qmc.WithNestedScrambling,
 	},
 	"shift": {
 		key:         "shift",
 		label:       "Digital shift",
-		description: "Sobol. One uniform 32-bit word per dimension, XORed into every point: the cheapest randomization a digital net admits. It translates the whole net rigidly, so a projection that is poorly distributed stays poorly distributed under every shift.",
+		description: "One uniform 32-bit word per dimension, XORed into every point: the cheapest randomization a digital net admits. It translates the whole net rigidly, so a projection that is poorly distributed stays poorly distributed under every shift.",
 		option:      qmc.WithDigitalShift,
 	},
 	"owen": {
 		key:         "owen",
 		label:       "Owen scrambling",
-		description: "Sobol. An independent bit flip at every node of each coordinate's binary tree, hashed rather than stored. It redistributes rather than translating, and measured 1.08x more accurate than a digital shift on the package's 39-dimensional integrand. Nearly free on At, three times the cost on Next.",
+		description: "An independent bit flip at every node of each coordinate's binary tree, hashed rather than stored. It redistributes rather than translating, and measured 1.08x more accurate than a digital shift on the package's 39-dimensional integrand. Nearly free on At, three times the cost on Next.",
 		option:      qmc.WithOwenScrambling,
 	},
 }

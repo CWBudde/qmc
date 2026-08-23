@@ -407,8 +407,9 @@
     corrDims.value = String(Math.min(ceiling, intValue(corrDims, ceiling)));
 
     // Nothing on this page should print "base ?" beside a sequence that has no
-    // bases, so the sentence promising them goes away with them.
+    // bases, so both sentences promising them go away with them.
     corrBaseNote.hidden = !spec.primeBases;
+    cellReadout.textContent = idlePrompt();
     syncOutputs();
   }
 
@@ -420,6 +421,15 @@
     }
 
     applyIntegrand();
+  }
+
+  // The hover prompt names the bases only when there are bases to name.
+  function idlePrompt() {
+    const spec = sourceSpec(corrSource);
+
+    return spec && spec.primeBases
+      ? "hover a cell for the pair, their bases and r"
+      : "hover a cell for the pair and r";
   }
 
   function currentIntegrand() {
@@ -643,7 +653,7 @@
 
       state.hover = null;
       drawHeat();
-      cellReadout.textContent = "hover a cell for the pair, their bases and r";
+      cellReadout.textContent = idlePrompt();
     });
   }
 
