@@ -232,3 +232,120 @@ func TestNegativeSkipIsClamped(t *testing.T) {
 		t.Fatalf("WithSkip(-5) stored %d, want 0", s.skip)
 	}
 }
+
+func TestBasesAreThePrimesInDimensionOrder(t *testing.T) {
+	g, err := NewHalton(5)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []int{2, 3, 5, 7, 11}
+
+	got := g.Bases()
+	if len(got) != g.Dims() {
+		t.Fatalf("len(Bases()) = %d, want Dims() = %d", len(got), g.Dims())
+	}
+
+	for d := range want {
+		if got[d] != want[d] {
+			t.Fatalf("Bases()[%d] = %d, want %d", d, got[d], want[d])
+		}
+	}
+}
+
+func TestPermutationIsNilWhenUnscrambled(t *testing.T) {
+	g, err := NewHalton(5, WithSkip(64))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for d := 0; d < g.Dims(); d++ {
+		if perm := g.Permutation(d); perm != nil {
+			t.Fatalf("Permutation(%d) = %v on an unscrambled generator, want nil", d, perm)
+		}
+	}
+}
+
+func TestPermutationIsAGenuinePermutationOfTheDigitAlphabet(t *testing.T) {
+	g, err := NewHalton(39, WithScrambling(1234))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bases := g.Bases()
+	for d := 0; d < g.Dims(); d++ {
+		perm := g.Permutation(d)
+		if len(perm) != bases[d] {
+			t.Fatalf("len(Permutation(%d)) = %d, want base %d", d, len(perm), bases[d])
+		}
+		// A permutation is only useful to the scrambler if it is a bijection
+		// of {0..base-1}: a repeated digit would collapse two elementary
+		// intervals onto one and quietly destroy the low-discrepancy property
+		// the scrambling is supposed to preserve.
+		seen := make([]bool, bases[d])
+		for i, v := range perm {
+			if v < 0 || int(v) >= bases[d] {
+				t.Fatalf("Permutation(%d)[%d] = %d, outside {0..%d}", d, i, v, bases[d]-1)
+			}
+
+			if seen[v] {
+				t.Fatalf("Permutation(%d) repeats digit %d, so it is not a permutation", d, v)
+			}
+
+			seen[v] = true
+		}
+	}
+}
+
+func TestBasesAndPermutationReturnCopies(t *testing.T) {
+	g, err := NewHalton(12, WithSkip(64), WithScrambling(99))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Record the sequence before anyone touches the accessors' output, so the
+	// comparison below detects a mutation leaking back into the generator no
+	// matter which coordinate it lands on.
+	before := make([][]float64, 50)
+	for i := range before {
+		before[i] = g.At(i)
+	}
+
+	bases := g.Bases()
+	for d := range bases {
+		bases[d] = 0
+	}
+
+	perm := g.Permutation(3)
+	for i := range perm {
+		perm[i] = 0
+	}
+
+	for i := range before {
+		got := g.At(i)
+		for d := range got {
+			if got[d] != before[i][d] {
+				t.Fatalf("point %d dim %d changed after mutating accessor output: %v, want %v",
+					i, d, got[d], before[i][d])
+			}
+		}
+	}
+}
+
+func TestPermutationRejectsOutOfRangeDimensions(t *testing.T) {
+	g, err := NewHalton(5, WithScrambling(7))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if perm := g.Permutation(-1); perm != nil {
+		t.Fatalf("Permutation(-1) = %v, want nil", perm)
+	}
+
+	if perm := g.Permutation(g.Dims()); perm != nil {
+		t.Fatalf("Permutation(%d) = %v, want nil for dim >= Dims()", g.Dims(), perm)
+	}
+
+	if perm := g.Permutation(g.Dims() + 100); perm != nil {
+		t.Fatalf("Permutation(%d) = %v, want nil for dim >= Dims()", g.Dims()+100, perm)
+	}
+}

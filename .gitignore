@@ -1,1 +1,13 @@
+# Test and coverage output
 /coverage.out
+/coverage.html
+
+# Build output
+/dist/
+
+# The non-wasm stub main of the demo builds a host binary of this name when it
+# is compiled without GOOS=js; it is a build artifact, never a checked-in file.
+/examples/wasm-demo/wasm-demo
+
+# Frontend tooling for the web demo
+node_modules/

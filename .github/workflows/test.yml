@@ -1,0 +1,166 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up just
+        uses: extractions/setup-just@v2
+
+      - name: Install formatters
+        run: just setup-deps
+
+      - name: Check formatting
+        run: just check-formatted
+
+      - name: Check go.mod is tidy
+        run: just check-tidy
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.12.2
+          args: --timeout 5m ./...
+
+  test:
+    name: Test (go ${{ matrix.go-version }}, ${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: ["1.23", "1.24", "1.25"]
+        # The 386 leg is not padding. This package computes prime bases with an
+        # i*i that overflows a 32-bit int, and the sequence a caller gets would
+        # differ by architecture if it regressed. That bug is invisible on
+        # amd64: TestSieveIsArchitectureIndependent passes there whether or not
+        # the guard is present, so until something ran on a 32-bit target the
+        # test was not a check, it was decoration.
+        #
+        # 386 binaries run natively on an amd64 runner with CGO_ENABLED=0, so
+        # this costs a job, not an emulator.
+        arch: [amd64, "386"]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - name: Cache Go build and module caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-${{ matrix.go-version }}-
+
+      - name: Vet
+        run: go vet ./...
+
+      # -race needs cgo and a 64-bit target, so the 32-bit leg goes without it.
+      # It is not there for the race detector; it is there so the sieve runs
+      # where its overflow can actually happen.
+      - name: Run tests
+        run: |
+          if [ "${{ matrix.arch }}" = "386" ]; then
+            CGO_ENABLED=0 GOARCH=386 go test ./...
+          else
+            go test -race ./...
+          fi
+
+      # Coverage is measured once, on amd64. The 386 leg exists to exercise a
+      # different int width, not to produce a second identical report.
+      - name: Run tests with coverage
+        if: matrix.arch == 'amd64'
+        run: go test -coverprofile=coverage.out -covermode=atomic ./...
+
+      - name: Generate coverage report
+        if: matrix.arch == 'amd64'
+        run: go tool cover -html=coverage.out -o coverage.html
+
+      - name: Archive coverage report
+        if: matrix.arch == 'amd64'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-go-${{ matrix.go-version }}
+          path: coverage.html
+
+  wasm:
+    name: WebAssembly
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The demo under examples/wasm-demo is a separate module that only ever
+    # builds for js/wasm, so no other job in this workflow compiles it. Without
+    # this check a breakage there is caught only when wasm-demo-pages.yml runs
+    # on main, which is after the pull request has already merged.
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up just
+        uses: extractions/setup-just@v2
+
+      - name: Check the WebAssembly demo builds
+        run: just check-wasm-demo
+
+      # wasip1/wasm shares the js/wasm compiler backend, so this catches a
+      # target-specific miscompile or an unsupported stdlib call in the library
+      # itself. It is not a 32-bit check: GOARCH=wasm has a 64-bit int and only
+      # a 32-bit uintptr, so TestSieveIsArchitectureIndependent exercises the
+      # same int width here as it does on amd64. A real 32-bit run would need
+      # GOARCH=386, which cannot compile this test suite at all — several
+      # regression cases in robustness_test.go are untyped constants above
+      # 2^31 and overflow int by construction.
+      - name: Build the library for wasip1/wasm
+        env:
+          GOOS: wasip1
+          GOARCH: wasm
+        run: go build ./... && go test -c -o /dev/null .

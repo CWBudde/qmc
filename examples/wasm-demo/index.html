@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Point Lab — qmc</title>
+    <meta
+      name="description"
+      content="A scrambled Halton sequence and a pseudo-random one, side by side in your browser. Go compiled to WebAssembly, no sequence logic in JavaScript."
+    />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+
+    <!--
+      DOM CONTRACT — read this before touching app.js / render.js.
+
+      Every id below is bound by app.js. Removing or renaming one breaks the
+      page silently, so change both files together.
+
+      Shell:
+        #rack           shell; JS sets data-boot="loading|ready"
+        #status         status readout, gets data-state="ready|error|loading"
+        #bootRing       .boot-ring; JS sets --boot-progress (0..1) while the
+                        wasm streams in, then data-state="ready"
+        #liveRegion     aria-live="polite" announcements, throttled
+        #buildInfo      footer "go1.x · js/wasm"
+
+      Stage:
+        #haltonCanvas   left scatter — the Halton projection
+        #randomCanvas   right scatter — pseudo-random, same count and axes
+        #haltonMeta     "base 157 × 163" caption
+        #randomMeta     "uniform × uniform" caption
+
+      Transport (reveals the point set in sequence order):
+        #play           play/pause toggle, gets aria-pressed
+        #scrub          <input type=range> 0..count
+        #revealReadout  "n / N points"
+
+      Controls — every range's min/max comes from info(), never from the HTML:
+        #dims #dimsOut          dimensions of the sequence
+        #axisX #axisY           <select>s of projected dimensions (empty here,
+                                filled from dims)
+        #count #countOut        points drawn
+        #skip #skipOut          burn-in discarded before the first point
+        #seed                   scrambling seed
+        #newSeed                randomize the seed
+        #resetView              back to the info() defaults
+        #scramble               the scrambling toggle, gets aria-pressed
+        #scrambleState          the ON/OFF word inside that button
+        #moneyNote              the callout describing what the toggle does
+
+      Telemetry, all .v spans:
+        #tBaseX #tBaseY #tPoints #tSkip #tSeed #tScramble
+
+      Digit inspector:
+        #digitIndex             <input type=number>, the sequence index
+        #digitDim               <select> of dimensions (filled from dims)
+        #digitPrev #digitNext   step the index by one
+        #mirror                 the mirrored digit expansion is built in here
+        #dBase #dRawIndex #dValue #dPlainValue   .v readouts
+        #permNote               explains the permutation row, or its absence
+    -->
+  </head>
+  <body>
+    <div class="rack" id="rack" data-boot="loading">
+      <div class="rail-top">
+        <span class="brand"><b>qmc</b> · point lab</span>
+        <nav class="site-nav">
+          <a href="index.html" aria-current="page">Point Lab</a>
+          <a href="analysis.html">Discrepancy Bench</a>
+          <a href="https://github.com/CWBudde/qmc">Source</a>
+        </nav>
+        <div class="boot-ring" id="bootRing" title="loading WebAssembly">
+          <div class="boot-ring__track"></div>
+          <div class="boot-ring__fill"></div>
+        </div>
+      </div>
+
+      <header class="hero">
+        <div class="hero__text">
+          <p class="eyebrow">GO · WEBASSEMBLY · NO JS SEQUENCE</p>
+          <h1>Two dimensions out of thirty-nine</h1>
+          <p class="lede">
+            The Halton sequence places its <i>d</i>-th coordinate by the radical
+            inverse in base <i>p<sub>d</sub></i
+            >, the <i>d</i>-th prime. For a large base the first
+            <i>p<sub>d</sub></i> points of that coordinate are just
+            <b>0, 1/p, 2/p, …</b> — a ramp, not a sample. Two adjacent
+            high-dimensional coordinates ramp together, and the pair collapses
+            onto a diagonal.
+          </p>
+          <p class="lede">
+            The left panel starts on dimensions 37 and 38 of a 39-dimensional
+            sequence with scrambling off, which is exactly that failure.
+            <b>Turn scrambling on</b> and the diagonal dissolves into a filled
+            square. Every coordinate below is computed by
+            <b>github.com/cwbudde/qmc</b> compiled to WebAssembly and running in
+            this tab; JavaScript draws the pixels and nothing else.
+          </p>
+        </div>
+      </header>
+
+      <div class="status" id="status" data-state="loading">
+        Loading WebAssembly…
+      </div>
+
+      <div class="stage">
+        <div class="plot plot--halton">
+          <div class="plot__head">
+            <i class="glyph" aria-hidden="true"></i>
+            <b>Halton</b>
+            <span class="plot__meta" id="haltonMeta">—</span>
+          </div>
+          <canvas
+            id="haltonCanvas"
+            role="img"
+            aria-label="Halton sequence projected onto two dimensions"
+          ></canvas>
+        </div>
+
+        <div class="plot plot--random">
+          <div class="plot__head">
+            <i class="glyph" aria-hidden="true"></i>
+            <b>Pseudo-random</b>
+            <span class="plot__meta" id="randomMeta">—</span>
+          </div>
+          <canvas
+            id="randomCanvas"
+            role="img"
+            aria-label="Independent pseudo-random points on the same axes"
+          ></canvas>
+        </div>
+      </div>
+
+      <div class="transport">
+        <button id="play" aria-pressed="false" disabled>Play</button>
+        <input
+          type="range"
+          id="scrub"
+          min="0"
+          max="0"
+          value="0"
+          step="1"
+          disabled
+          aria-label="Points revealed, in sequence order"
+        />
+        <span class="frame-readout mono" id="revealReadout">— / —</span>
+      </div>
+
+      <div class="legend">
+        <span class="halton"><i></i>halton — filled circle</span>
+        <span class="random"><i></i>pseudo-random — cross</span>
+        <span class="mark"><i></i>selected point</span>
+        <span>grid = tenths of the unit square</span>
+      </div>
+
+      <dl class="telemetry mono">
+        <div>
+          <span class="k">base, axis x</span
+          ><span class="v" id="tBaseX">—</span>
+        </div>
+        <div>
+          <span class="k">base, axis y</span
+          ><span class="v" id="tBaseY">—</span>
+        </div>
+        <div>
+          <span class="k">points</span><span class="v" id="tPoints">—</span>
+        </div>
+        <div>
+          <span class="k">burn-in</span><span class="v" id="tSkip">—</span>
+        </div>
+        <div>
+          <span class="k">seed</span><span class="v" id="tSeed">—</span>
+        </div>
+        <div>
+          <span class="k">scrambling</span
+          ><span class="v" id="tScramble">—</span>
+        </div>
+      </dl>
+
+      <section class="controls">
+        <div class="control-group">
+          <span class="corner-label">The switch</span>
+          <button
+            type="button"
+            class="switch"
+            id="scramble"
+            aria-pressed="false"
+            disabled
+          >
+            <span class="switch__led" aria-hidden="true"></span>
+            <span class="switch__text">
+              <b
+                >Random-digit scrambling: <span id="scrambleState">off</span></b
+              >
+              <span>Braaten &amp; Weller, 1979</span>
+            </span>
+          </button>
+          <p class="callout" id="moneyNote">—</p>
+        </div>
+
+        <div class="control-group">
+          <span class="corner-label">Sequence</span>
+          <div class="field">
+            <label for="dims">dimensions</label>
+            <input
+              type="range"
+              id="dims"
+              min="2"
+              max="64"
+              step="1"
+              value="39"
+            />
+            <span class="out mono" id="dimsOut">39</span>
+          </div>
+          <div class="field">
+            <label for="count">points</label>
+            <input
+              type="range"
+              id="count"
+              min="1"
+              max="20000"
+              step="1"
+              value="600"
+            />
+            <span class="out mono" id="countOut">600</span>
+          </div>
+          <div class="field">
+            <label for="skip">burn-in</label>
+            <input
+              type="range"
+              id="skip"
+              min="0"
+              max="4096"
+              step="1"
+              value="64"
+            />
+            <span class="out mono" id="skipOut">64</span>
+          </div>
+          <p class="field-note">
+            The first Halton point is <b>(1/2, 1/3, 1/5, 1/7, …)</b>, near a
+            corner of the box in every large-base coordinate. A burn-in throws
+            it and its neighbours away.
+          </p>
+        </div>
+
+        <div class="control-group">
+          <span class="corner-label">Projection</span>
+          <div class="field field--wide">
+            <label for="axisX">axis x</label>
+            <select id="axisX"></select>
+          </div>
+          <div class="field field--wide">
+            <label for="axisY">axis y</label>
+            <select id="axisY"></select>
+          </div>
+          <div class="field field--wide">
+            <label for="seed">seed</label>
+            <input type="number" id="seed" step="1" min="0" value="1" />
+          </div>
+          <div class="button-row">
+            <button id="newSeed" disabled>New seed</button>
+            <button id="resetView" disabled>Reset to defaults</button>
+          </div>
+          <p class="field-note">
+            You are looking at a <b>projection</b>. The other 37 coordinates are
+            not on screen and the sequence still varies in every one of them.
+          </p>
+        </div>
+      </section>
+
+      <section class="panels">
+        <div class="panel panel--wide">
+          <span class="corner-label">Digit inspector</span>
+          <p class="panel-note">
+            A radical inverse is a mirror. Write the index in base <i>p</i>,
+            then reflect its digits across the radix point: index
+            <b>…d₂d₁d₀</b> becomes the coordinate <b>0.d₀d₁d₂…</b>. That
+            reflection is the whole construction, so the row below is drawn as
+            one — integer digits marching left towards the point, fraction
+            digits marching right away from it. Hover a digit to light its twin.
+            With scrambling on, each digit is rewritten by that dimension's
+            permutation before the reflection is read off.
+          </p>
+
+          <div class="controls" style="margin-top: 0">
+            <div class="control-group">
+              <span class="corner-label">Point</span>
+              <div class="field field--wide">
+                <label for="digitIndex">index</label>
+                <input
+                  type="number"
+                  id="digitIndex"
+                  min="0"
+                  max="1000000"
+                  step="1"
+                  value="0"
+                />
+              </div>
+              <div class="field field--wide">
+                <label for="digitDim">dimension</label>
+                <select id="digitDim"></select>
+              </div>
+              <div class="button-row">
+                <button id="digitPrev" disabled>‹ Prev</button>
+                <button id="digitNext" disabled>Next ›</button>
+              </div>
+              <p class="field-note">
+                Click any point in either scatter to bring it here.
+              </p>
+            </div>
+
+            <div
+              class="control-group"
+              style="grid-column: span 2; min-width: 0"
+            >
+              <span class="corner-label">Expansion</span>
+              <div class="mirror" id="mirror">
+                <p class="mirror-empty">waiting for the wasm module…</p>
+              </div>
+              <div class="readouts">
+                <div>
+                  <span class="k">base p</span>
+                  <span class="v" id="dBase">—</span>
+                </div>
+                <div>
+                  <span class="k">raw index</span>
+                  <span class="v" id="dRawIndex">—</span>
+                </div>
+                <div>
+                  <span class="k">coordinate</span>
+                  <span class="v" id="dValue" data-tone="scrambled">—</span>
+                </div>
+                <div>
+                  <span class="k">unscrambled</span>
+                  <span class="v" id="dPlainValue" data-tone="plain">—</span>
+                </div>
+              </div>
+              <p class="field-note" id="permNote">—</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="caveat">
+        <h3>What you are looking at</h3>
+        <p>
+          <b>Two axes out of <i>d</i>.</b> Both panels show a projection. A pair
+          of coordinates can look like a perfect lattice while the sequence is
+          badly clumped somewhere you cannot see, and it can look like a
+          diagonal while every other pair is fine. That is why the
+          <a href="analysis.html">Discrepancy Bench</a> shows all pairs at once.
+        </p>
+        <p>
+          <b>The right-hand panel is not a failure.</b> Independent uniform
+          points are supposed to clump and leave gaps; that clumping is exactly
+          the variance a quasi-Monte Carlo sequence is built to remove. Judge
+          the pair on how evenly each fills the grid, not on which looks tidier.
+        </p>
+        <p>
+          <b>A scrambled run is seed-dependent by design.</b> Scrambling makes
+          this randomized quasi-Monte Carlo: change the seed and you get a
+          different, equally valid point set. Fix the seed and it is
+          reproducible again.
+        </p>
+      </div>
+
+      <p class="sr-only" id="liveRegion" aria-live="polite"></p>
+
+      <footer class="rack-footer mono">
+        <span>github.com/cwbudde/qmc</span>
+        <span id="buildInfo">—</span>
+        <span>halton · random-digit scrambling</span>
+      </footer>
+    </div>
+
+    <script src="wasm_exec.js"></script>
+    <script src="render.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

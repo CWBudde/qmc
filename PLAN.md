@@ -33,7 +33,7 @@ lookup.
 
 ## Leaping
 
-Skipping every *L*-th point is sometimes used to decorrelate coordinates in place of
+Skipping every _L_-th point is sometimes used to decorrelate coordinates in place of
 scrambling. It is easy to add (`WithLeap(n)`, one multiply in `fill`) and easy to get
 wrong: a leap that shares a factor with a base makes that coordinate worse, not better.
 

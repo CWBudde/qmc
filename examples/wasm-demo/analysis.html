@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Discrepancy Bench — qmc</title>
+    <meta
+      name="description"
+      content="Pairwise correlation across every dimension, and integration error against N on log–log axes. Go compiled to WebAssembly, no numerics in JavaScript."
+    />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+
+    <!--
+      DOM CONTRACT — read this before touching analysis.js / render.js.
+
+      Every id below is bound by analysis.js. Removing or renaming one breaks
+      the page silently, so change both files together.
+
+      Shell:
+        #rack           shell; JS sets data-boot="loading|ready"
+        #status         status readout, gets data-state="ready|error|loading"
+        #bootRing       .boot-ring; JS sets --boot-progress (0..1)
+        #liveRegion     aria-live="polite" announcements, throttled
+        #buildInfo      footer "go1.x · js/wasm"
+
+      Correlation heatmap:
+        #heatmap              dims x dims canvas
+        #heatLegend           the diverging colour scale
+        #cellReadout          hover report: pair, bases, r
+        #worstAdjacent        big |r| readout for the worst adjacent pair
+        #worstPairLabel       "dimensions 37 and 38" sub-line
+        #docReference         comparison against the README's figures
+        #corrDims #corrDimsOut        dimensions
+        #corrCount #corrCountOut      points
+        #corrSkip #corrSkipOut        burn-in
+        #corrSeed                     seed
+        #corrScramble                 toggle, gets aria-pressed
+        #corrScrambleState            the ON/OFF word inside that button
+        #corrNote                     the callout under the toggle
+
+      Convergence sweep:
+        #integrand #integrandNote     <select> filled from info().integrands
+        #budget                       <select> of sweep ceilings, filled by JS
+        #convDims #convDimsOut        dimensions
+        #convSkip #convSkipOut        burn-in
+        #convSeed                     seed
+        #convScramble #convScrambleState   toggle, gets aria-pressed
+        #start #stop                  transport for the sweep
+        #progressBar #progressText    progress readout
+        #convChart                    the log–log chart
+        #convRows                     <tbody> of per-N results
+        #tExact #tQmcError #tMcError #tRatio    .v readouts
+    -->
+  </head>
+  <body>
+    <div class="rack" id="rack" data-boot="loading">
+      <div class="rail-top">
+        <span class="brand"><b>qmc</b> · discrepancy bench</span>
+        <nav class="site-nav">
+          <a href="index.html">Point Lab</a>
+          <a href="analysis.html" aria-current="page">Discrepancy Bench</a>
+          <a href="https://github.com/CWBudde/qmc">Source</a>
+        </nav>
+        <div class="boot-ring" id="bootRing" title="loading WebAssembly">
+          <div class="boot-ring__track"></div>
+          <div class="boot-ring__fill"></div>
+        </div>
+      </div>
+
+      <header class="hero">
+        <div class="hero__text">
+          <p class="eyebrow">GO · WEBASSEMBLY · NO JS NUMERICS</p>
+          <h1>Every pair at once, and what it costs you</h1>
+          <p class="lede">
+            The Point Lab shows one projection out of <i>d</i>(<i>d</i>−1)/2.
+            This page shows all of them: a correlation matrix over every pair of
+            dimensions, and then the thing correlation is a proxy for — how fast
+            the integration error actually falls as you spend more points.
+          </p>
+          <p class="lede">
+            Both halves are computed by <b>github.com/cwbudde/qmc</b> compiled
+            to WebAssembly. The JavaScript owns the DOM, the canvas and the
+            clock.
+          </p>
+        </div>
+      </header>
+
+      <div class="status" id="status" data-state="loading">
+        Loading WebAssembly…
+      </div>
+
+      <section class="panels">
+        <div class="panel panel--wide">
+          <span class="corner-label">Pairwise correlation</span>
+          <p class="panel-note">
+            Cell (<i>i</i>, <i>j</i>) is the Pearson correlation between
+            coordinate <i>i</i> and coordinate <i>j</i> over the whole point
+            set. Correlation is <b>signed</b>, so the scale is diverging and
+            centred on zero: cool is negative, warm is positive, ground is
+            independent. The diagonal is 1 by construction. Hover any cell for
+            the pair, their prime bases and <i>r</i>.
+          </p>
+
+          <div class="verdict">
+            <div>
+              <span class="k">worst adjacent |r|</span>
+              <span class="big" id="worstAdjacent">—</span>
+              <span class="sub" id="worstPairLabel">—</span>
+            </div>
+            <div>
+              <span class="k">against the documented figures</span>
+              <span class="sub" id="docReference">
+                The library reports 0.81 unscrambled and 0.14 scrambled at 39
+                dimensions, 600 points, burn-in 64.
+              </span>
+            </div>
+          </div>
+
+          <div class="controls" style="margin-top: 0">
+            <div class="control-group">
+              <span class="corner-label">The switch</span>
+              <button
+                type="button"
+                class="switch"
+                id="corrScramble"
+                aria-pressed="false"
+                disabled
+              >
+                <span class="switch__led" aria-hidden="true"></span>
+                <span class="switch__text">
+                  <b>
+                    Random-digit scrambling:
+                    <span id="corrScrambleState">off</span>
+                  </b>
+                  <span>recomputes the whole matrix</span>
+                </span>
+              </button>
+              <p class="callout" id="corrNote">—</p>
+            </div>
+
+            <div class="control-group">
+              <span class="corner-label">Point set</span>
+              <div class="field">
+                <label for="corrDims">dimensions</label>
+                <input
+                  type="range"
+                  id="corrDims"
+                  min="2"
+                  max="48"
+                  step="1"
+                  value="39"
+                />
+                <span class="out mono" id="corrDimsOut">39</span>
+              </div>
+              <div class="field">
+                <label for="corrCount">points</label>
+                <input
+                  type="range"
+                  id="corrCount"
+                  min="8"
+                  max="5000"
+                  step="1"
+                  value="600"
+                />
+                <span class="out mono" id="corrCountOut">600</span>
+              </div>
+              <div class="field">
+                <label for="corrSkip">burn-in</label>
+                <input
+                  type="range"
+                  id="corrSkip"
+                  min="0"
+                  max="4096"
+                  step="1"
+                  value="64"
+                />
+                <span class="out mono" id="corrSkipOut">64</span>
+              </div>
+              <div class="field field--wide">
+                <label for="corrSeed">seed</label>
+                <input type="number" id="corrSeed" step="1" min="0" value="1" />
+              </div>
+            </div>
+
+            <div class="control-group" style="min-width: 0">
+              <span class="corner-label">Map</span>
+              <div class="heatmap-wrap">
+                <canvas
+                  id="heatmap"
+                  role="img"
+                  aria-label="Correlation matrix across all dimension pairs"
+                ></canvas>
+                <canvas id="heatLegend" aria-hidden="true"></canvas>
+                <p class="cell-readout mono" id="cellReadout">
+                  hover a cell for the pair, their bases and r
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel panel--wide">
+          <span class="corner-label">Convergence</span>
+          <p class="panel-note">
+            Absolute integration error against <i>N</i>, both axes logarithmic —
+            the only pair of axes on which "QMC beats Monte Carlo" is something
+            you can check rather than take on faith. A power law is a straight
+            line here, so the two dotted references matter: plain Monte Carlo
+            error falls as <b>1/√N</b>, and a well-behaved quasi-Monte Carlo
+            rule approaches <b>1/N</b>. Read which line each series runs
+            parallel to.
+          </p>
+
+          <div class="controls" style="margin-top: 0">
+            <div class="control-group">
+              <span class="corner-label">Problem</span>
+              <div class="field field--wide">
+                <label for="integrand">integrand</label>
+                <select id="integrand"></select>
+              </div>
+              <div class="field">
+                <label for="convDims">dimensions</label>
+                <input
+                  type="range"
+                  id="convDims"
+                  min="1"
+                  max="64"
+                  step="1"
+                  value="8"
+                />
+                <span class="out mono" id="convDimsOut">8</span>
+              </div>
+              <div class="field">
+                <label for="convSkip">burn-in</label>
+                <input
+                  type="range"
+                  id="convSkip"
+                  min="0"
+                  max="4096"
+                  step="1"
+                  value="64"
+                />
+                <span class="out mono" id="convSkipOut">64</span>
+              </div>
+              <div class="field field--wide">
+                <label for="convSeed">seed</label>
+                <input type="number" id="convSeed" step="1" min="0" value="1" />
+              </div>
+              <p class="field-note" id="integrandNote">—</p>
+            </div>
+
+            <div class="control-group">
+              <span class="corner-label">Sweep</span>
+              <button
+                type="button"
+                class="switch"
+                id="convScramble"
+                aria-pressed="true"
+                disabled
+              >
+                <span class="switch__led" aria-hidden="true"></span>
+                <span class="switch__text">
+                  <b> Scrambling: <span id="convScrambleState">on</span> </b>
+                  <span>randomized QMC</span>
+                </span>
+              </button>
+              <div class="field field--wide">
+                <label for="budget">ceiling</label>
+                <select id="budget"></select>
+              </div>
+              <div class="button-row">
+                <button id="start" data-primary disabled>Start</button>
+                <button id="stop" disabled>Stop</button>
+              </div>
+              <div class="progress">
+                <div class="progress__bar" id="progressBar"></div>
+              </div>
+              <p class="field-note mono" id="progressText">idle</p>
+            </div>
+
+            <div class="control-group" style="min-width: 0">
+              <span class="corner-label">Latest N</span>
+              <div class="readouts">
+                <div>
+                  <span class="k">exact value</span>
+                  <span class="v" id="tExact">—</span>
+                </div>
+                <div>
+                  <span class="k">qmc error</span>
+                  <span class="v" id="tQmcError" data-tone="scrambled">—</span>
+                </div>
+                <div>
+                  <span class="k">mc error</span>
+                  <span class="v" id="tMcError" data-tone="plain">—</span>
+                </div>
+                <div>
+                  <span class="k">mc ÷ qmc</span>
+                  <span class="v" id="tRatio">—</span>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th scope="col">N</th>
+                      <th scope="col">QMC |err|</th>
+                      <th scope="col">MC |err|</th>
+                      <th scope="col">ratio</th>
+                    </tr>
+                  </thead>
+                  <tbody id="convRows"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <canvas
+            id="convChart"
+            role="img"
+            aria-label="Absolute integration error against N on log–log axes"
+          ></canvas>
+          <div class="chart-legend">
+            <span class="qmc"><i></i>quasi-Monte Carlo — circles</span>
+            <span class="mc"><i></i>pseudo-random Monte Carlo — crosses</span>
+            <span class="ref"><i></i>reference slopes 1/N and 1/√N</span>
+          </div>
+        </div>
+      </section>
+
+      <div class="caveat">
+        <h3>Reading the numbers</h3>
+        <p>
+          <b>Correlation is a symptom, not the disease.</b> A low-discrepancy
+          sequence promises even coverage of the whole box, and pairwise
+          correlation only catches the most visible way that promise fails. Zero
+          everywhere is necessary, not sufficient.
+        </p>
+        <p>
+          <b>A single seed is a single sample.</b> With scrambling on this is
+          randomized quasi-Monte Carlo: every seed gives a different, equally
+          valid point set, and both the worst pair and the error curve wobble
+          from one to the next. The library's quoted 0.14 is the worst of five
+          seeds, not the best of one.
+        </p>
+        <p>
+          <b>The sweep loops in JavaScript on purpose.</b> A call into Go blocks
+          the event loop for its whole duration, so a Stop pressed during one
+          cannot be dispatched. Each <code>converge</code> call therefore covers
+          exactly one <i>N</i>, and the page yields between them. That gap is
+          the cancellation mechanism, and it is also why the chart fills in one
+          point at a time.
+        </p>
+      </div>
+
+      <p class="sr-only" id="liveRegion" aria-live="polite"></p>
+
+      <footer class="rack-footer mono">
+        <span>github.com/cwbudde/qmc</span>
+        <span id="buildInfo">—</span>
+        <span>correlation · convergence</span>
+      </footer>
+    </div>
+
+    <script src="wasm_exec.js"></script>
+    <script src="render.js"></script>
+    <script src="analysis.js"></script>
+  </body>
+</html>
