@@ -4,11 +4,18 @@ run:
   timeout: 5m
 
 linters:
-  # node_modules is frontend tooling for the web demo; some npm packages ship
-  # stray .go files that are not ours to lint.
   exclusions:
     paths:
+      # node_modules holds the frontend tooling for the web demo in
+      # examples/wasm-demo; some npm packages ship stray .go files that are
+      # vendored samples, not ours to lint.
       - node_modules
+      # Examples are teaching material. They are written to be read top to
+      # bottom by someone learning the API, which means inline error handling,
+      # long main functions and hard-coded constants that the library itself
+      # would rightly be criticised for. Holding them to library standards
+      # would only make them worse at their one job.
+      - examples/
 
   enable:
     - govet
@@ -22,10 +29,12 @@ linters:
 
     - revive
   settings:
-    # varnamelen is intentionally not enabled: this is a numerical DSP library
-    # whose short identifiers (M, K, G0, Gb, b0, a1, ...) mirror the reference
-    # equations documented alongside the code. varnamelen flagged ~300 such
-    # names across the library, which are deliberate rather than unclear.
+    # varnamelen is intentionally not enabled. The short identifiers here --
+    # d for a dimension, i for a sequence or digit index, b for a base, f for
+    # the running place value, perm for a digit permutation -- mirror the
+    # radical-inverse and sieve formulations the doc comments cite. Spelling
+    # them out would move the code further from the mathematics it implements,
+    # not closer to it.
     revive:
       rules:
         - name: file-length-limit

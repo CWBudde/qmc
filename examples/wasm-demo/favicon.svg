@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" fill="#0a0d18" />
+  <!-- left: a low-discrepancy set, one point per cell -->
+  <circle cx="5.5" cy="6" r="2" fill="#46e0c8" />
+  <circle cx="11.5" cy="12.5" r="2" fill="#46e0c8" />
+  <circle cx="5.5" cy="19" r="2" fill="#46e0c8" />
+  <circle cx="11.5" cy="25.5" r="2" fill="#46e0c8" />
+  <!-- the divide -->
+  <line x1="16" y1="2" x2="16" y2="30" stroke="#232b4c" stroke-width="1" />
+  <!-- right: independent uniform points, clumping and leaving gaps -->
+  <g stroke="#ffb04a" stroke-width="1.6" stroke-linecap="round">
+    <path d="M20.4 7.4 L23.6 10.6 M23.6 7.4 L20.4 10.6" />
+    <path d="M24.4 11.4 L27.6 14.6 M27.6 11.4 L24.4 14.6" />
+    <path d="M19.4 13.4 L22.6 16.6 M22.6 13.4 L19.4 16.6" />
+    <path d="M23.4 24.4 L26.6 27.6 M26.6 24.4 L23.4 27.6" />
+  </g>
+</svg>

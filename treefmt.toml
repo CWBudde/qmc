@@ -1,0 +1,79 @@
+# treefmt configuration for the QMC quasi-Monte Carlo library.
+# Run with: just fmt  (treefmt --allow-missing-formatter)
+# See: https://treefmt.com
+
+[global]
+excludes = [
+  # go tooling owns these
+  "go.mod",
+  "go.sum",
+  # build & coverage artifacts
+  "*.test",
+  "*.prof",
+  "coverage.out",
+  "coverage.html",
+  # dependencies
+  "vendor/**",
+  "node_modules/**",
+  # generated changelog
+  "CHANGELOG.md",
+  # gitignore
+  "**/.gitignore",
+  # the built WebAssembly demo
+  "dist/**",
+  # no TOML formatter is installed by `just setup-deps`, so leave TOML alone
+  # rather than have treefmt report a missing formatter for this very file
+  "*.toml",
+]
+
+### Go
+
+[formatter.gofumpt]
+command = "gofumpt"
+options = ["-w"]
+includes = ["*.go"]
+
+[formatter.gci]
+command = "gci"
+options = [
+  "write",
+  "--skip-generated",
+  "-s",
+  "standard",
+  "-s",
+  "default",
+  "-s",
+  "prefix(github.com/cwbudde/qmc)",
+]
+includes = ["*.go"]
+priority = 1 # run after gofumpt
+
+### Misc
+
+# Unlike the sibling modules, this list also covers *.js, *.css and *.html:
+# the WebAssembly demo under examples/wasm-demo ships all three, and leaving
+# them out would silently exempt the demo's front-end from formatting.
+[formatter.prettier]
+command = "prettier"
+options = ["-w"]
+includes = [
+  "*.md",
+  "*.json",
+  "*.yaml",
+  "*.yml",
+  "*.js",
+  "*.css",
+  "*.html",
+]
+
+### Shell
+
+[formatter.shellcheck]
+command = "shellcheck"
+includes = ["*.sh"]
+
+[formatter.shfmt]
+command = "shfmt"
+options = ["-s", "-w", "-i", "2"]
+includes = ["*.sh"]
+priority = 1                      # run after shellcheck

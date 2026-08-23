@@ -78,6 +78,61 @@ func NewHalton(dims int, opts ...Option) (*Halton, error) {
 // Dims returns the number of dimensions.
 func (h *Halton) Dims() int { return h.dims }
 
+// Bases returns the prime base of each dimension, in order: the d-th entry is
+// the d-th prime, which is the base whose radical inverse produces coordinate d.
+// That is the whole of what distinguishes one dimension from another, so it is
+// also the number that explains a dimension's behaviour — dimension 38 uses
+// base 167, and its first 167 points therefore march up a ramp in steps of
+// 1/167 unless scrambling is on.
+//
+// The returned slice is a fresh copy on every call. The generator reads its
+// bases on every coordinate of every point, so handing out the internal slice
+// would let a caller who sorts, truncates or edits it turn the sequence into a
+// different one — and not visibly: the points would keep looking like plausible
+// low-discrepancy points while no longer being the Halton sequence at all. A
+// copy of a few hundred ints per call is not worth a failure mode nobody can
+// see.
+//
+// This exists so a UI (the WebAssembly demo in examples/wasm-demo does exactly
+// this) can label what it is drawing without re-deriving the prime table the
+// library already computed.
+func (h *Halton) Bases() []int {
+	out := make([]int, len(h.bases))
+	copy(out, h.bases)
+
+	return out
+}
+
+// Permutation returns the digit permutation applied to dimension dim, or nil
+// when the generator is unscrambled.
+//
+// With WithScrambling in effect, each dimension carries an independent uniform
+// permutation of the digit alphabet {0..base-1} for its base, and every digit
+// of the radical inverse — including the infinitely many leading zeros — is
+// mapped through it. The returned slice is that permutation: entry i is the
+// digit that digit i is rewritten to, so it has exactly Bases()[dim] entries
+// and each of 0..base-1 appears once.
+//
+// A dim outside [0, Dims()) returns nil rather than panicking, because the
+// callers are display code walking a dimension list that may be out of step
+// with the generator by a frame; nil is a thing a renderer can skip, a panic
+// in that position takes the whole page down.
+//
+// As with Bases, the returned slice is a fresh copy: the permutations are read
+// on every scrambled coordinate, and a caller mutating one in place would
+// silently corrupt every subsequent point of that dimension while the
+// generator kept reporting the same configuration.
+func (h *Halton) Permutation(dim int) []int32 {
+	if h.perms == nil || dim < 0 || dim >= len(h.perms) {
+		return nil
+	}
+
+	out := make([]int32, len(h.perms[dim]))
+	copy(out, h.perms[dim])
+
+	return out
+}
+
 // Next returns the next point of the sequence in a freshly allocated slice.
 func (h *Halton) Next() []float64 {
 	out := make([]float64, h.dims)
@@ -212,7 +267,8 @@ func scrambledRadicalInverse(index int, base int, perm []int32) float64 {
 	for i := index; i > 0; i /= base {
 		if reversed > limit {
 			panic(fmt.Sprintf(
-				"qmc: index %d has too many base-%d digits to reverse without overflow", index, base))
+				"qmc: index %d has too many base-%d digits to reverse without overflow", index, base,
+			))
 		}
 
 		reversed = reversed*uint64(base) + uint64(perm[i%base])
