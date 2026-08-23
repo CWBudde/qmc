@@ -172,17 +172,35 @@ func StarDiscrepancy(points [][]float64) (float64, error) {
 // because each one-dimensional integral collapses: the single sum's factor
 // integrates to 13/12, so does the double sum's off-diagonal factor, and the
 // double sum's diagonal factor 1 + u integrates to 5/4. At 39 dimensions and
-// 1024 points that is (6018.5 - 22.7)/1024 = 5.855, so E[CD2] = 2.4197 — and
-// scrambled Halton at the same size measures 2.404 against random's 2.421, a
-// difference of 0.7%.
+// 1024 points that is (6018.5 - 22.7)/1024 = 5.855, so E[CD2] = 2.4198 — and
+// measured over ten scrambling seeds, random comes in at 2.4046 and scrambled
+// Halton at 2.3657, a difference of 1.6%.
 //
 // The mechanism is visible in the same arithmetic. The diagonal i=j terms
-// alone contribute (5/4)^s/N = 5.877 of that 5.855 total; everything the
-// statistic was supposed to measure lives in a residual of -0.02. The
-// diagonal depends only on each coordinate's marginal spread and not at all on
-// how the points sit relative to one another, so above roughly ten dimensions
-// CD2 is reporting its own diagonal. Over the very same point sets the RMS
-// integration error of a smooth product integrand differs by 20x.
+// alone contribute (5/4)^s/N = 5.877 of that 5.855 total — 100.4% of it.
+// Everything the statistic was supposed to measure lives in a residual of
+// -0.02, and the diagonal depends only on each coordinate's marginal spread,
+// not at all on how the points sit relative to one another. Over the very same
+// point sets the RMS integration error of a smooth product integrand differs
+// by 16x.
+//
+// Measured at N=1024 over ten seeds, the random-to-Halton ratio decays with
+// the dimension count and takes the diagonal's share of the expectation with
+// it:
+//
+//	 s     CD2 Halton   CD2 random   ratio   diagonal share
+//	 2       0.00137      0.01705    12.4x        402%
+//	 5       0.00638      0.04020     6.3x        196%
+//	10       0.03374      0.08057     2.4x        131%
+//	15       0.09751      0.15911     1.6x        113%
+//	20       0.22000      0.28085     1.3x        106%
+//	30       0.81877      0.88577     1.08x       101%
+//	39       2.36573      2.40461     1.02x       100.4%
+//
+// Read that as: informative below roughly ten dimensions, weak by twenty, and
+// dead by thirty. It is not a cliff, so there is no honest dimension at which
+// to refuse — which is why this returns a number and documents the caveat
+// where StarDiscrepancy returns an error.
 //
 // The self-check to run before believing a CD2 number: compare it against
 // sqrt(((5/4)^s - (13/12)^s)/N). If your point set is not several times below
@@ -373,8 +391,8 @@ func errStarTooBig(n, s int, boxes float64) error {
 			"computable and not a tuning knob. "+
 			"Affordable point counts are 7744 at 2 dimensions, 562 at 3, 161 at 4, 78 at 5 and 49 at 6. "+
 			"Use CenteredL2Discrepancy above that, but read its saturation caveat first: "+
-			"above roughly ten dimensions it scores a low-discrepancy set and a random one within a "+
-			"few percent of each other",
+			"by twenty dimensions it scores a low-discrepancy set within 30%% of a random one and by "+
+			"thirty within 8%%",
 		n, s, formatBoxes(boxes), reason,
 	)
 }

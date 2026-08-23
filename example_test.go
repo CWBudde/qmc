@@ -253,7 +253,7 @@ func ExampleStarDiscrepancy() {
 // scrambled Halton set comes in far below it; at 39 dimensions the two are
 // within a percent of each other, because the statistic has become its own
 // diagonal — even though the same two point sets still integrate with a
-// twentyfold difference in error.
+// sixteenfold difference in error.
 func ExampleCenteredL2Discrepancy() {
 	// One point at the centre of the cube: CD2 = sqrt((13/12)^s - 1).
 	cd2, err := qmc.CenteredL2Discrepancy([][]float64{{0.5, 0.5, 0.5, 0.5}})
