@@ -26,19 +26,24 @@ func TestScramblingBreaksHighDimensionalCorrelation(t *testing.T) {
 	const tolerance = 0.25
 
 	worstOverall := 0.0
+
 	for _, seed := range []uint64{1, 2, 3, 4, 5} {
 		g, err := NewHalton(corrDims, WithSkip(corrSkip), WithScrambling(seed))
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		pts := draw(g, corrPoints)
+
 		worst, pair := worstAdjacentCorrelation(pts)
 		if worst > tolerance {
 			t.Fatalf("seed %d: adjacent dims %d/%d correlate at %.4f, want <= %.2f",
 				seed, pair, pair+1, worst, tolerance)
 		}
+
 		worstOverall = math.Max(worstOverall, worst)
 	}
+
 	t.Logf("scrambled: worst adjacent-pair |corr| over 5 seeds = %.4f", worstOverall)
 }
 
@@ -51,12 +56,14 @@ func TestUnscrambledStillShowsTheDefect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	worst, pair := worstAdjacentCorrelation(draw(g, corrPoints))
 	if worst < 0.5 {
 		t.Fatalf("unscrambled worst adjacent-pair |corr| = %.4f at dims %d/%d; "+
 			"expected the known defect (~0.65), so the scrambled comparison no longer means anything",
 			worst, pair, pair+1)
 	}
+
 	t.Logf("unscrambled: worst adjacent-pair |corr| = %.4f at dims %d/%d", worst, pair, pair+1)
 }
 
@@ -65,6 +72,7 @@ func draw(g *Halton, n int) [][]float64 {
 	for i := range out {
 		out[i] = g.At(i)
 	}
+
 	return out
 }
 
@@ -74,14 +82,17 @@ func worstAdjacentCorrelation(pts [][]float64) (float64, int) {
 	if len(pts) == 0 {
 		return 0, 0
 	}
+
 	dims := len(pts[0])
 	worst, at := 0.0, 0
+
 	for d := 0; d+1 < dims; d++ {
 		r := math.Abs(pearson(column(pts, d), column(pts, d+1)))
 		if r > worst {
 			worst, at = r, d
 		}
 	}
+
 	return worst, at
 }
 
@@ -90,28 +101,34 @@ func column(pts [][]float64, d int) []float64 {
 	for i, p := range pts {
 		out[i] = p[d]
 	}
+
 	return out
 }
 
 func pearson(a, b []float64) float64 {
 	n := float64(len(a))
+
 	var ma, mb float64
 	for i := range a {
 		ma += a[i]
 		mb += b[i]
 	}
+
 	ma /= n
 	mb /= n
 
 	var cov, va, vb float64
+
 	for i := range a {
 		da, db := a[i]-ma, b[i]-mb
 		cov += da * db
 		va += da * da
 		vb += db * db
 	}
+
 	if va == 0 || vb == 0 {
 		return 0
 	}
+
 	return cov / math.Sqrt(va*vb)
 }

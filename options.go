@@ -26,6 +26,7 @@ func WithSkip(n int) Option {
 		if n < 0 {
 			n = 0
 		}
+
 		s.skip = n
 	}
 }

@@ -55,6 +55,7 @@ func NewHalton(dims int, opts ...Option) (*Halton, error) {
 	if dims < 1 {
 		return nil, fmt.Errorf("qmc: dims must be >= 1, got %d", dims)
 	}
+
 	var cfg settings
 	for _, opt := range opts {
 		opt(&cfg)
@@ -72,6 +73,7 @@ func NewHalton(dims int, opts ...Option) (*Halton, error) {
 			h.perms[d] = newPermutation(base, cfg.seed, d)
 		}
 	}
+
 	return h, nil
 }
 
@@ -82,6 +84,7 @@ func (h *Halton) Dims() int { return h.dims }
 func (h *Halton) Next() []float64 {
 	out := make([]float64, h.dims)
 	h.NextInto(out)
+
 	return out
 }
 
@@ -109,6 +112,7 @@ func (h *Halton) Reset() { h.cursor = 0 }
 func (h *Halton) At(i int) []float64 {
 	out := make([]float64, h.dims)
 	h.fill(i, out)
+
 	return out
 }
 
@@ -119,6 +123,7 @@ func (h *Halton) fill(i int, dst []float64) {
 	if i < 0 {
 		i = 0
 	}
+
 	index := h.skip + 1 + i
 	for d := 0; d < h.dims && d < len(dst); d++ {
 		if h.perms == nil {
@@ -140,12 +145,15 @@ func radicalInverse(index int, base int) float64 {
 	if base < 2 || index < 0 {
 		return 0
 	}
+
 	result := 0.0
+
 	f := 1.0 / float64(base)
 	for i := index; i > 0; i /= base {
 		result += float64(i%base) * f
 		f /= float64(base)
 	}
+
 	return result
 }
 
@@ -171,6 +179,7 @@ func scrambledRadicalInverse(index int, base int, perm []int32) float64 {
 	limit := ^uint64(0) / uint64(base)
 
 	var reversed uint64
+
 	invBase := 1 / float64(base)
 	invBaseN := 1.0
 
@@ -180,9 +189,11 @@ func scrambledRadicalInverse(index int, base int, perm []int32) float64 {
 	}
 
 	tail := invBase * float64(perm[0]) / (1 - invBase)
+
 	v := invBaseN * (float64(reversed) + tail)
 	if v >= oneMinusEpsilon {
 		return oneMinusEpsilon
 	}
+
 	return v
 }

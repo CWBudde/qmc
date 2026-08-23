@@ -24,6 +24,7 @@ func TestRadicalInverseKnownValues(t *testing.T) {
 
 func TestPrimesUpTo(t *testing.T) {
 	want := []int{2, 3, 5, 7, 11, 13, 17, 19, 23, 29}
+
 	got := primesUpTo(len(want))
 	for i := range want {
 		if got[i] != want[i] {
@@ -35,9 +36,11 @@ func TestPrimesUpTo(t *testing.T) {
 	if p := primesUpTo(64); p[63] != 311 {
 		t.Fatalf("64th prime = %d, want 311", p[63])
 	}
+
 	if p := primesUpTo(1000); p[999] != 7919 {
 		t.Fatalf("1000th prime = %d, want 7919", p[999])
 	}
+
 	if primesUpTo(0) != nil {
 		t.Fatalf("primesUpTo(0) should be nil")
 	}
@@ -47,6 +50,7 @@ func TestNewHaltonRejectsZeroDims(t *testing.T) {
 	if _, err := NewHalton(0); err == nil {
 		t.Fatalf("NewHalton(0) should fail")
 	}
+
 	if _, err := NewHalton(-1); err == nil {
 		t.Fatalf("NewHalton(-1) should fail")
 	}
@@ -57,7 +61,9 @@ func TestFirstPointIsTheClassicOne(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	want := []float64{1.0 / 2, 1.0 / 3, 1.0 / 5, 1.0 / 7, 1.0 / 11}
+
 	got := g.At(0)
 	for i := range want {
 		if math.Abs(got[i]-want[i]) > 1e-12 {
@@ -79,6 +85,7 @@ func legacyHaltonPoint(index, dims int) []float64 {
 		233, 239, 241, 251, 257, 263, 269, 271, 277, 281,
 		283, 293, 307, 311,
 	}
+
 	out := make([]float64, dims)
 	for d := 0; d < dims; d++ {
 		result, f := 0.0, 1.0/float64(primes[d])
@@ -86,8 +93,10 @@ func legacyHaltonPoint(index, dims int) []float64 {
 			result += float64(i%primes[d]) * f
 			f /= float64(primes[d])
 		}
+
 		out[d] = result
 	}
+
 	return out
 }
 
@@ -96,12 +105,15 @@ func TestUnscrambledIsBitIdenticalToTheLegacyGenerator(t *testing.T) {
 		dims = 39
 		skip = 64
 	)
+
 	g, err := NewHalton(dims, WithSkip(skip))
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	for i := 0; i < 600; i++ {
 		want := legacyHaltonPoint(skip+i+1, dims)
+
 		got := g.Next()
 		for d := range want {
 			if got[d] != want[d] {
@@ -117,10 +129,12 @@ func TestCoordinatesStayInTheUnitInterval(t *testing.T) {
 		if scramble {
 			opts = append(opts, WithScrambling(0xFFFFFFFFFFFFFFFF))
 		}
+
 		g, err := NewHalton(39, opts...)
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		for i := 0; i < 2000; i++ {
 			for d, v := range g.At(i) {
 				if v < 0 || v >= 1 {
@@ -137,17 +151,21 @@ func TestScramblingIsDeterministicPerSeed(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		return g
 	}
 	a, b, c := build(7), build(7), build(8)
 	same, differs := 0, 0
+
 	for i := 0; i < 200; i++ {
 		pa, pb, pc := a.At(i), b.At(i), c.At(i)
 		for d := range pa {
 			if pa[d] != pb[d] {
 				t.Fatalf("same seed disagrees at point %d dim %d: %v vs %v", i, d, pa[d], pb[d])
 			}
+
 			same++
+
 			if pa[d] != pc[d] {
 				differs++
 			}
@@ -165,6 +183,7 @@ func TestNextMatchesAtAndResetRewinds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	for i := 0; i < 50; i++ {
 		got, want := g.Next(), g.At(i)
 		for d := range want {
@@ -173,7 +192,9 @@ func TestNextMatchesAtAndResetRewinds(t *testing.T) {
 			}
 		}
 	}
+
 	g.Reset()
+
 	first, want := g.Next(), g.At(0)
 	for d := range want {
 		if first[d] != want[d] {
@@ -187,10 +208,12 @@ func TestSkipShiftsTheSequence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	skipped, err := NewHalton(5, WithSkip(64))
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	for i := 0; i < 20; i++ {
 		got, want := skipped.At(i), plain.At(64+i)
 		for d := range want {
@@ -204,6 +227,7 @@ func TestSkipShiftsTheSequence(t *testing.T) {
 func TestNegativeSkipIsClamped(t *testing.T) {
 	var s settings
 	WithSkip(-5)(&s)
+
 	if s.skip != 0 {
 		t.Fatalf("WithSkip(-5) stored %d, want 0", s.skip)
 	}

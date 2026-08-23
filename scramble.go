@@ -30,6 +30,7 @@ func (s *splitMix64) next() uint64 {
 	z := uint64(*s)
 	z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9
 	z = (z ^ (z >> 27)) * 0x94D049BB133111EB
+
 	return z ^ (z >> 31)
 }
 
@@ -54,6 +55,7 @@ func newPermutation(base int, seed uint64, dim int) []int32 {
 		j := int(uniformBelow(&rng, uint64(i+1)))
 		perm[i], perm[j] = perm[j], perm[i]
 	}
+
 	return perm
 }
 
@@ -62,7 +64,9 @@ func uniformBelow(rng *splitMix64, n uint64) uint64 {
 	if n <= 1 {
 		return 0
 	}
+
 	limit := ^uint64(0) - (^uint64(0) % n)
+
 	for {
 		v := rng.next()
 		if v < limit {

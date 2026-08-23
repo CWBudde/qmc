@@ -16,6 +16,7 @@ func primesUpTo(n int) []int {
 	if n < 1 {
 		return nil
 	}
+
 	limit := 16
 	if n >= 6 {
 		// ln is avoided so this stays dependency- and rounding-free: for the
@@ -23,11 +24,13 @@ func primesUpTo(n int) []int {
 		// n is in the millions, and the loop below covers the rest anyway.
 		limit = 15 * n
 	}
+
 	for {
 		got := sieve(limit)
 		if len(got) >= n {
 			return got[:n]
 		}
+
 		limit *= 2
 	}
 }
@@ -37,16 +40,20 @@ func sieve(limit int) []int {
 	if limit < 3 {
 		return nil
 	}
+
 	composite := make([]bool, limit)
+
 	out := make([]int, 0, limit/4+1)
 	for i := 2; i < limit; i++ {
 		if composite[i] {
 			continue
 		}
+
 		out = append(out, i)
 		for j := i * i; j < limit && j > 0; j += i {
 			composite[j] = true
 		}
 	}
+
 	return out
 }
