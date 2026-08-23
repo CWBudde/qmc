@@ -150,3 +150,48 @@ func BenchmarkNewSobolHighDims(b *testing.B) {
 // averaging over independent randomization seeds is what makes the number the
 // quantity the theory bounds, rather than a report on whether one seed landed
 // well.
+
+// The Owen benchmarks exist to price the option, not to celebrate it. Its
+// advantage on a smooth integrand is small — 1.08x on the harness in
+// sobol_integration_test.go — so what it costs per point is most of the
+// decision, and a caller reading WithOwenScrambling's doc comment deserves a
+// number that came from here rather than an adjective.
+func BenchmarkSobolAtIntoOwen(b *testing.B) {
+	g, err := qmc.NewSobol(sobolBenchDims, qmc.WithOwenScrambling(1))
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	dst := make([]float64, sobolBenchDims)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		g.AtInto(i, dst)
+	}
+
+	sink = dst[0]
+}
+
+func BenchmarkSobolNextIntoOwen(b *testing.B) {
+	g, err := qmc.NewSobol(sobolBenchDims, qmc.WithOwenScrambling(1))
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	dst := make([]float64, sobolBenchDims)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		if i%(1<<20) == 0 {
+			g.Reset()
+		}
+
+		g.NextInto(dst)
+	}
+
+	sink = dst[0]
+}

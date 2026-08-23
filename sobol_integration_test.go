@@ -23,14 +23,19 @@ import (
 // between 1/n and 1/sqrt(n) convergence is structural, while a bound pinned at
 // the measured value would fail on an unlucky seed.
 
-func sobolRMSError(t *testing.T, dims, n, streams int) float64 {
+// randomize builds the option under test from a stream seed. Passing it in
+// rather than hardcoding one keeps the two randomizations measured on exactly
+// the same integrand, budget and stream seeds — the comparison between them is
+// the whole point of TestOwenBeatsDigitalShiftAt39Dims, and it would be worth
+// nothing if the two paths differed anywhere else.
+func sobolRMSError(t *testing.T, randomize func(uint64) qmc.Option, dims, n, streams int) float64 {
 	t.Helper()
 
 	sumSq := 0.0
 	point := make([]float64, dims)
 
 	for seed := 1; seed <= streams; seed++ {
-		g, err := qmc.NewSobol(dims, qmc.WithSkip(64), qmc.WithDigitalShift(uint64(seed)))
+		g, err := qmc.NewSobol(dims, qmc.WithSkip(64), randomize(uint64(seed)))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -73,7 +78,7 @@ func TestShiftedSobolBeatsMonteCarloAt39Dims(t *testing.T) {
 		wantSpeedup = 5.0
 	)
 
-	sobolErr := sobolRMSError(t, dims, n, streams)
+	sobolErr := sobolRMSError(t, qmc.WithDigitalShift, dims, n, streams)
 	mcErr := mcRMSError(dims, n, streams)
 
 	if sobolErr <= 0 {
@@ -116,7 +121,7 @@ func TestSobolAgainstHaltonAt39Dims(t *testing.T) {
 		streams = 10
 	)
 
-	sobolErr := sobolRMSError(t, dims, n, streams)
+	sobolErr := sobolRMSError(t, qmc.WithDigitalShift, dims, n, streams)
 	haltonErr := qmcRMSError(t, dims, n, streams)
 
 	ratio := haltonErr / sobolErr
@@ -147,7 +152,7 @@ func TestSobolBeatsMonteCarloAtLowDims(t *testing.T) {
 		wantSpeedup = 5.0
 	)
 
-	sobolErr := sobolRMSError(t, dims, n, streams)
+	sobolErr := sobolRMSError(t, qmc.WithDigitalShift, dims, n, streams)
 	mcErr := mcRMSError(dims, n, streams)
 
 	ratio := mcErr / sobolErr
@@ -158,4 +163,55 @@ func TestSobolBeatsMonteCarloAtLowDims(t *testing.T) {
 
 	t.Logf("d=%d n=%d streams=%d: Sobol RMS rel. error %.3e vs MC %.3e (%.1fx better)",
 		dims, n, streams, sobolErr, mcErr, ratio)
+}
+
+// TestOwenBeatsDigitalShiftAt39Dims is the measurement that decides whether
+// Owen scrambling earns the code it costs.
+//
+// The two randomizations are run over the same integrand, the same budget and
+// the same stream seeds, so the only difference between them is the one under
+// test. Both leave the (t,m,s)-net structure intact — that is checked directly
+// in TestFirstPointsAreOneDimensionallyBalanced — so this is asking the
+// narrower question the theory actually distinguishes them on: a digital shift
+// translates the point set rigidly and cannot improve a projection, while an
+// Owen scramble redistributes within it.
+//
+// The assertion is one-sided and loose. Requiring Owen to be at least as good
+// as a digital shift, with room for stream noise, is a claim that can fail if
+// the scramble is broken or applied in the wrong place; requiring it to beat
+// the shift by the measured factor would be pinning a constant that depends on
+// the integrand, and would fail for reasons that say nothing about the code.
+func TestOwenBeatsDigitalShiftAt39Dims(t *testing.T) {
+	const (
+		dims    = 39
+		n       = 4096
+		streams = 10
+
+		// Owen may come out slightly behind on a given integrand without
+		// anything being wrong — the two are close on smooth products, which
+		// this integrand is. What would not be noise is Owen coming out
+		// several times worse, which is what a scramble applied to the wrong
+		// bits, or applied inconsistently between the two evaluation paths,
+		// would produce.
+		tolerance = 1.5
+	)
+
+	owenErr := sobolRMSError(t, qmc.WithOwenScrambling, dims, n, streams)
+	shiftErr := sobolRMSError(t, qmc.WithDigitalShift, dims, n, streams)
+
+	if owenErr <= 0 {
+		t.Fatalf("Owen RMS error is %g; an exactly-zero error means the estimator collapsed, not that the scramble is perfect", owenErr)
+	}
+
+	if owenErr > shiftErr*tolerance {
+		t.Fatalf(
+			"at %d dims with n=%d over %d streams: Owen RMS error %.3e against a digital shift's %.3e; "+
+				"Owen scrambling is meant to be the stronger randomization and is coming out %.2fx worse, "+
+				"which is past what stream noise explains",
+			dims, n, streams, owenErr, shiftErr, owenErr/shiftErr,
+		)
+	}
+
+	t.Logf("d=%d n=%d streams=%d: Owen RMS rel. error %.3e vs digital shift %.3e (%.2fx)",
+		dims, n, streams, owenErr, shiftErr, shiftErr/owenErr)
 }

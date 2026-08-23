@@ -309,10 +309,27 @@ func TestFirstPointsAreOneDimensionallyBalanced(t *testing.T) {
 	for _, m := range []int{4, 8, 12} {
 		n := 1 << m
 
-		for _, shift := range []bool{false, true} {
+		// Every randomization is checked, not just the unrandomized sequence,
+		// because "the low-discrepancy structure survives randomization" is
+		// the whole claim both WithDigitalShift and WithOwenScrambling make.
+		// A digital shift preserves the net for an easy reason — XOR by a
+		// constant permutes the dyadic intervals among themselves. Owen
+		// scrambling preserves it for the reason its own tests spell out, and
+		// this is where that claim is checked against the actual point set
+		// rather than against the scramble in isolation.
+		randomizations := []struct {
+			name string
+			opt  Option
+		}{
+			{"none", nil},
+			{"digital shift", WithDigitalShift(7)},
+			{"Owen", WithOwenScrambling(7)},
+		}
+
+		for _, r := range randomizations {
 			opts := []Option{WithSkip(n - 1)}
-			if shift {
-				opts = append(opts, WithDigitalShift(7))
+			if r.opt != nil {
+				opts = append(opts, r.opt)
 			}
 
 			g, err := NewSobol(dims, opts...)
@@ -335,10 +352,11 @@ func TestFirstPointsAreOneDimensionallyBalanced(t *testing.T) {
 				for k := 0; k < n; k++ {
 					if got := counts[d*n+k]; got != 1 {
 						t.Fatalf(
-							"m=%d shift=%v dimension %d: interval [%d/%d, %d/%d) holds %d of the %d points, want exactly 1; "+
-								"this dimension's direction numbers are no longer linearly independent over GF(2), "+
-								"which means the point set has stopped being a digital net",
-							m, shift, d, k, n, k+1, n, got, n,
+							"m=%d randomization=%s dimension %d: interval [%d/%d, %d/%d) holds %d of the %d points, want exactly 1; "+
+								"the point set has stopped being a digital net — either this dimension's direction "+
+								"numbers are no longer linearly independent over GF(2), or the randomization is not "+
+								"mapping elementary intervals onto elementary intervals",
+							m, r.name, d, k, n, k+1, n, got, n,
 						)
 					}
 				}
@@ -862,7 +880,6 @@ func TestNewSobolRejectsInapplicableRandomizations(t *testing.T) {
 	}{
 		{"WithScrambling", WithScrambling(1), "WithScrambling does not apply"},
 		{"nested scrambling", func(s *settings) { s.randomize = randomizeNested }, "WithNestedScrambling does not apply"},
-		{"Owen scrambling", func(s *settings) { s.randomize = randomizeOwen }, "WithOwenScrambling is not implemented"},
 	}
 
 	for _, tc := range cases {

@@ -62,6 +62,20 @@ type Sobol struct {
 	// when the generator is not randomized. See WithDigitalShift.
 	shift []uint32
 
+	// owen is one hash seed per dimension, or nil unless Owen scrambling is
+	// on. It is never combined with shift: Owen scrambling already contains a
+	// random flip of the whole coordinate at the root of its tree, which is
+	// what a digital shift is.
+	//
+	// Unlike shift, it cannot be folded into the accumulator. A digital shift
+	// is an XOR and therefore commutes with the Gray-code recurrence, so
+	// carrying it in state costs nothing per point; an Owen scramble is not
+	// linear, and pre-applying it would make the next XOR of a direction
+	// number land on scrambled bits and produce a point off the sequence
+	// entirely. So it is applied where the accumulator becomes a coordinate,
+	// and state stays raw. See NextInto.
+	owen []uint32
+
 	skip int
 
 	// counter is the raw sequence index of the point Next will return, and
@@ -159,15 +173,7 @@ func NewSobol(dims int, opts ...Option) (*Sobol, error) {
 	// next step is usually to average over seeds — which would silently
 	// average over identical runs and report an error estimate of zero.
 	switch cfg.randomize {
-	case randomizeNone, randomizeDigitalShift:
-	case randomizeOwen:
-		// TODO(owen): Owen scrambling plugs in here. It is not a variant of
-		// the digital shift and cannot be folded into shift: it permutes each
-		// output digit conditionally on the digits above it, so it has to run
-		// inside the accumulator-to-coordinate step rather than once at
-		// construction. Expect a hash-based implementation in the shape of
-		// Burley (2020), keyed off cfg.seed and the dimension.
-		return nil, fmt.Errorf("qmc: %s is not implemented for Sobol yet", cfg.randomize)
+	case randomizeNone, randomizeDigitalShift, randomizeOwen:
 	default:
 		return nil, fmt.Errorf("qmc: %s does not apply to a Sobol generator", cfg.randomize)
 	}
@@ -213,8 +219,17 @@ func NewSobol(dims int, opts ...Option) (*Sobol, error) {
 		expandDirections(row, s.directions[d*sobolBits:(d+1)*sobolBits])
 	}
 
-	if cfg.randomize == randomizeDigitalShift {
+	// A switch rather than two ifs, because the two are mutually exclusive by
+	// construction and saying so here is what stops a later edit from setting
+	// both. Owen scrambling already contains a random flip of the whole
+	// coordinate at the root of its tree; XORing a digital shift on top would
+	// not be wrong so much as meaningless, and it would make the seed mean two
+	// different things at once.
+	switch cfg.randomize {
+	case randomizeDigitalShift:
 		s.shift = newDigitalShift(dims, cfg.seed)
+	case randomizeOwen:
+		s.owen = newOwenSeeds(dims, cfg.seed)
 	}
 
 	s.Reset()
@@ -282,8 +297,18 @@ func (s *Sobol) Next() []float64 {
 // it instead would leave the tail coordinates holding zeros or stale values,
 // which look like plausible positions and would steer a search silently.
 func (s *Sobol) NextInto(dst []float64) {
-	for d, x := range s.state {
-		dst[d] = float64(x) * twoPowMinus32
+	// The branch is hoisted out of the loop rather than tested per dimension.
+	// This is the one place in the package where that matters: unrandomized,
+	// NextInto is 65 ns/op across 39 dimensions, so a predictable but repeated
+	// test is a measurable share of the whole call.
+	if s.owen == nil {
+		for d, x := range s.state {
+			dst[d] = float64(x) * twoPowMinus32
+		}
+	} else {
+		for d, x := range s.state {
+			dst[d] = float64(owenScramble(x, s.owen[d])) * twoPowMinus32
+		}
 	}
 
 	// The counter is advanced after the point is written, so a generator that
@@ -417,6 +442,10 @@ func (s *Sobol) accumulateInto(n uint32, dst []float64) {
 
 		if s.shift != nil {
 			x ^= s.shift[d]
+		}
+
+		if s.owen != nil {
+			x = owenScramble(x, s.owen[d])
 		}
 
 		dst[d] = float64(x) * twoPowMinus32
