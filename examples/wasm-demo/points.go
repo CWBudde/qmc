@@ -5,6 +5,8 @@ package main
 import (
 	"math/rand"
 	"syscall/js"
+
+	"github.com/cwbudde/qmc"
 )
 
 const maxPoints = 20000
@@ -19,17 +21,22 @@ const maxPoints = 20000
 // compared. Both sides of the picture come out of the same call, with the same
 // seed, drawn the same way.
 func jsPoints(opts js.Value) any {
-	source := readString(opts, "source", "halton")
-	if source != "halton" && source != "random" {
+	source := readString(opts, "source", defaultSource)
+
+	spec, ok := sources[source]
+	if !ok {
 		return errorResult("points: unknown source %q", source)
 	}
 
 	var (
-		dims     = clampInt(readInt(opts, "dims", defaultDims), 1, maxDims)
-		count    = clampInt(readInt(opts, "count", defaultCount), 1, maxPoints)
-		skip     = clampInt(readInt(opts, "skip", defaultSkip), 0, maxSkip)
-		scramble = readBool(opts, "scramble", true)
-		seed     = readUint64(opts, "seed", defaultSeed)
+		randomization = readString(opts, "randomization", randomizationNone)
+		// Against the source's own ceiling, not only the shared one: a table
+		// covering fewer dimensions than maxDims would otherwise turn a
+		// dragged slider into a constructor error.
+		dims  = clampInt(readInt(opts, "dims", defaultDims), 1, spec.maxDims)
+		count = clampInt(readInt(opts, "count", defaultCount), 1, maxPoints)
+		skip  = clampInt(readInt(opts, "skip", defaultSkip), 0, maxSkip)
+		seed  = readUint64(opts, "seed", defaultSeed)
 	)
 
 	// The axis defaults come from the info table, so the page opens on the
@@ -49,7 +56,7 @@ func jsPoints(opts js.Value) any {
 	// grow.
 	point := make([]float64, dims)
 
-	if source == "random" {
+	if spec.construct == nil {
 		rng := rand.New(rand.NewSource(int64(seed))) //nolint:gosec // not cryptography; reproducibility is the requirement
 
 		for range count {
@@ -60,12 +67,16 @@ func jsPoints(opts js.Value) any {
 			xy = append(xy, float32(point[axisX]), float32(point[axisY]))
 		}
 	} else {
-		generator, err := newGenerator(dims, skip, scramble, seed)
+		generator, err := newGenerator(source, dims, skip, randomization, seed)
 		if err != nil {
 			return errorResult("points: %v", err)
 		}
 
-		bases = generator.Bases()
+		// Bases is Halton's, not the interface's, so it is reached by
+		// assertion and simply not asked of anything else.
+		if halton, ok := generator.(*qmc.Halton); ok {
+			bases = halton.Bases()
+		}
 
 		// At/AtInto rather than Next: the point drawn for index i must not
 		// depend on how many points were drawn before it, or a redraw at a
@@ -79,21 +90,24 @@ func jsPoints(opts js.Value) any {
 	out := opts.Get("out")
 
 	response := map[string]any{
-		"count":    count,
-		"dims":     dims,
-		"axisX":    axisX,
-		"axisY":    axisY,
-		"skip":     skip,
-		"scramble": scramble,
-		"seed":     float64(seed),
-		"source":   source,
+		"count":         count,
+		"dims":          dims,
+		"axisX":         axisX,
+		"axisY":         axisY,
+		"skip":          skip,
+		"randomization": randomization,
+		"seed":          float64(seed),
+		"source":        source,
 
 		// The prime base is what explains the shape on screen — dimension 38's
 		// base 167 is why its first 167 unscrambled points march up a ramp in
 		// steps of 1/167 — so the page can label the axes with it. A
 		// pseudo-random draw has no bases at all, and reporting a plausible
 		// number there would invite exactly the wrong reading, so both are
-		// null.
+		// null. Sobol is null for the same reason and not because the answer
+		// is unknown: it is base 2 in every dimension, so a per-axis base
+		// distinguishes nothing and printing "2" beside an axis would suggest
+		// it explained the picture the way 167 does.
 		"baseX": axisBase(bases, axisX),
 		"baseY": axisBase(bases, axisY),
 	}

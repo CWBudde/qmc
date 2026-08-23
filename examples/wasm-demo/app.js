@@ -27,6 +27,8 @@
   const randomCanvas = el("randomCanvas");
   const haltonMeta = el("haltonMeta");
   const randomMeta = el("randomMeta");
+  const seqTitle = el("seqTitle");
+  const seqLegend = el("seqLegend");
 
   const playButton = el("play");
   const scrub = el("scrub");
@@ -43,17 +45,20 @@
   const seedInput = el("seed");
   const newSeedButton = el("newSeed");
   const resetButton = el("resetView");
-  const scrambleButton = el("scramble");
-  const scrambleState = el("scrambleState");
+  const sourceSelect = el("source");
+  const randomizationSelect = el("randomization");
   const moneyNote = el("moneyNote");
+  const digitPanel = el("digitPanel");
 
   const telemetry = {
     baseX: el("tBaseX"),
     baseY: el("tBaseY"),
+    baseXRow: el("tBaseXRow"),
+    baseYRow: el("tBaseYRow"),
     points: el("tPoints"),
     skip: el("tSkip"),
     seed: el("tSeed"),
-    scramble: el("tScramble"),
+    randomization: el("tRandomization"),
   };
 
   const digitIndexInput = el("digitIndex");
@@ -79,7 +84,7 @@
     ready: false,
     dead: false,
     info: null,
-    halton: null,
+    sequence: null,
     random: null,
     reveal: 0,
     playing: false,
@@ -91,7 +96,7 @@
 
   // Reusable views over JS-owned ArrayBuffers, one set per point cloud so the
   // two calls never write into each other's memory.
-  const sinks = { halton: {}, random: {} };
+  const sinks = { sequence: {}, random: {} };
 
   function setStatus(message, tone) {
     statusEl.textContent = message;
@@ -201,16 +206,28 @@
     return Number.isFinite(value) ? value : fallback;
   }
 
-  function scrambleOn() {
-    return scrambleButton.getAttribute("aria-pressed") === "true";
+  // currentSource is the whole of the page's knowledge about what a sequence
+  // can do: the ceiling on dimensions, whether it has prime bases, whether the
+  // digit inspector applies, and which randomizations it offers. All of it
+  // arrives in info(); none of it is decided here. Adding a third sequence to
+  // the Go table therefore adds it to this page with no edit below.
+  function currentSource() {
+    const list = (state.info && state.info.sources) || [];
+
+    return (
+      list.find((spec) => spec.key === sourceSelect.value) ||
+      list.find((spec) => spec.sequence) ||
+      null
+    );
   }
 
   function baseRequest() {
     return {
+      source: sourceSelect.value,
+      randomization: randomizationSelect.value,
       dims: intValue(dimsInput, 39),
       count: intValue(countInput, 600),
       skip: intValue(skipInput, 64),
-      scramble: scrambleOn(),
       seed: intValue(seedInput, 1),
       axisX: intValue(axisXSelect, 0),
       axisY: intValue(axisYSelect, 1),
@@ -245,6 +262,116 @@
     fillDimensionSelect(digitDimSelect, dims);
   }
 
+  function fillSourceSelect(preferred) {
+    const sources = (state.info && state.info.sources) || [];
+
+    sourceSelect.innerHTML = "";
+
+    // Only the sources flagged as sequences. The pseudo-random draw is the
+    // baseline the right-hand panel exists to be, not one of the choices.
+    for (const spec of sources) {
+      if (!spec.sequence) {
+        continue;
+      }
+
+      const option = document.createElement("option");
+      option.value = spec.key;
+      option.textContent = spec.label;
+      option.title = spec.description || "";
+      sourceSelect.append(option);
+    }
+
+    if (preferred !== undefined) {
+      sourceSelect.value = String(preferred);
+    }
+
+    if (!sourceSelect.value && sourceSelect.options.length) {
+      sourceSelect.value = sourceSelect.options[0].value;
+    }
+  }
+
+  // Rebuilt on every change of sequence, because the menus do not overlap:
+  // Halton offers digit scramblings and Sobol offers digital-net ones, and the
+  // Go constructors reject the wrong pairing by name. Rather than send a
+  // request that will be refused, a selection the new sequence does not offer
+  // falls back to its unrandomized entry — which every source has, and which is
+  // the page's opening view anyway.
+  function fillRandomizationSelect(preferred) {
+    const spec = currentSource();
+    const list = (spec && spec.randomizations) || [];
+    const wanted = preferred === undefined ? randomizationSelect.value : preferred;
+
+    randomizationSelect.innerHTML = "";
+
+    for (const entry of list) {
+      const option = document.createElement("option");
+      option.value = entry.key;
+      option.textContent = entry.label;
+      option.title = entry.description || "";
+      randomizationSelect.append(option);
+    }
+
+    const keep = list.some((entry) => entry.key === wanted);
+    randomizationSelect.value = keep
+      ? String(wanted)
+      : list.length
+        ? list[0].key
+        : "";
+
+    updateMoneyNote();
+  }
+
+  // The description is the library's own, forwarded through info() rather than
+  // written here. The measured numbers in it — the correlation tail on nested
+  // scrambling, Owen's cost on Next — belong to the doc comments that measured
+  // them, and a second copy in this file is a copy that would drift.
+  function updateMoneyNote() {
+    const spec = currentSource();
+    const list = (spec && spec.randomizations) || [];
+    const entry = list.find((item) => item.key === randomizationSelect.value);
+
+    if (!entry) {
+      moneyNote.textContent = "—";
+
+      return;
+    }
+
+    const nudge =
+      entry.key === "none" && list.length > 1
+        ? " Pick one of the others and watch what happens to the left panel."
+        : "";
+
+    moneyNote.innerHTML = `<b>${entry.label}.</b> ${entry.description}${nudge}`;
+  }
+
+  // applySource re-ranges everything the choice of sequence governs: the
+  // dimension ceiling, the prime-base readouts, the digit inspector. A panel is
+  // hidden rather than left showing the previous sequence's numbers.
+  function applySource() {
+    const spec = currentSource();
+
+    if (!spec) {
+      return;
+    }
+
+    const ceiling = Math.max(2, spec.maxDims || state.info.maxDims);
+
+    dimsInput.max = String(ceiling);
+
+    if (intValue(dimsInput, 39) > ceiling) {
+      dimsInput.value = String(ceiling);
+      rebuildDimensionSelects();
+      syncOutputs();
+    }
+
+    seqTitle.textContent = spec.label;
+    seqLegend.textContent = spec.label.toLowerCase();
+
+    telemetry.baseXRow.hidden = !spec.primeBases;
+    telemetry.baseYRow.hidden = !spec.primeBases;
+    digitPanel.hidden = !spec.digits;
+  }
+
   // The <select>s in the HTML ship empty and every slider range is overwritten
   // here. Limits belong to the Go side's capability table, so raising maxPoints
   // in the library raises it in the UI without anyone editing markup.
@@ -270,9 +397,12 @@
     fillDimensionSelect(axisYSelect, defaults.dims, defaults.axisY);
     fillDimensionSelect(digitDimSelect, defaults.dims, defaults.axisX);
 
-    // Scrambling starts OFF on purpose. The default view is the defect the
-    // library's README documents; the toggle is the demonstration.
-    setScramble(false);
+    // The defaults open on unrandomized Halton on purpose. That view is the
+    // defect the library's README documents; the two menus are the
+    // demonstration.
+    fillSourceSelect(defaults.source);
+    fillRandomizationSelect(defaults.randomization);
+    applySource();
     syncOutputs();
 
     buildInfo.textContent = `${info.goVersion} · ${info.goos}/${info.goarch}`;
@@ -282,15 +412,6 @@
     dimsOut.textContent = dimsInput.value;
     countOut.textContent = Number(countInput.value).toLocaleString("en-US");
     skipOut.textContent = skipInput.value;
-  }
-
-  function setScramble(on) {
-    scrambleButton.setAttribute("aria-pressed", String(on));
-    scrambleState.textContent = on ? "on" : "off";
-
-    moneyNote.innerHTML = on
-      ? "<b>On.</b> Each digit position of each dimension is rewritten by an independent uniform permutation of its digit alphabet. The elementary-interval structure survives — a digit permutation maps each interval onto another of the same size — but the ramps are gone, and the diagonal with them."
-      : "<b>Off.</b> On dimensions 37 and 38 of a 39-dimensional sequence the bases are 163 and 167, so with only a few hundred points both coordinates are still walking up their ramp in lockstep. That is the diagonal on the left. Press this switch.";
   }
 
   // --- drawing -----------------------------------------------------------
@@ -314,17 +435,17 @@
 
     const request = baseRequest();
 
-    const halton = call(
+    const sequence = call(
       "points",
-      Object.assign({}, request, { source: "halton", out: sinks.halton }),
+      Object.assign({}, request, { out: sinks.sequence }),
     );
 
-    if (!halton) {
+    if (!sequence) {
       return;
     }
 
-    cacheSinks(sinks.halton, halton, ["xy"]);
-    state.halton = halton;
+    cacheSinks(sinks.sequence, sequence, ["xy"]);
+    state.sequence = sequence;
 
     const random = call(
       "points",
@@ -337,7 +458,7 @@
 
     state.random = random;
 
-    const count = halton.count;
+    const count = sequence.count;
 
     scrub.max = String(count);
     scrub.disabled = false;
@@ -353,52 +474,56 @@
       state.selected = -1;
     }
 
-    updateTelemetry(halton, random);
+    updateTelemetry(sequence, random);
     draw();
     refreshDigits();
 
+    const spec = currentSource();
+    const label = spec ? spec.label : request.source;
+
     setStatus(
-      `${count.toLocaleString("en-US")} points · ${halton.dims} dims · axes ${halton.axisX}×${halton.axisY} · scrambling ${request.scramble ? "on" : "off"}`,
+      `${label} · ${count.toLocaleString("en-US")} points · ${sequence.dims} dims · axes ${sequence.axisX}×${sequence.axisY} · randomization ${request.randomization}`,
       "ready",
     );
     announce(
-      `${count} points, dimensions ${halton.axisX} and ${halton.axisY}, scrambling ${request.scramble ? "on" : "off"}.`,
+      `${label}, ${count} points, dimensions ${sequence.axisX} and ${sequence.axisY}, randomization ${request.randomization}.`,
     );
   }
 
-  function updateTelemetry(halton, random) {
+  function updateTelemetry(sequence, random) {
     telemetry.baseX.textContent =
-      halton.baseX === null || halton.baseX === undefined
+      sequence.baseX === null || sequence.baseX === undefined
         ? "—"
-        : String(halton.baseX);
+        : String(sequence.baseX);
     telemetry.baseY.textContent =
-      halton.baseY === null || halton.baseY === undefined
+      sequence.baseY === null || sequence.baseY === undefined
         ? "—"
-        : String(halton.baseY);
-    telemetry.points.textContent = halton.count.toLocaleString("en-US");
-    telemetry.skip.textContent = String(halton.skip);
-    telemetry.seed.textContent = String(halton.seed);
-    telemetry.scramble.textContent = halton.scramble ? "on" : "off";
-    telemetry.scramble.dataset.tone = halton.scramble ? "good" : "";
+        : String(sequence.baseY);
+    telemetry.points.textContent = sequence.count.toLocaleString("en-US");
+    telemetry.skip.textContent = String(sequence.skip);
+    telemetry.seed.textContent = String(sequence.seed);
+    telemetry.randomization.textContent = sequence.randomization;
+    telemetry.randomization.dataset.tone =
+      sequence.randomization === "none" ? "" : "good";
 
     haltonMeta.textContent =
-      halton.baseX && halton.baseY
-        ? `base ${halton.baseX} × base ${halton.baseY}`
-        : `dims ${halton.axisX} × ${halton.axisY}`;
+      sequence.baseX && sequence.baseY
+        ? `base ${sequence.baseX} × base ${sequence.baseY}`
+        : `dims ${sequence.axisX} × ${sequence.axisY}`;
     randomMeta.textContent = random
       ? `uniform × uniform · seed ${random.seed}`
       : "unavailable";
   }
 
   function draw() {
-    const halton = state.halton;
+    const sequence = state.sequence;
     const random = state.random;
     const axisX = intValue(axisXSelect, 0);
     const axisY = intValue(axisYSelect, 1);
 
     Render.drawScatter(haltonCanvas, {
-      xy: halton && halton.xy,
-      count: halton ? halton.count : 0,
+      xy: sequence && sequence.xy,
+      count: sequence ? sequence.count : 0,
       reveal: state.reveal,
       color: Render.readVar("--halton", "#46e0c8"),
       glyph: "circle",
@@ -422,7 +547,7 @@
   // --- reveal transport --------------------------------------------------
 
   function setReveal(value) {
-    const total = state.halton ? state.halton.count : 0;
+    const total = state.sequence ? state.sequence.count : 0;
     const clamped = Math.max(0, Math.min(total, Math.round(value)));
 
     state.reveal = clamped;
@@ -443,8 +568,8 @@
   const REVEAL_SECONDS = 3;
 
   function tick(now) {
-    if (state.playing && state.halton) {
-      const total = state.halton.count;
+    if (state.playing && state.sequence) {
+      const total = state.sequence.count;
       const elapsed = Math.max(0, now - state.lastTick);
       state.lastTick = now;
 
@@ -470,11 +595,21 @@
       return;
     }
 
+    // The Go export refuses a source with no digit alphabet, and would be
+    // right to; the panel is hidden in that case, so the call is not made at
+    // all rather than made and its error printed on the status line.
+    const spec = currentSource();
+
+    if (!spec || !spec.digits) {
+      return;
+    }
+
     const result = call("digits", {
+      source: sourceSelect.value,
+      randomization: randomizationSelect.value,
       index: intValue(digitIndexInput, 0),
       dim: intValue(digitDimSelect, 0),
       skip: intValue(skipInput, 64),
-      scramble: scrambleOn(),
       seed: intValue(seedInput, 1),
     });
 
@@ -592,8 +727,18 @@
   }
 
   function permutationNote(d) {
+    if (d.randomization === "none") {
+      return "<b>No randomization.</b> The digits are read straight off the index, so the coordinate and the unscrambled coordinate are the same number.";
+    }
+
+    // Nested affine scrambling is randomized but has no permutation table to
+    // show: its permutation depends on the digits above the one being
+    // rewritten, so there is one per node of a tree that is derived on the fly
+    // and never stored. The library returns nil for exactly this reason, and
+    // reporting it as "off" would contradict the two values below, which do
+    // differ.
     if (!d.permutation) {
-      return "<b>Scrambling is off.</b> The digits are read straight off the index, so the coordinate and the unscrambled coordinate are the same number.";
+      return `<b>Randomized (${d.randomization}).</b> There is no single permutation to show: this scheme draws one per digit position, conditioned on the digits above it, so the row below is the raw expansion. The two coordinates underneath still differ, which is the randomization at work.`;
     }
 
     const perm = Array.from(d.permutation);
@@ -633,7 +778,7 @@
 
   function wirePicking(canvas, which) {
     canvas.addEventListener("click", (event) => {
-      const result = which === "halton" ? state.halton : state.random;
+      const result = which === "sequence" ? state.sequence : state.random;
 
       if (!result || !result.xy) {
         return;
@@ -680,8 +825,14 @@
       control.addEventListener("change", scheduleRefresh);
     }
 
-    scrambleButton.addEventListener("click", () => {
-      setScramble(!scrambleOn());
+    sourceSelect.addEventListener("change", () => {
+      fillRandomizationSelect();
+      applySource();
+      scheduleRefresh();
+    });
+
+    randomizationSelect.addEventListener("change", () => {
+      updateMoneyNote();
       scheduleRefresh();
     });
 
@@ -699,11 +850,11 @@
     });
 
     playButton.addEventListener("click", () => {
-      if (!state.halton) {
+      if (!state.sequence) {
         return;
       }
 
-      if (!state.playing && state.reveal >= state.halton.count) {
+      if (!state.playing && state.reveal >= state.sequence.count) {
         setReveal(0);
         draw();
       }
@@ -728,7 +879,7 @@
     digitPrev.addEventListener("click", () => stepDigitIndex(-1));
     digitNext.addEventListener("click", () => stepDigitIndex(1));
 
-    wirePicking(haltonCanvas, "halton");
+    wirePicking(haltonCanvas, "sequence");
     wirePicking(randomCanvas, "random");
 
     let resizeTimer = null;
@@ -856,7 +1007,8 @@
     populateControls();
     wireControls();
 
-    scrambleButton.disabled = false;
+    sourceSelect.disabled = false;
+    randomizationSelect.disabled = false;
     newSeedButton.disabled = false;
     resetButton.disabled = false;
     digitPrev.disabled = false;

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
 	"syscall/js"
@@ -150,7 +151,7 @@ var integrands = map[string]integrand{
 }
 
 // jsConverge computes ONE point of the convergence chart: the absolute
-// integration error at sample size n, for the Halton sequence and for a
+// integration error at sample size n, for the selected sequence and for a
 // pseudo-random sampler, over the same integrand and the same n.
 //
 // One n per call is deliberate, and it is the whole reason this export is
@@ -174,14 +175,15 @@ func jsConverge(opts js.Value) any {
 	}
 
 	var (
-		dims     = clampInt(readInt(opts, "dims", defaultDims), 1, maxConvergeDims)
-		skip     = clampInt(readInt(opts, "skip", defaultSkip), 0, maxSkip)
-		scramble = readBool(opts, "scramble", true)
-		seed     = readUint64(opts, "seed", defaultSeed)
-		n        = clampInt(readInt(opts, "n", defaultConvergeN), 1, maxConvergeN)
+		source        = readString(opts, "source", defaultSource)
+		randomization = readString(opts, "randomization", randomizationNone)
+		dims          = clampInt(readInt(opts, "dims", defaultDims), 1, maxConvergeDims)
+		skip          = clampInt(readInt(opts, "skip", defaultSkip), 0, maxSkip)
+		seed          = readUint64(opts, "seed", defaultSeed)
+		n             = clampInt(readInt(opts, "n", defaultConvergeN), 1, maxConvergeN)
 	)
 
-	generator, err := newGenerator(dims, skip, scramble, seed)
+	generator, err := newGenerator(source, dims, skip, randomization, seed)
 	if err != nil {
 		return errorResult("converge: %v", err)
 	}
@@ -226,18 +228,42 @@ func jsConverge(opts js.Value) any {
 		"qmcError":  jsNumber(math.Abs(qmcValue - exact)),
 		"mcValue":   jsNumber(mcValue),
 		"mcError":   jsNumber(math.Abs(mcValue - exact)),
-		"scramble":  scramble,
-		"seed":      float64(seed),
+
+		"source":        source,
+		"randomization": randomization,
+		"seed":          float64(seed),
 	}
 }
 
-// newGenerator is the one place a *qmc.Halton is built, so the mapping from
-// the page's four controls to the library's options exists exactly once.
-func newGenerator(dims, skip int, scramble bool, seed uint64) (*qmc.Halton, error) {
-	options := []qmc.Option{qmc.WithSkip(skip)}
-	if scramble {
-		options = append(options, qmc.WithScrambling(seed))
+// newGenerator is the one place a qmc.Sequence is built, so the mapping from
+// the page's controls to the library's options exists exactly once.
+//
+// It returns the interface, not a concrete generator, and that is what keeps
+// points, correlate and converge free of any per-source branch: all three ask
+// for At/AtInto and nothing else. The digit inspector is the exception,
+// because it needs Bases and Permutation, which are Halton's alone and are
+// deliberately not on the interface — see sequence.go. It recovers them with a
+// type assertion rather than by widening the interface here.
+//
+// A randomization the chosen generator does not accept is passed through to
+// the constructor and refused there, by name. Deciding it here instead would
+// be a second copy of a policy the library already states, and the copy is the
+// one that would go stale.
+func newGenerator(source string, dims, skip int, randomization string, seed uint64) (qmc.Sequence, error) {
+	spec, ok := sources[source]
+	if !ok || spec.construct == nil {
+		return nil, fmt.Errorf("unknown sequence %q", source)
 	}
 
-	return qmc.NewHalton(dims, options...)
+	entry, ok := randomizations[randomization]
+	if !ok {
+		return nil, fmt.Errorf("unknown randomization %q", randomization)
+	}
+
+	options := []qmc.Option{qmc.WithSkip(skip)}
+	if entry.option != nil {
+		options = append(options, entry.option(seed))
+	}
+
+	return spec.construct(dims, options...)
 }

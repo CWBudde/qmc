@@ -6,7 +6,7 @@
     <title>Point Lab — qmc</title>
     <meta
       name="description"
-      content="A scrambled Halton sequence and a pseudo-random one, side by side in your browser. Go compiled to WebAssembly, no sequence logic in JavaScript."
+      content="A randomized Halton or Sobol sequence and a pseudo-random one, side by side in your browser. Go compiled to WebAssembly, no sequence logic in JavaScript."
     />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -32,8 +32,10 @@
         #buildInfo      footer "go1.x · js/wasm"
 
       Stage:
-        #haltonCanvas   left scatter — the Halton projection
+        #haltonCanvas   left scatter — the selected sequence's projection
         #randomCanvas   right scatter — pseudo-random, same count and axes
+        #seqTitle       the left panel's heading, set from the source label
+        #seqLegend      the left legend entry, set from the source label
         #haltonMeta     "base 157 × 163" caption
         #randomMeta     "uniform × uniform" caption
 
@@ -48,17 +50,22 @@
                                 filled from dims)
         #count #countOut        points drawn
         #skip #skipOut          burn-in discarded before the first point
-        #seed                   scrambling seed
+        #seed                   randomization seed
         #newSeed                randomize the seed
         #resetView              back to the info() defaults
-        #scramble               the scrambling toggle, gets aria-pressed
-        #scrambleState          the ON/OFF word inside that button
-        #moneyNote              the callout describing what the toggle does
+        #source                 <select> of sequences, filled from
+                                info().sources (the ones flagged sequence)
+        #randomization          <select> of randomizations, refilled whenever
+                                #source changes
+        #moneyNote              the callout describing the selected
+                                randomization, text straight from info()
 
       Telemetry, all .v spans:
-        #tBaseX #tBaseY #tPoints #tSkip #tSeed #tScramble
+        #tBaseX #tBaseY #tPoints #tSkip #tSeed #tRandomization
+        #tBaseXRow #tBaseYRow   the two base rows; hidden for a source with
+                                no prime bases
 
-      Digit inspector:
+      Digit inspector — #digitPanel is hidden unless the source supports it:
         #digitIndex             <input type=number>, the sequence index
         #digitDim               <select> of dimensions (filled from dims)
         #digitPrev #digitNext   step the index by one
@@ -87,7 +94,7 @@
           <p class="eyebrow">GO · WEBASSEMBLY · NO JS SEQUENCE</p>
           <h1>Two dimensions out of thirty-nine</h1>
           <p class="lede">
-            The Halton sequence places its <i>d</i>-th coordinate by the radical
+            Halton places its <i>d</i>-th coordinate by the radical
             inverse in base <i>p<sub>d</sub></i
             >, the <i>d</i>-th prime. For a large base the first
             <i>p<sub>d</sub></i> points of that coordinate are just
@@ -97,11 +104,13 @@
           </p>
           <p class="lede">
             The left panel starts on dimensions 37 and 38 of a 39-dimensional
-            sequence with scrambling off, which is exactly that failure.
-            <b>Turn scrambling on</b> and the diagonal dissolves into a filled
-            square. Every coordinate below is computed by
-            <b>github.com/cwbudde/qmc</b> compiled to WebAssembly and running in
-            this tab; JavaScript draws the pixels and nothing else.
+            Halton sequence with no randomization, which is exactly that
+            failure. <b>Pick a randomization</b> and the diagonal dissolves into
+            a filled square — or switch the sequence to <b>Sobol</b>, which is
+            base 2 in every dimension and has no ramp to begin with. Every
+            coordinate below is computed by <b>github.com/cwbudde/qmc</b>
+            compiled to WebAssembly and running in this tab; JavaScript draws
+            the pixels and nothing else.
           </p>
         </div>
       </header>
@@ -114,13 +123,13 @@
         <div class="plot plot--halton">
           <div class="plot__head">
             <i class="glyph" aria-hidden="true"></i>
-            <b>Halton</b>
+            <b id="seqTitle">Halton</b>
             <span class="plot__meta" id="haltonMeta">—</span>
           </div>
           <canvas
             id="haltonCanvas"
             role="img"
-            aria-label="Halton sequence projected onto two dimensions"
+            aria-label="The selected sequence projected onto two dimensions"
           ></canvas>
         </div>
 
@@ -154,18 +163,20 @@
       </div>
 
       <div class="legend">
-        <span class="halton"><i></i>halton — filled circle</span>
+        <span class="halton"
+          ><i></i><span id="seqLegend">halton</span> — filled circle</span
+        >
         <span class="random"><i></i>pseudo-random — cross</span>
         <span class="mark"><i></i>selected point</span>
         <span>grid = tenths of the unit square</span>
       </div>
 
       <dl class="telemetry mono">
-        <div>
+        <div id="tBaseXRow">
           <span class="k">base, axis x</span
           ><span class="v" id="tBaseX">—</span>
         </div>
-        <div>
+        <div id="tBaseYRow">
           <span class="k">base, axis y</span
           ><span class="v" id="tBaseY">—</span>
         </div>
@@ -179,34 +190,27 @@
           <span class="k">seed</span><span class="v" id="tSeed">—</span>
         </div>
         <div>
-          <span class="k">scrambling</span
-          ><span class="v" id="tScramble">—</span>
+          <span class="k">randomization</span
+          ><span class="v" id="tRandomization">—</span>
         </div>
       </dl>
 
       <section class="controls">
         <div class="control-group">
-          <span class="corner-label">The switch</span>
-          <button
-            type="button"
-            class="switch"
-            id="scramble"
-            aria-pressed="false"
-            disabled
-          >
-            <span class="switch__led" aria-hidden="true"></span>
-            <span class="switch__text">
-              <b
-                >Random-digit scrambling: <span id="scrambleState">off</span></b
-              >
-              <span>Braaten &amp; Weller, 1979</span>
-            </span>
-          </button>
+          <span class="corner-label">The choice</span>
+          <div class="field field--wide">
+            <label for="source">sequence</label>
+            <select id="source" disabled></select>
+          </div>
+          <div class="field field--wide">
+            <label for="randomization">randomization</label>
+            <select id="randomization" disabled></select>
+          </div>
           <p class="callout" id="moneyNote">—</p>
         </div>
 
         <div class="control-group">
-          <span class="corner-label">Sequence</span>
+          <span class="corner-label">Point set</span>
           <div class="field">
             <label for="dims">dimensions</label>
             <input
@@ -276,7 +280,7 @@
       </section>
 
       <section class="panels">
-        <div class="panel panel--wide">
+        <div class="panel panel--wide" id="digitPanel">
           <span class="corner-label">Digit inspector</span>
           <p class="panel-note">
             A radical inverse is a mirror. Write the index in base <i>p</i>,
@@ -285,8 +289,10 @@
             reflection is the whole construction, so the row below is drawn as
             one — integer digits marching left towards the point, fraction
             digits marching right away from it. Hover a digit to light its twin.
-            With scrambling on, each digit is rewritten by that dimension's
-            permutation before the reflection is read off.
+            With a digit scrambling selected, each digit is rewritten by that
+            dimension's permutation before the reflection is read off. This
+            panel is Halton's: Sobol is base 2 in every dimension and has no
+            digit alphabet to permute, so it disappears when Sobol is selected.
           </p>
 
           <div class="controls" style="margin-top: 0">
@@ -364,10 +370,10 @@
           the pair on how evenly each fills the grid, not on which looks tidier.
         </p>
         <p>
-          <b>A scrambled run is seed-dependent by design.</b> Scrambling makes
-          this randomized quasi-Monte Carlo: change the seed and you get a
-          different, equally valid point set. Fix the seed and it is
-          reproducible again.
+          <b>A randomized run is seed-dependent by design.</b> Every
+          randomization on offer makes this randomized quasi-Monte Carlo:
+          change the seed and you get a different, equally valid point set. Fix
+          the seed and it is reproducible again.
         </p>
       </div>
 
@@ -376,7 +382,7 @@
       <footer class="rack-footer mono">
         <span>github.com/cwbudde/qmc</span>
         <span id="buildInfo">—</span>
-        <span>halton · random-digit scrambling</span>
+        <span>halton · sobol</span>
       </footer>
     </div>
 

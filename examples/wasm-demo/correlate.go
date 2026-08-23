@@ -5,6 +5,8 @@ package main
 import (
 	"math"
 	"syscall/js"
+
+	"github.com/cwbudde/qmc"
 )
 
 const (
@@ -20,7 +22,8 @@ const (
 // failure look like a quirk of dimensions 37 and 38. The matrix shows that it
 // is a band: every adjacent high-dimensional pair lights up at once, because
 // each of them is still inside its own first period and ramping in lockstep.
-// Turning scrambling on wipes the band out and leaves only the unit diagonal.
+// Picking a randomization wipes the band out and leaves only the unit
+// diagonal.
 //
 // The correlation helper is reimplemented here rather than imported. qmc's
 // version lives in correlation_test.go and is unexported, so there is no way
@@ -28,15 +31,22 @@ const (
 // this page is the one that is wrong, because the test is what the library's
 // claim is actually measured by.
 func jsCorrelate(opts js.Value) any {
+	source := readString(opts, "source", defaultSource)
+
+	spec, ok := sources[source]
+	if !ok || spec.construct == nil {
+		return errorResult("correlate: unknown sequence %q", source)
+	}
+
 	var (
-		dims     = clampInt(readInt(opts, "dims", defaultDims), 2, maxCorrelateDims)
-		count    = clampInt(readInt(opts, "count", defaultCount), 2, maxCorrelatePoints)
-		skip     = clampInt(readInt(opts, "skip", defaultSkip), 0, maxSkip)
-		scramble = readBool(opts, "scramble", true)
-		seed     = readUint64(opts, "seed", defaultSeed)
+		randomization = readString(opts, "randomization", randomizationNone)
+		dims          = clampInt(readInt(opts, "dims", defaultDims), 2, min(maxCorrelateDims, spec.maxDims))
+		count         = clampInt(readInt(opts, "count", defaultCount), 2, maxCorrelatePoints)
+		skip          = clampInt(readInt(opts, "skip", defaultSkip), 0, maxSkip)
+		seed          = readUint64(opts, "seed", defaultSeed)
 	)
 
-	generator, err := newGenerator(dims, skip, scramble, seed)
+	generator, err := newGenerator(source, dims, skip, randomization, seed)
 	if err != nil {
 		return errorResult("correlate: %v", err)
 	}
@@ -111,13 +121,25 @@ func jsCorrelate(opts js.Value) any {
 
 	out := opts.Get("out")
 
+	// Declared as any so a source without prime bases sends null rather than
+	// an empty array: js.ValueOf turns a nil []any into a zero-length JS
+	// array, which is an object and therefore truthy, and the page would go on
+	// rendering a "bases" clause it has nothing to fill in. Same trap as the
+	// permutation field in digits.go.
+	var bases any
+
+	if halton, ok := generator.(*qmc.Halton); ok {
+		bases = intsToJS(halton.Bases())
+	}
+
 	response := map[string]any{
 		"dims":          dims,
 		"count":         count,
-		"bases":         intsToJS(generator.Bases()),
+		"bases":         bases,
 		"worstAdjacent": jsNumber(worstAdjacent),
 		"worstPair":     []any{worstPair[0], worstPair[1]},
-		"scramble":      scramble,
+		"source":        source,
+		"randomization": randomization,
 		"seed":          float64(seed),
 		"skip":          skip,
 	}
