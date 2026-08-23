@@ -1,5 +1,7 @@
 package qmc
 
+import "io"
+
 // An Option configures a generator at construction time. Options are applied
 // in order and the resulting configuration is fixed for the generator's life:
 // a sequence whose parameters could change mid-run would not be reproducible,
@@ -63,6 +65,10 @@ type settings struct {
 	skip      int
 	randomize randomization
 	seed      uint64
+
+	// directions carries a caller-supplied Joe-Kuo direction-number table for
+	// Sobol. nil means the embedded table. See WithDirectionNumbers.
+	directions io.Reader
 }
 
 // WithSkip discards the first n points of the underlying sequence (a burn-in).

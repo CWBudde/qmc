@@ -1,0 +1,446 @@
+package qmc
+
+import (
+	"fmt"
+	"io"
+	"math"
+	"math/bits"
+	"strings"
+	"sync"
+)
+
+// twoPowMinus32 scales a 32-bit direction-number accumulator into a
+// coordinate.
+//
+// Sobol needs no equivalent of Halton's oneMinusEpsilon clamp, and that is a
+// property of the construction rather than luck: the accumulator is a uint32,
+// so the largest coordinate it can produce is (2^32-1)/2^32, which is exactly
+// representable and strictly below 1. Halton needs its clamp because a radical
+// inverse is a sum of rounded terms that can creep up to 1.0; here there is no
+// rounding to creep. Nothing downstream should add a clamp "for symmetry" — it
+// would be dead code pretending to guard something.
+const twoPowMinus32 = 1.0 / 4294967296.0
+
+// Sobol generates points of the Sobol sequence in a fixed number of
+// dimensions, using the Joe-Kuo direction numbers.
+//
+// The sequence is generated in Gray-code order, which is the order Joe and
+// Kuo's own generator produces and the order every reference value in this
+// package's tests was taken from. That choice is not cosmetic and it is not
+// reversible later: point i is the direct-form point at index gray(i) =
+// i XOR (i>>1), so Gray-code order and index order visit the same points in
+// different sequences, and a caller who recorded outputs under one would not
+// recognise the other. The reason to pick it is that it is the only ordering
+// in which the stateful path can advance with a single XOR per dimension —
+// consecutive Gray codes differ in exactly one bit, so exactly one direction
+// number enters or leaves the accumulator. Index order would need a variable
+// number of XORs per step and would make Next no cheaper than At, which would
+// leave the stateful path with no reason to exist.
+//
+// The reordering costs nothing that matters. Gray coding is a bijection on
+// [0, 2^m), so the first 2^m points are the same point set either way and the
+// (t,m,s)-net balance property — the thing the sequence is for — is untouched.
+//
+// A Sobol generator is not safe for concurrent use through its stateful
+// methods (Next, NextInto, Reset). At and AtInto are stateless and may be
+// called from any number of goroutines at once, which is the way to drive one
+// shared sequence from a worker pool: have the workers claim indices from an
+// atomic counter and call AtInto.
+type Sobol struct {
+	dims int
+
+	// directions holds every dimension's 32 direction numbers in one flat
+	// slice, dimension d occupying [d*sobolBits, (d+1)*sobolBits). A slice of
+	// slices would be the obvious shape and would match Halton's perms field,
+	// but the inner loop of a point walks one dimension's 32 words and then
+	// moves to the next dimension's, so a flat layout keeps that walk
+	// sequential in memory. At 1024 dimensions the difference is between 128 KB
+	// of contiguous words and 1024 separately allocated runs.
+	directions []uint32
+
+	// shift is one random word per dimension, XORed into every point, or nil
+	// when the generator is not randomized. See WithDigitalShift.
+	shift []uint32
+
+	skip int
+
+	// counter is the raw sequence index of the point Next will return, and
+	// state is that point's accumulator, already carrying shift. Together they
+	// are the whole of the Gray-code recurrence's state.
+	counter uint32
+	state   []uint32
+}
+
+// embeddedTable parses the built-in direction numbers once per process.
+//
+// The parse itself is cheap, but validateDirectionRows tests 1023 polynomials
+// for primitivity, and repeating that for every generator a caller constructs
+// would put a fixed cost on a constructor that otherwise does almost nothing.
+// Once per process is the right frequency for a check whose input is a
+// compiled-in constant: the bytes cannot change between constructions, so a
+// second run could not reach a different verdict. A caller-supplied table is
+// validated on every call, because its bytes are not a constant.
+var embeddedTable = sync.OnceValues(func() ([]directionRow, error) {
+	return parseDirectionNumbers(strings.NewReader(embeddedDirectionNumbers))
+})
+
+// WithDirectionNumbers supplies a Joe-Kuo direction-number table in place of
+// the embedded one, read from r in the upstream text format: a header line,
+// then rows of `d s a m_1 ... m_s` for d = 2, 3, 4, ...
+//
+// The reason to reach for this is dimension count. The embedded table stops at
+// 1024 because that is what fits the package's size budget; upstream publishes
+// the same construction out to 21201, and a caller who needs more can pass the
+// full file. It is also the way to use a different search criterion — upstream
+// ships D(5) and D(7) alongside the D(6) set embedded here.
+//
+// r goes through exactly the same parser and the same validator as the
+// embedded table, so a file that is truncated, column-shifted or corrupted is
+// refused at construction rather than turned into points. See
+// validateDirectionRows for what that check does and does not prove.
+func WithDirectionNumbers(r io.Reader) Option {
+	return func(s *settings) {
+		s.directions = r
+	}
+}
+
+// WithDigitalShift turns on digital shifting with the given seed: one uniform
+// 32-bit word per dimension, XORed into every point's accumulator.
+//
+// This is the cheapest randomization a digital net admits. It costs one XOR
+// per coordinate against a word drawn at construction, which measures as 20%
+// on AtInto at 39 dimensions and nothing at all on NextInto, where the shift
+// is folded into the accumulator once at Reset and never touched again.
+// Halton's digit scrambling, which has to look up a permutation for every
+// digit of every coordinate, costs 27% on the same machine.
+//
+// It buys two things. The first is an error estimate: a single QMC run gives
+// one number with no way to say how far off it is, whereas several independent
+// shifts give a spread that can be turned into a confidence interval. The
+// second is the reason to use it even for a single run — a digital shift is a
+// measure-preserving map of the unit cube onto itself that sends elementary
+// intervals to elementary intervals, so the shifted point set is still the
+// same (t,m,s)-net, and shifting removes the origin's special status without
+// costing any of the structure.
+//
+// What it does not do is repair a bad projection. A digital shift translates
+// the whole net; if two dimensions' direction numbers give a poor
+// two-dimensional projection, every shift of it is equally poor. That is what
+// Owen scrambling is for, and why this is not the only randomization Sobol
+// will offer.
+func WithDigitalShift(seed uint64) Option {
+	return func(s *settings) {
+		s.randomize = randomizeDigitalShift
+		s.seed = seed
+	}
+}
+
+// NewSobol returns a generator over dims dimensions.
+//
+// dims is limited by the direction-number table: 1024 with the embedded one,
+// or whatever the table passed to WithDirectionNumbers covers. Exceeding it is
+// an error rather than a wrap-around onto lower dimensions, because reusing a
+// dimension's direction numbers would make two coordinates of every point
+// identical — a defect that a caller integrating in a few hundred dimensions
+// would have no way to see in the output.
+func NewSobol(dims int, opts ...Option) (*Sobol, error) {
+	if dims < 1 {
+		return nil, fmt.Errorf("qmc: dims must be >= 1, got %d", dims)
+	}
+
+	var cfg settings
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	// A randomization that this generator does not implement is refused by
+	// name rather than ignored. Ignoring it would hand back a deterministic
+	// sequence from a call that asked for a randomized one, and the caller's
+	// next step is usually to average over seeds — which would silently
+	// average over identical runs and report an error estimate of zero.
+	switch cfg.randomize {
+	case randomizeNone, randomizeDigitalShift:
+	case randomizeOwen:
+		// TODO(owen): Owen scrambling plugs in here. It is not a variant of
+		// the digital shift and cannot be folded into shift: it permutes each
+		// output digit conditionally on the digits above it, so it has to run
+		// inside the accumulator-to-coordinate step rather than once at
+		// construction. Expect a hash-based implementation in the shape of
+		// Burley (2020), keyed off cfg.seed and the dimension.
+		return nil, fmt.Errorf("qmc: %s is not implemented for Sobol yet", cfg.randomize)
+	default:
+		return nil, fmt.Errorf("qmc: %s does not apply to a Sobol generator", cfg.randomize)
+	}
+
+	rows, err := loadDirectionRows(cfg.directions)
+	if err != nil {
+		return nil, err
+	}
+
+	// rows starts at dimension 2, so the table covers len(rows)+1 dimensions
+	// once the implicit first one is counted.
+	if available := len(rows) + 1; dims > available {
+		return nil, fmt.Errorf(
+			"qmc: dims must be <= %d for this direction-number table, got %d; "+
+				"pass a larger table with WithDirectionNumbers", available, dims,
+		)
+	}
+
+	// The raw index of point 0 is skip+1, and every raw index must fit the 32
+	// bits of direction numbers. Checking the skip here rather than at the
+	// first Next means a caller finds out at construction, where the mistake
+	// is, instead of part-way through a run.
+	if uint64(cfg.skip)+1 >= 1<<sobolBits {
+		return nil, fmt.Errorf(
+			"qmc: skip %d puts point 0 beyond the %d-bit index the direction numbers cover",
+			cfg.skip, sobolBits,
+		)
+	}
+
+	s := &Sobol{
+		dims:       dims,
+		directions: make([]uint32, dims*sobolBits),
+		skip:       cfg.skip,
+		state:      make([]uint32, dims),
+	}
+
+	for d := 0; d < dims; d++ {
+		var row *directionRow
+		if d > 0 {
+			row = &rows[d-1]
+		}
+
+		expandDirections(row, s.directions[d*sobolBits:(d+1)*sobolBits])
+	}
+
+	if cfg.randomize == randomizeDigitalShift {
+		s.shift = newDigitalShift(dims, cfg.seed)
+	}
+
+	s.Reset()
+
+	return s, nil
+}
+
+// loadDirectionRows returns the table to build from: the caller's if one was
+// supplied, the embedded one otherwise.
+func loadDirectionRows(r io.Reader) ([]directionRow, error) {
+	if r == nil {
+		return embeddedTable()
+	}
+
+	return parseDirectionNumbers(r)
+}
+
+// newDigitalShift draws one uniform word per dimension.
+//
+// The words are consecutive draws from one splitMix64 stream rather than
+// per-dimension streams the way newPermutation does it. The difference is that
+// a permutation consumes a variable amount of randomness — it depends on the
+// base, and on how often the rejection loop retries — so Halton has to key
+// each dimension separately to keep a 5-dimensional generator agreeing with a
+// 39-dimensional one on their shared dimensions. Here each dimension consumes
+// exactly one draw, so a single stream already has that property, and adding a
+// per-dimension key would only be ceremony.
+//
+// The low half of the output is taken with no attempt to prefer the high half:
+// splitMix64 ends in an avalanche finalizer, so every output bit already
+// depends on every state bit and there is no weak end to avoid.
+func newDigitalShift(dims int, seed uint64) []uint32 {
+	rng := splitMix64(seed)
+	rng.next()
+	rng.next()
+
+	shift := make([]uint32, dims)
+	for d := range shift {
+		shift[d] = uint32(rng.next())
+	}
+
+	return shift
+}
+
+// Dims returns the number of dimensions.
+func (s *Sobol) Dims() int { return s.dims }
+
+// Next returns the next point of the sequence in a freshly allocated slice.
+func (s *Sobol) Next() []float64 {
+	out := make([]float64, s.dims)
+	s.NextInto(out)
+
+	return out
+}
+
+// NextInto writes the next point into dst and advances the cursor. It
+// allocates nothing.
+//
+// This is the path the Gray-code ordering exists for: one XOR per dimension
+// against a single direction number, chosen by the lowest zero bit of the
+// counter. Compare AtInto, which has to XOR one direction number per set bit
+// of the index — up to 32 of them.
+//
+// dst must have room for Dims() coordinates; a shorter one panics. Absorbing
+// it instead would leave the tail coordinates holding zeros or stale values,
+// which look like plausible positions and would steer a search silently.
+func (s *Sobol) NextInto(dst []float64) {
+	for d, x := range s.state {
+		dst[d] = float64(x) * twoPowMinus32
+	}
+
+	// The counter is advanced after the point is written, so a generator that
+	// cannot advance has still delivered every point it could. Refusing here
+	// mirrors AtInto: at counter = 2^32-1 the direction numbers have run out,
+	// and continuing would either index one past them or wrap the counter back
+	// onto index 0 and replay the whole sequence as if it were new.
+	if s.counter == math.MaxUint32 {
+		panic(fmt.Sprintf(
+			"qmc: the Sobol sequence is exhausted after 2^%d points; index %d has no successor",
+			sobolBits, s.counter,
+		))
+	}
+
+	k := lowestZeroBit(s.counter)
+	for d := range s.state {
+		s.state[d] ^= s.directions[d*sobolBits+k]
+	}
+
+	s.counter++
+}
+
+// Reset rewinds the stateful cursor so the next call to Next returns point 0
+// again. The sequence itself is unchanged: a generator always yields the same
+// points for the same configuration.
+func (s *Sobol) Reset() {
+	s.counter = uint32(s.skip + 1)
+	s.accumulate(s.counter, s.state)
+}
+
+// At returns point i of the sequence, counting from 0, without touching the
+// cursor. It is the reproducible entry point: At(i) depends only on i and the
+// generator's configuration, never on how many points have been drawn, and it
+// is safe to call from several goroutines at once.
+//
+// Point i corresponds to raw Sobol index skip+1+i, matching Halton's
+// convention in this package. Raw index 0 is the all-zeros origin — the same
+// degenerate point Halton's convention exists to avoid, arrived at for a
+// different reason: Halton's index 0 has no digits to invert, Sobol's selects
+// no direction numbers at all. Either way it is a corner of the cube that no
+// caller wants as their first sample, and with an unshifted generator it is
+// exactly (0, 0, ..., 0).
+//
+// Negative i is treated as 0.
+func (s *Sobol) At(i int) []float64 {
+	out := make([]float64, s.dims)
+	s.fill(i, out)
+
+	return out
+}
+
+// AtInto is At without the allocation. As with NextInto, dst shorter than
+// Dims() panics rather than being silently truncated.
+func (s *Sobol) AtInto(i int, dst []float64) { s.fill(i, dst) }
+
+func (s *Sobol) fill(i int, dst []float64) {
+	if i < 0 {
+		i = 0
+	}
+
+	// skip is non-negative (WithSkip clamps) and i has just been clamped, so
+	// skip+1+i can only leave the representable range by overflowing upwards.
+	// It is refused rather than clamped, for the reason fill in halton.go
+	// gives: a wrapped sum goes negative, and a negative index would be
+	// clamped back to 0 and hand back the origin — the one point At documents
+	// it never returns — so the caller would get a plausible-looking point
+	// that is not the point they asked for. Clamping to MaxInt is the same
+	// failure wearing a different hat: every index past the limit would alias
+	// onto one point with nothing to show for it.
+	if i > math.MaxInt-1-s.skip {
+		panic(fmt.Sprintf(
+			"qmc: point index %d with skip %d overflows the raw Sobol index", i, s.skip,
+		))
+	}
+
+	raw := s.skip + 1 + i
+
+	// The direction numbers cover 32 bits of index and no more, so index 2^32
+	// is not a point this generator has. Aliasing it onto index 0 by
+	// truncating to uint32 is what the obvious conversion would do, and it
+	// would be silent: the caller would get the origin back, or with a digital
+	// shift a perfectly ordinary-looking point, for every index from 2^32
+	// upwards. On a 32-bit platform int cannot reach this value at all and the
+	// check is free; on a 64-bit one it is the only thing standing between a
+	// long run and a sequence that quietly restarts.
+	if uint64(raw) >= 1<<sobolBits {
+		panic(fmt.Sprintf(
+			"qmc: raw Sobol index %d needs more than %d bits; the direction numbers cover 2^%d points",
+			raw, sobolBits, sobolBits,
+		))
+	}
+
+	s.accumulateInto(uint32(raw), dst)
+}
+
+// accumulate writes the raw accumulator of the point at raw index n into dst.
+func (s *Sobol) accumulate(n uint32, dst []uint32) {
+	set, count := grayBits(n)
+
+	for d := 0; d < s.dims; d++ {
+		v := s.directions[d*sobolBits : (d+1)*sobolBits]
+
+		var x uint32
+		for j := 0; j < count; j++ {
+			x ^= v[set[j]]
+		}
+
+		if s.shift != nil {
+			x ^= s.shift[d]
+		}
+
+		dst[d] = x
+	}
+}
+
+// accumulateInto is accumulate with the scaling folded in, so the direct path
+// never materialises an intermediate uint32 slice. It is deliberately a near
+// copy of accumulate rather than a wrapper around it: a wrapper would need a
+// per-call scratch slice of dims words, and AtInto's entire reason for
+// existing is that it allocates nothing.
+func (s *Sobol) accumulateInto(n uint32, dst []float64) {
+	set, count := grayBits(n)
+
+	for d := 0; d < s.dims; d++ {
+		v := s.directions[d*sobolBits : (d+1)*sobolBits]
+
+		var x uint32
+		for j := 0; j < count; j++ {
+			x ^= v[set[j]]
+		}
+
+		if s.shift != nil {
+			x ^= s.shift[d]
+		}
+
+		dst[d] = float64(x) * twoPowMinus32
+	}
+}
+
+// grayBits returns the positions of the set bits of gray(n), and how many
+// there are.
+//
+// It is computed once per point rather than once per dimension because the
+// selection of direction numbers is the same in every dimension — only the
+// numbers themselves differ. At 39 dimensions that turns 39 bit-scans into
+// one. The array is returned by value and stays on the stack; a slice would
+// escape and put an allocation in the middle of AtInto.
+func grayBits(n uint32) ([sobolBits]int, int) {
+	var (
+		set   [sobolBits]int
+		count int
+	)
+
+	for c := n ^ n>>1; c != 0; c &= c - 1 {
+		set[count] = bits.TrailingZeros32(c)
+		count++
+	}
+
+	return set, count
+}
