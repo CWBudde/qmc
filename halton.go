@@ -181,6 +181,23 @@ func (h *Halton) fill(i int, dst []float64) {
 		i = 0
 	}
 
+	// skip is non-negative (WithSkip clamps) and i has just been clamped, so
+	// skip+1+i can only leave the representable range by overflowing upwards.
+	// It is refused rather than clamped: a wrapped sum goes negative, and a
+	// negative index used to fall through radicalInverse's guard and hand back
+	// the all-zeros origin — the one point At documents it never returns — so
+	// the caller got a plausible-looking point that was not on the sequence.
+	// Clamping to MaxInt would be the same failure in a different disguise:
+	// every index past the limit would alias onto one point with nothing to
+	// show for it. This mirrors scrambledRadicalInverse, which already refuses
+	// an index it cannot represent instead of returning a shorter index's
+	// value.
+	if i > math.MaxInt-1-h.skip {
+		panic(fmt.Sprintf(
+			"qmc: point index %d with skip %d overflows the raw Halton index", i, h.skip,
+		))
+	}
+
 	index := h.skip + 1 + i
 	for d := 0; d < h.dims; d++ {
 		if h.perms == nil {
@@ -198,6 +215,13 @@ func (h *Halton) fill(i int, dst []float64) {
 // integer-reversal form used by scrambledRadicalInverse. The two agree
 // mathematically but not always in the last bit, and this one is what callers
 // migrating off a hand-rolled Halton already have in their recorded outputs.
+//
+// The index < 0 guard stays even though fill can no longer produce a negative
+// index: this is an unexported helper called directly by the package's own
+// tests and by scramble-side code, and 0 is the right answer for an index with
+// no digits. What it must not be is a silent path for a wrapped index — fill
+// now stops that one case before it gets here, so the guard only ever answers
+// for a caller that meant it.
 func radicalInverse(index int, base int) float64 {
 	if base < 2 || index < 0 {
 		return 0
