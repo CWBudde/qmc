@@ -22,12 +22,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deployment and a release no longer ride on the test workflow.
 - A `justfile` and a `treefmt.toml` describing the toolchain, so formatting and
   the common tasks are the same locally and in CI.
+- `integration_test.go` measures what the package exists to provide: RMS
+  integration error against plain Monte Carlo on the same budget, at 39 and at
+  8 dimensions. Until now the suite's strongest claim was a Pearson correlation
+  bound, which pseudorandom noise satisfies — `math/rand` scores 0.124 against
+  the 0.25 threshold, better than the real generator's 0.141 — so replacing the
+  sequence with `rand.Float64()` would have left every test green. It no longer
+  does: the substitution integrates 0.9x as well as Monte Carlo against a
+  required 5x, while the generator itself achieves 18x.
+- Benchmarks for `Next`, `NextInto`, `At`, `AtInto` and construction. The
+  `just bench` recipe had no benchmarks to run.
+- Runnable `Example` functions for the public API, so the pkg.go.dev page the
+  README badges shows usage that the test suite compiles and checks.
 
 ### Changed
 
 - Corrected stale comments in `.golangci.yml` that had been copied from a
   sibling DSP repository and described identifiers and a project layout that do
   not exist here.
+- An index that overflows now panics instead of returning a point. See Fixed.
+
+### Fixed
+
+- `fill` computed the raw index as `skip + 1 + i` without checking for
+  overflow. A wrapped index went negative, met the `index < 0` guard inside
+  `radicalInverse`, and returned the all-zeros origin — the one point the
+  package documents it never returns — while the scrambled path panicked, so
+  the two disagreed. The addition is now checked and refused, matching how
+  `scrambledRadicalInverse` already declines an index it cannot reverse.
+- `readInt` in the WebAssembly demo converted a JavaScript number to `int`
+  after checking only for NaN and infinity. Go leaves float-to-integer
+  conversion implementation-defined when the value does not fit, so a value
+  such as `1e300` produced a result that `clampInt` could not recognise as out
+  of range — defeating the point of clamping in Go rather than trusting the
+  page. The value is now saturated while it is still a `float64`.
+- Four stale correlation figures in `scramble.go` and `correlation_test.go`.
+  The worst adjacent-pair correlation is 0.81 at dimensions 34/35 unscrambled
+  and 0.14 scrambled; the comments claimed 0.76 at 37/38, 0.117 and 0.65.
+- The README described `WithScrambling` as applying an independent permutation
+  to every digit position of every dimension. It draws one permutation per
+  dimension and reuses it at every digit position of that dimension, which is
+  what `halton.go` documents and what the code does.
+- The README put scrambled memory at 5000 dimensions at "a few megabytes". It
+  is roughly 475 MB; "a few megabytes" is the 500-dimension figure.
 
 ## [0.1.2] - 2026-08-23
 
