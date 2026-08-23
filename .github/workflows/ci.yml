@@ -15,19 +15,36 @@ permissions:
 
 jobs:
   test:
-    name: Test (Go ${{ matrix.go-version }})
+    name: Test (Go ${{ matrix.go-version }}, ${{ matrix.arch }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         go-version: ["1.23.x", "1.24.x", "1.25.x"]
+        # The 386 leg is not padding. This package computes prime bases with an
+        # i*i that overflows a 32-bit int, and the sequence a caller gets would
+        # differ by architecture if it regressed. That bug is invisible on
+        # amd64: TestSieveIsArchitectureIndependent passes there whether or not
+        # the guard is present, so until something ran on a 32-bit target the
+        # test was not a check, it was decoration.
+        #
+        # 386 binaries run natively on an amd64 runner with CGO_ENABLED=0, so
+        # this costs a job, not an emulator.
+        arch: ["amd64", "386"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go-version }}
       - name: Test
-        run: go test -race ./...
+        # -race needs cgo and a 64-bit target, so the 32-bit leg goes without
+        # it. It is not there for the race detector.
+        run: |
+          if [ "${{ matrix.arch }}" = "386" ]; then
+            CGO_ENABLED=0 GOARCH=386 go test ./...
+          else
+            go test -race ./...
+          fi
 
   check:
     name: Format, vet and lint

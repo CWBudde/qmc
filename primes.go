@@ -56,7 +56,17 @@ func sieve(limit int) []int {
 		}
 
 		out = append(out, i)
-		for j := i * i; j < limit && j > 0; j += i {
+
+		// i*i is computed in uint64 first. Where int is 32 bits the product can
+		// wrap to a positive value, pass a `j > 0` guard, and mark a slot it has
+		// no business marking — dropping a real prime, so that dimension gets a
+		// different base than it would on a 64-bit build. A sequence that
+		// depends on GOARCH is the one thing a reproducible generator may not be.
+		if uint64(i)*uint64(i) >= uint64(limit) {
+			continue
+		}
+
+		for j := i * i; j < limit; j += i {
 			composite[j] = true
 		}
 	}
