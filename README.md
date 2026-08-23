@@ -55,6 +55,17 @@ dimensions are added, which is exactly where Halton struggles. It is capped at t
 dimensions the embedded direction numbers cover, unless you supply your own table with
 `WithDirectionNumbers`.
 
+Two things about Sobol's balance are worth knowing before you test it, because each one
+makes a correct sequence look broken. The (t,m,s)-net property — the first 2^m points
+landing one apiece in every elementary interval — holds on a 2^m-_aligned_ block of raw
+indices, so a stratification check wants `WithSkip(2^m - 1)`; with the default skip of 0 all
+40 of the first 40 dimensions come out unbalanced at m=8. And the D(6) direction numbers
+optimise two-dimensional projections without making them all nets: of the 780 pairs among
+the first 40 dimensions, 18 are balanced at every split at m=8 and 4 at m=10. Plot
+dimensions 0 and 1 and you get one point per cell at every aspect ratio; plot 12 and 23 over
+the same 256 points and 224 of the 256 cells of the 16x16 grid are empty while one holds
+eight. Both are the correct table behaving correctly.
+
 **Halton** has no dimension ceiling — primes are sieved on demand, so `NewHalton(5000)`
 works — and its construction is simple enough to reproduce by hand, which matters if you
 are migrating off an existing implementation. Above roughly twenty dimensions it has to be
@@ -178,7 +189,12 @@ cheap and it is the standard remedy.
 ## Dimensionality
 
 **Sobol** covers 1024 dimensions from the embedded Joe & Kuo direction numbers.
-`WithDirectionNumbers(r io.Reader)` takes a caller's own table in the same format for more.
+`WithDirectionNumbers(r io.Reader)` takes a caller's own table in the same format for more —
+upstream publishes the same construction out to 21201 dimensions at
+<https://web.maths.unsw.edu.au/~fkuo/sobol/>, and `new-joe-kuo-6.21201` can be passed whole.
+The format and the invariants a table has to satisfy (contiguous _d_ from 2, exactly _s_
+direction numbers per row, every _m_i_ odd and below 2^_i_, a primitive polynomial) are
+documented on `WithDirectionNumbers`; anything failing them is refused at construction.
 Direction numbers cannot be derived — the initial values come from those authors'
 numerical search — so a table is the only honest option.
 

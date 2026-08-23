@@ -2,6 +2,7 @@ package qmc
 
 import (
 	"encoding/binary"
+	"fmt"
 	"hash/fnv"
 	"math"
 	"math/bits"
@@ -1021,5 +1022,306 @@ func TestSkipBeyondTheIndexSpaceIsRefusedAtConstruction(t *testing.T) {
 	skip := uint64(math.MaxUint32)
 	if _, err := NewSobol(2, WithSkip(int(skip))); err == nil {
 		t.Fatal("a skip that puts point 0 past the 32-bit index space was accepted")
+	}
+}
+
+// The tests below cover the direction-number path above the embedded table's
+// 1024-dimension ceiling. Everything else in this file stops below it, so
+// before these existed the ">1024 dimensions" story in WithDirectionNumbers'
+// doc comment was an assumption: the loader had never once been asked for a
+// dimension the embedded asset does not carry.
+//
+// The table they use is synthesised here rather than fetched. Upstream's
+// 21201-dimension file is the real answer for a caller, but downloading it in
+// a test would make `go test` depend on a host this project cannot even build
+// a certificate chain to, and committing it would multiply the repository's
+// size by the one asset nobody reads. A synthesised extension proves the thing
+// actually in question — that the parser, the validator and the generator work
+// past 1024 — without pretending to prove anything about the quality of the
+// numbers, which is a search result and cannot be synthesised at all.
+
+// extendedDirectionTable returns the embedded table with rows appended for
+// dimensions 1025..dims, in upstream's text format.
+//
+// The appended rows are not Joe-Kuo numbers and are not claimed to be. They
+// satisfy every invariant validateDirectionRows enforces — d contiguous from
+// 2, exactly s direction numbers, every m_i odd and below 2^i, a primitive
+// polynomial — and nothing beyond that. A generator built on them is a
+// perfectly valid Sobol sequence with no guarantee about its two-dimensional
+// projections, which is exactly the distinction between what the validator can
+// check and what the authors' numerical search bought.
+//
+// The primitivity is not asserted by hand: the polynomials are found by
+// running isPrimitiveOverGF2 over the candidates, so the rows are primitive by
+// construction and cannot drift into being merely plausible.
+func extendedDirectionTable(t *testing.T, dims int) string {
+	t.Helper()
+
+	if dims <= maxSobolDims {
+		t.Fatalf("extendedDirectionTable is for dims above %d, got %d", maxSobolDims, dims)
+	}
+
+	const degree = 13
+
+	primitives := primitiveCoefficients(degree)
+	if len(primitives) == 0 {
+		t.Fatalf("no primitive polynomial of degree %d was found, so isPrimitiveOverGF2 is rejecting everything", degree)
+	}
+
+	var b strings.Builder
+
+	// The embedded table is copied verbatim, header and all, so the extension
+	// is genuinely an extension: dimensions 1..1024 of a generator built on
+	// this string must agree point for point with the built-in one, and
+	// TestDirectionTableBeyondTheEmbeddedCeiling checks that they do.
+	b.WriteString(strings.TrimRight(embeddedDirectionNumbers, "\n"))
+	b.WriteString("\n")
+
+	for d := maxSobolDims + 1; d <= dims; d++ {
+		// One splitMix64 stream per dimension, keyed by the dimension, so a
+		// row's contents depend on nothing but d. That keeps the table
+		// identical on every platform and every run — a test whose input drifts
+		// is a test whose failures cannot be reproduced.
+		rng := splitMix64(uint64(d) * 0x9E3779B97F4A7C15)
+
+		fmt.Fprintf(&b, "%d %d %d", d, degree, primitives[d%len(primitives)])
+
+		for i := 1; i <= degree; i++ {
+			// Odd and below 2^i by construction rather than by rejection: the
+			// low bit is set unconditionally and the rest is taken modulo
+			// 2^(i-1). A rejection loop here could in principle not terminate,
+			// which is not a property a test helper should have.
+			m := 2*(rng.next()%(1<<uint(i-1))) + 1
+			fmt.Fprintf(&b, " %d", m)
+		}
+
+		b.WriteString("\n")
+	}
+
+	return b.String()
+}
+
+// primitiveCoefficients returns every a value of the given degree whose
+// polynomial is primitive over GF(2), in the file's encoding.
+func primitiveCoefficients(degree int) []uint64 {
+	var out []uint64
+
+	for a := uint64(0); a < 1<<uint(degree-1); a++ {
+		if isPrimitiveOverGF2(1<<uint(degree)|a<<1|1, degree) {
+			out = append(out, a)
+		}
+	}
+
+	return out
+}
+
+// TestDirectionTableBeyondTheEmbeddedCeiling drives a table larger than the
+// embedded one through WithDirectionNumbers and insists the resulting sequence
+// is sound in every dimension above the ceiling as well as below it.
+//
+// Three separate things could be broken up here and nothing else in the suite
+// would see any of them: parseDirectionNumbers stopping at maxSobolDims
+// because its slice was preallocated to that capacity, NewSobol's available
+// count being computed against the embedded table rather than the supplied
+// one, and expandDirections indexing the flat directions slice with an int
+// that overflows only at high dimension counts. So the test checks the whole
+// path end to end: balance in every dimension, coordinates in range, and the
+// stateful and stateless entry points agreeing.
+func TestDirectionTableBeyondTheEmbeddedCeiling(t *testing.T) {
+	const (
+		dims = 1200
+		m    = 8
+	)
+
+	n := 1 << m
+	table := extendedDirectionTable(t, dims)
+
+	g, err := NewSobol(dims, WithSkip(n-1), WithDirectionNumbers(strings.NewReader(table)))
+	if err != nil {
+		t.Fatalf("a valid %d-dimension table was rejected: %v", dims, err)
+	}
+
+	if g.Dims() != dims {
+		t.Fatalf("Dims() = %d, want %d", g.Dims(), dims)
+	}
+
+	// One-dimensional balance, the property a damaged or mis-indexed set of
+	// direction numbers destroys. Checked in all 1200 dimensions, not only the
+	// 176 new ones, because the failure this is most likely to catch is the
+	// extension displacing or truncating the rows below it.
+	counts := make([]int, dims*n)
+	point := make([]float64, dims)
+
+	for i := 0; i < n; i++ {
+		g.AtInto(i, point)
+
+		for d, v := range point {
+			if v < 0 || v >= 1 {
+				t.Fatalf("point %d dimension %d is %v, which is outside [0,1)", i, d, v)
+			}
+
+			counts[d*n+int(v*float64(n))]++
+		}
+	}
+
+	for d := 0; d < dims; d++ {
+		for k := 0; k < n; k++ {
+			if got := counts[d*n+k]; got != 1 {
+				t.Fatalf(
+					"dimension %d: interval [%d/%d, %d/%d) holds %d of the %d points, want exactly 1; "+
+						"the table above the embedded ceiling is not producing a digital net",
+					d, k, n, k+1, n, got, n,
+				)
+			}
+		}
+	}
+
+	// At and Next must walk the same sequence at these dimension counts too.
+	// The two paths select direction numbers differently — one XOR per set bit
+	// of the Gray code against one XOR per step — and the flat directions
+	// slice is indexed by d*sobolBits in both, which is the arithmetic a large
+	// dims stresses.
+	g.Reset()
+
+	stateful := make([]float64, dims)
+	stateless := make([]float64, dims)
+
+	for i := 0; i < 64; i++ {
+		g.NextInto(stateful)
+		g.AtInto(i, stateless)
+
+		for d := range stateful {
+			if stateful[d] != stateless[d] {
+				t.Fatalf(
+					"point %d dimension %d: Next gave %v, At gave %v; the two paths have diverged above dimension %d",
+					i, d, stateful[d], stateless[d], maxSobolDims,
+				)
+			}
+		}
+	}
+
+	// The extension must extend rather than replace: the first maxSobolDims
+	// dimensions have to be the embedded sequence, point for point. If they
+	// are not, the appended rows have shifted the table and every dimension is
+	// using someone else's polynomial — the corruption with no symptom.
+	builtin, err := NewSobol(maxSobolDims, WithSkip(n-1))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	embedded := make([]float64, maxSobolDims)
+
+	for i := 0; i < 256; i++ {
+		builtin.AtInto(i, embedded)
+		g.AtInto(i, point)
+
+		for d := range embedded {
+			if embedded[d] != point[d] {
+				t.Fatalf(
+					"point %d dimension %d: the embedded table gives %v but the extended table gives %v; "+
+						"appending rows past %d has disturbed the dimensions below it",
+					i, d, embedded[d], point[d], maxSobolDims,
+				)
+			}
+		}
+	}
+
+	// And the ceiling still exists, it has just moved: one dimension past the
+	// supplied table must be refused, with the table's own size in the message
+	// rather than the embedded one's.
+	_, err = NewSobol(dims+1, WithDirectionNumbers(strings.NewReader(table)))
+	if err == nil {
+		t.Fatalf("a %d-dimensional generator was built from a %d-dimension table", dims+1, dims)
+	}
+
+	if !strings.Contains(err.Error(), fmt.Sprintf("dims must be <= %d", dims)) {
+		t.Fatalf("error %q does not report the supplied table's own dimension count", err)
+	}
+}
+
+// TestDirectionTableIsValidatedAboveTheEmbeddedCeiling corrupts one row of the
+// extended table, well past dimension 1024, and insists each kind of damage is
+// refused with an error that names it.
+//
+// A validator nobody has watched reject something is not known to work, and
+// the specific worry here is a validator that stops early — a loop bounded by
+// maxSobolDims, or a check that only runs while a preallocated slice has spare
+// capacity — which would pass every existing test in this file because every
+// existing test stays below the ceiling.
+func TestDirectionTableIsValidatedAboveTheEmbeddedCeiling(t *testing.T) {
+	const (
+		dims   = 1100
+		broken = 1050
+	)
+
+	// A degree-13 a value that is not primitive. Found by search rather than
+	// written down, for the same reason the valid ones are.
+	var nonPrimitive uint64
+
+	for a := uint64(0); a < 1<<12; a++ {
+		if !isPrimitiveOverGF2(1<<13|a<<1|1, 13) {
+			nonPrimitive = a
+
+			break
+		}
+	}
+
+	cases := []struct {
+		name    string
+		corrupt func(fields []string) []string
+		drop    bool
+		want    string
+	}{
+		{
+			name: "d not contiguous",
+			drop: true,
+			want: "contiguously from 2",
+		},
+		{
+			name:    "m_1 even",
+			corrupt: func(f []string) []string { f[3] = "2"; return f },
+			want:    "is even",
+		},
+		{
+			name:    "m_2 not below 2^2",
+			corrupt: func(f []string) []string { f[4] = "5"; return f },
+			want:    "must be below 2^2",
+		},
+		{
+			name:    "a not primitive",
+			corrupt: func(f []string) []string { f[2] = fmt.Sprint(nonPrimitive); return f },
+			want:    "is not primitive over GF(2)",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Rebuilt per case so one case's damage cannot leak into the next.
+			lines := strings.Split(strings.TrimRight(extendedDirectionTable(t, dims), "\n"), "\n")
+
+			// Line 0 is the header and line 1 is dimension 2, so dimension d
+			// sits at index d-1.
+			at := broken - 1
+
+			if tc.drop {
+				lines = append(lines[:at], lines[at+1:]...)
+			} else {
+				lines[at] = strings.Join(tc.corrupt(strings.Fields(lines[at])), " ")
+			}
+
+			table := strings.Join(lines, "\n") + "\n"
+
+			_, err := NewSobol(dims-1, WithDirectionNumbers(strings.NewReader(table)))
+			if err == nil {
+				t.Fatalf(
+					"a table damaged at dimension %d was accepted; it would have produced points nobody can tell are wrong",
+					broken,
+				)
+			}
+
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error %q does not mention %q, so it does not tell the caller what is wrong with their file", err, tc.want)
+			}
+		})
 	}
 }

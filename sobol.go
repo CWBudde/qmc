@@ -41,6 +41,50 @@ const twoPowMinus32 = 1.0 / 4294967296.0
 // [0, 2^m), so the first 2^m points are the same point set either way and the
 // (t,m,s)-net balance property — the thing the sequence is for — is untouched.
 //
+// # Balance holds on aligned blocks, not on any window
+//
+// The (t,m,s)-net property — the first 2^m points falling one apiece into
+// every elementary interval — is a statement about a block of 2^m *raw*
+// indices that begins on a multiple of 2^m. It is not a statement about any
+// 2^m consecutive points, and this is the single most likely reason for a
+// caller to conclude the sequence is broken when it is not.
+//
+// Point i is raw index skip+1+i, so the default skip of 0 hands out raw
+// indices 1..2^m, which straddles two aligned blocks and is short by exactly
+// the one point at the far end. Measured here at 40 dimensions and m=8, over
+// the first 256 points: with skip 0 all 40 dimensions are unbalanced, each one
+// leaving a single interval of the 256 empty and another holding two points.
+// It degrades from there rather than staying near-miss — with skip 100 the
+// same run leaves up to 101 of the 256 intervals empty. With WithSkip(2^m - 1)
+// the raw indices are 2^m..2^(m+1)-1, one aligned block, and all 40 dimensions
+// come out exactly balanced.
+//
+// So a stratification check has to choose its window: WithSkip(2^m - 1) is
+// what this package's own balance tests construct with, and the reason is
+// stated here rather than left as a magic constant in the tests. WithSkip
+// chooses which aligned block you get. There is no option that makes an
+// unaligned window a net, because no such option could exist.
+//
+// # Not every two-dimensional projection is a net
+//
+// Joe and Kuo's D(6) criterion optimises two-dimensional projections; it does
+// not make them all t=0, and nothing about a correct table promises that it
+// would. Measured over all 780 pairs among the first 40 dimensions, on an
+// aligned block: 18 pairs are balanced at every split at m=8 and 4 at m=10,
+// and (0,1) is the only pair in both lists.
+//
+// The gap between a good pair and a bad one is wide enough to be alarming.
+// Dimensions 0 and 1 put one point in every cell of every 2^a x 2^b grid with
+// a+b = 8. Dimensions 12 and 23, over the same 256 points, leave 224 of the
+// 256 cells of the 16x16 grid empty and pile 8 points into one cell. Both are
+// correct output from the correct table. A caller who plots two dimensions to
+// eyeball the sequence and happens to pick a pair like (12, 23) is looking at
+// a real property of Sobol sequences — t grows with s, and a projection
+// inherits no guarantee from the full-dimensional net — not at a defect.
+// Picking a different pair is the cheap answer. A digital shift is not: it
+// translates the whole net, so every shift of a poor projection is equally
+// poor, which is the point WithDigitalShift's own doc comment makes.
+//
 // A Sobol generator is not safe for concurrent use through its stateful
 // methods (Next, NextInto, Reset). At and AtInto are stateless and may be
 // called from any number of goroutines at once, which is the way to drive one
@@ -112,6 +156,64 @@ var embeddedTable = sync.OnceValues(func() ([]directionRow, error) {
 // embedded table, so a file that is truncated, column-shifted or corrupted is
 // refused at construction rather than turned into points. See
 // validateDirectionRows for what that check does and does not prove.
+//
+// # The file format
+//
+// Upstream's files live at https://web.maths.unsw.edu.au/~fkuo/sobol/; the
+// embedded table is the first 1024 dimensions of the D(6) family,
+// new-joe-kuo-6.21201, and passing that file whole is the supported way to go
+// past the embedded ceiling. The format is whitespace-separated text:
+//
+//	d       s       a       m_i
+//	2       1       0       1
+//	3       2       1       1 3
+//	4       3       1       1 3 1
+//
+// One header line, then one row per dimension from d = 2 upward. Dimension 1
+// has no row: its polynomial is the empty one and all of its m_i are 1, which
+// every Sobol implementation special-cases. A row is
+//
+//	d s a m_1 m_2 ... m_s
+//
+// where d is the dimension, s the degree of that dimension's primitive
+// polynomial, a the polynomial's s-1 interior coefficients packed into an
+// integer (bit s-1-k holds the coefficient of x^(s-k)), and m_1..m_s the
+// initial direction numbers — exactly s of them, no more and no fewer. The
+// header is skipped if its first field is not an integer, so a hand-made file
+// without one is accepted; refusing a file for the absence of a line nobody
+// reads would be pedantry.
+//
+// # What a caller-generated table must satisfy
+//
+// A table that fails any of these is refused at construction, by name, and the
+// reasoning behind each is in validateDirectionRows:
+//
+//   - d runs contiguously from 2, with no gaps and no repeats. A row's
+//     position in the file is what selects the dimension it is used for, so a
+//     single missing line moves every later dimension onto another dimension's
+//     polynomial — valid numbers, wrong dimension, no visible symptom.
+//   - each row carries exactly s direction numbers.
+//   - every m_i is odd. An even one clears the leading bit of V_i and destroys
+//     the linear independence the net property rests on.
+//   - every m_i is below 2^i, so that m_i << (32-i) does not shift bits off
+//     the top of the word.
+//   - the polynomial 1<<s | a<<1 | 1 is primitive over GF(2), not merely
+//     irreducible. This is the check a corrupted a field cannot pass by luck,
+//     and the one the direction-number recurrence actually depends on.
+//   - s is between 1 and 32. Above 32 there is nowhere to put the initial
+//     direction numbers. The largest degree anywhere in the embedded 1024
+//     dimensions is 13, so this bound only fires on a file that is not a
+//     Joe-Kuo table at all.
+//
+// Nothing here proves the numbers are *good* — that they came from Joe and
+// Kuo's search rather than from anywhere else — and nothing could. Primitivity
+// and the m_i bounds are what makes a table usable; the quality of its
+// two-dimensional projections is a search result, and a self-generated table
+// that passes every check above will still have projections nobody optimised.
+// TestDirectionTableBeyondTheEmbeddedCeiling drives a synthesised table of
+// 1200 dimensions through this option and checks the resulting sequence is a
+// net in every one of them, so the path above 1024 is exercised rather than
+// assumed.
 func WithDirectionNumbers(r io.Reader) Option {
 	return func(s *settings) {
 		s.directions = r
@@ -351,6 +453,17 @@ func (s *Sobol) Reset() {
 // no direction numbers at all. Either way it is a corner of the cube that no
 // caller wants as their first sample, and with an unshifted generator it is
 // exactly (0, 0, ..., 0).
+//
+// The mapping from i to a raw index is what decides whether a range of points
+// is balanced, so it is worth being explicit about here rather than only in
+// the type doc. The (t,m,s)-net property holds over 2^m raw indices starting
+// on a multiple of 2^m; At(0)..At(2^m-1) is that block only when skip+1 is a
+// multiple of 2^m — which is what WithSkip(2^m - 1) arranges, and what the
+// default skip of 0 does not. Measured at 40 dimensions and m=8, taking
+// At(0)..At(255) with skip 0 leaves every one of the 40 dimensions with an
+// empty interval and a doubled one. See the type doc for the rest of it; the
+// short version is that an unaligned window of a Sobol sequence is not a net
+// and never was.
 //
 // Negative i is treated as 0.
 func (s *Sobol) At(i int) []float64 {
