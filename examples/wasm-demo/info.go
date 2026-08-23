@@ -65,6 +65,14 @@ const (
 	// sources so that switching sequence keeps a request valid without the
 	// page having to know what the new source's menu contains.
 	randomizationNone = "none"
+
+	// defaultMetric aims the discrepancy panel at the defect the same way
+	// defaultDims aims the scatter plot at it. Centred L2 at 39 dimensions is
+	// the configuration in which the statistic says nothing — the sequence's
+	// curve and the pseudorandom one lie on top of each other and the ratio
+	// reads about 1.02 — so the page opens on the null result and the note
+	// beside it explains how to get a real one.
+	defaultMetric = "cl2"
 )
 
 // A randomizationSpec is one entry of a source's randomization menu.
@@ -248,6 +256,18 @@ func jsInfo(_ js.Value) any {
 		})
 	}
 
+	metricList := make([]any, 0, len(discrepancyOrder))
+
+	for _, key := range discrepancyOrder {
+		spec := discrepancies[key]
+		metricList = append(metricList, map[string]any{
+			"key":         spec.key,
+			"label":       spec.label,
+			"description": spec.description,
+			"analytic":    spec.analytic != nil,
+		})
+	}
+
 	sourceList := make([]any, 0, len(sourceOrder))
 
 	for _, key := range sourceOrder {
@@ -282,9 +302,23 @@ func jsInfo(_ js.Value) any {
 		"maxCorrelateDims":   maxCorrelateDims,
 		"maxCorrelatePoints": maxCorrelatePoints,
 
+		// The hard cap only. There is deliberately no single
+		// maxDiscrepancyPoints-per-metric here: both metrics' affordable point
+		// counts depend on the dimension count, and publishing one number would
+		// be the same trap as reporting integrands.exact at a hardcoded
+		// dimension count above. The live number comes from metrics().
+		"maxDiscrepancyPoints": maxDiscrepancyPoints,
+		"minDiscrepancyPoints": minDiscrepancyPoints,
+
 		"sources": sourceList,
 
 		"integrands": list,
+
+		// The menu only — key, label and description. Whether a metric is
+		// available, and how many points it can afford, are questions about
+		// the dimension count now selected, so they are answered by metrics()
+		// and never cached from here.
+		"discrepancies": metricList,
 
 		"defaults": map[string]any{
 			"dims":          defaultDims,
@@ -296,6 +330,7 @@ func jsInfo(_ js.Value) any {
 			"axisY":         defaultAxisY,
 			"source":        defaultSource,
 			"randomization": randomizationNone,
+			"metric":        defaultMetric,
 		},
 	}
 }

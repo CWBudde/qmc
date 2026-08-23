@@ -6,7 +6,7 @@
     <title>Discrepancy Bench — qmc</title>
     <meta
       name="description"
-      content="Pairwise correlation across every dimension, and integration error against N on log–log axes. Go compiled to WebAssembly, no numerics in JavaScript."
+      content="Pairwise correlation across every dimension, integration error against N, and star and centred L2 discrepancy against N on log–log axes. Go compiled to WebAssembly, no numerics in JavaScript."
     />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -66,6 +66,28 @@
         #convChart                    the log–log chart
         #convRows                     <tbody> of per-N results
         #tExact #tQmcError #tMcError #tRatio    .v readouts
+
+      Discrepancy sweep:
+        #discMetric #discMetricNote   <select> filled from info().discrepancies,
+                                      and the metrics() verdict for it — the
+                                      library's own refusal sentence when the
+                                      metric is unavailable at this width
+        #discSuggest                  button offering metrics().suggestedDims
+        #discDims #discDimsOut        dimensions
+        #discSkip #discSkipOut        burn-in
+        #discLeap #discLeapNext       leap, and the button that walks to the
+                                      next admissible one
+        #discLeapNote                 the leaps() verdict for this panel
+        #discSeed                     seed
+        #discSource #discRandom       sequence and randomization <select>s
+        #discStart #discStop          transport for the sweep
+        #discProgressBar #discProgressText   progress readout
+        #discChart                    the log–log chart
+        #discRows                     <tbody> of per-N results
+        #discCeilingNote              the sentence explaining why the N
+                                      ceiling moves with the dimension slider
+        #discVerdict                  the sentence Go wrote about the ratio
+        #dRatio #dValue #dRandom #dAnalytic #dCeiling   .v readouts
     -->
   </head>
   <body>
@@ -359,6 +381,158 @@
             <span class="ref"><i></i>reference slopes 1/N and 1/√N</span>
           </div>
         </div>
+
+        <div class="panel panel--wide">
+          <span class="corner-label">Discrepancy</span>
+          <p class="panel-note">
+            The quantity the phrase "low-discrepancy sequence" actually refers
+            to, measured against <i>N</i> on log–log axes: the sequence's
+            discrepancy, a pseudorandom sample's over the same <i>N</i>, and —
+            for centred L2 — the closed-form expectation
+            <b>√(((5/4)<sup>s</sup> − (13/12)<sup>s</sup>)/N)</b> of the random
+            one. The headline is the ratio <b>random ÷ sequence</b>, and a ratio
+            of <b>1.00</b> needs no interpretation: the statistic has stopped
+            distinguishing the two point sets.
+          </p>
+
+          <div class="verdict">
+            <div>
+              <span class="k">random ÷ sequence</span>
+              <span class="big" id="dRatio">—</span>
+              <span class="sub" id="discVerdict">
+                Press Start. The page opens on 39 dimensions and centred L2,
+                which is the configuration in which this statistic says nothing.
+              </span>
+            </div>
+          </div>
+
+          <div class="controls" style="margin-top: 0">
+            <div class="control-group">
+              <span class="corner-label">Metric</span>
+              <div class="field field--wide">
+                <label for="discMetric">discrepancy</label>
+                <select id="discMetric"></select>
+              </div>
+              <div class="button-row">
+                <button id="discSuggest" hidden>Drop to 6 dimensions</button>
+              </div>
+              <p class="callout" id="discMetricNote">—</p>
+            </div>
+
+            <div class="control-group">
+              <span class="corner-label">Point set</span>
+              <div class="field field--wide">
+                <label for="discSource">sequence</label>
+                <select id="discSource" disabled></select>
+              </div>
+              <div class="field field--wide">
+                <label for="discRandom">randomization</label>
+                <select id="discRandom" disabled></select>
+              </div>
+              <div class="field">
+                <label for="discDims">dimensions</label>
+                <input
+                  type="range"
+                  id="discDims"
+                  min="1"
+                  max="64"
+                  step="1"
+                  value="39"
+                />
+                <span class="out mono" id="discDimsOut">39</span>
+              </div>
+              <div class="field">
+                <label for="discSkip">burn-in</label>
+                <input
+                  type="range"
+                  id="discSkip"
+                  min="0"
+                  max="4096"
+                  step="1"
+                  value="64"
+                />
+                <span class="out mono" id="discSkipOut">64</span>
+              </div>
+              <div class="field field--wide">
+                <label for="discSeed">seed</label>
+                <input type="number" id="discSeed" step="1" min="0" value="1" />
+              </div>
+              <div class="field field--wide">
+                <label for="discLeap">leap</label>
+                <input
+                  type="number"
+                  id="discLeap"
+                  min="1"
+                  max="1000"
+                  step="1"
+                  value="1"
+                />
+              </div>
+              <div class="button-row">
+                <button id="discLeapNext" disabled>Next admissible leap</button>
+              </div>
+              <p class="field-note" id="discLeapNote">—</p>
+            </div>
+
+            <div class="control-group" style="min-width: 0">
+              <span class="corner-label">Latest N</span>
+              <div class="readouts">
+                <div>
+                  <span class="k">sequence</span>
+                  <span class="v" id="dValue" data-tone="scrambled">—</span>
+                </div>
+                <div>
+                  <span class="k">pseudo-random</span>
+                  <span class="v" id="dRandom" data-tone="plain">—</span>
+                </div>
+                <div>
+                  <span class="k">analytic E[·]</span>
+                  <span class="v" id="dAnalytic">—</span>
+                </div>
+                <div>
+                  <span class="k">N ceiling here</span>
+                  <span class="v" id="dCeiling">—</span>
+                </div>
+              </div>
+              <div class="button-row">
+                <button id="discStart" data-primary disabled>Start</button>
+                <button id="discStop" disabled>Stop</button>
+              </div>
+              <div class="progress">
+                <div class="progress__bar" id="discProgressBar"></div>
+              </div>
+              <p class="field-note mono" id="discProgressText">idle</p>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th scope="col">N</th>
+                      <th scope="col">sequence</th>
+                      <th scope="col">random</th>
+                      <th scope="col">ratio</th>
+                    </tr>
+                  </thead>
+                  <tbody id="discRows"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <p class="field-note" id="discCeilingNote">—</p>
+
+          <canvas
+            id="discChart"
+            role="img"
+            aria-label="Discrepancy against N on log–log axes, sequence against pseudo-random"
+          ></canvas>
+          <div class="chart-legend">
+            <span class="qmc"><i></i>the sequence — circles</span>
+            <span class="mc"><i></i>pseudo-random — crosses</span>
+            <span class="ref"
+              ><i></i>analytic random expectation — no markers</span
+            >
+          </div>
+        </div>
       </section>
 
       <div class="caveat">
@@ -377,6 +551,29 @@
           the worst of five seeds, not the best of one.
         </p>
         <p>
+          <b>Centred L2 saturates; that is not a bug in the panel.</b> Its
+          expectation over <i>N</i> uniform points is exactly √(((5/4)<sup
+            >s</sup
+          >
+          − (13/12)<sup>s</sup>)/<i>N</i>), and the (5/4)<sup>s</sup> term —
+          which depends only on each coordinate's marginal spread — swamps
+          everything a well-spread point set can improve. At 39 dimensions it is
+          100.4% of the total, so the ratio reads about 1.02 and the three
+          curves lie on top of one another. Drop the dimension slider and watch
+          them separate. Star discrepancy does not saturate, but it is NP-hard
+          in the dimension, so the library refuses it above six dimensions and a
+          few dozen points — the metric menu prints that refusal in the
+          library's own words rather than restating the limit here.
+        </p>
+        <p>
+          <b>The discrepancy panel's N ceiling moves.</b> Every other control on
+          these pages has a fixed range. This one does not: centred L2 costs
+          O(<i>N</i>²<i>s</i>) and a single <i>N</i> cannot be subdivided, so
+          the only way to keep one blocking call short is to cap <i>N</i>, and
+          the cap has to fall as dimensions are added. It is a browser
+          responsiveness limit, not a mathematical one.
+        </p>
+        <p>
           <b>The sweep loops in JavaScript on purpose.</b> A call into Go blocks
           the event loop for its whole duration, so a Stop pressed during one
           cannot be dispatched. Each <code>converge</code> call therefore covers
@@ -391,7 +588,7 @@
       <footer class="rack-footer mono">
         <span>github.com/cwbudde/qmc</span>
         <span id="buildInfo">—</span>
-        <span>correlation · convergence</span>
+        <span>correlation · convergence · discrepancy</span>
       </footer>
     </div>
 

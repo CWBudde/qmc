@@ -241,11 +241,24 @@ anyone quotes a CD2 number:
   is not several times below that, use an integration test or `StarDiscrepancy` in a
   projection.
 
+- [x] **The demo exposes both, and the Bench earns its name.** It sweeps either statistic
+      against n beside a pseudorandom baseline and, for CD2, the analytic
+      `sqrt(((5/4)^s - (13/12)^s)/n)` curve: at 39 dimensions all three lie on top of one
+      another at a ratio of 1.02x, which is the saturation argument as a picture rather than
+      as a caveat, and at 4 dimensions star separates the same two point sets by 1.71x over
+      six rungs. Star's availability is asked of the library and its refusal rendered
+      verbatim, on the `leaps` precedent, with the largest admissible dimension count offered
+      as the fix. The browser needs a second ceiling below the library's, and the obvious
+      cost model is wrong: measured under js/wasm the cost per pair is **affine** in the
+      dimension count, `N(N-1)/2 * (5.7s + 7.5)` ns, so a purely proportional model would
+      have been three times too generous at one dimension. Star at the library's own budget
+      freezes the tab for up to 5.6 seconds, so the panel affords 224 points at 3 dimensions
+      and 32 at 6. The sweep runs on `converge.go`'s cancellable ladder — which was extracted
+      into a shared `runSweep` and the convergence panel re-pointed at it first, so the page
+      lost a copy of that logic rather than gaining a second one.
+
 Still open:
 
-- Neither statistic is exposed by the WebAssembly demo. The Discrepancy Bench panel is named
-  for the quantity and shows correlation and convergence instead. Both are affordable in the
-  browser at the sizes the panel already draws, so this is unfinished rather than refused.
 - There is no lower-bound or randomized estimator for the star discrepancy above 6 dimensions,
   which is the only way that quantity is reachable at the dimension counts this package is
   aimed at. It would be an approximation with its own error to characterise, and nothing in

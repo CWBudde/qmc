@@ -73,11 +73,41 @@
   const convChart = el("convChart");
   const convRows = el("convRows");
 
+  const discMetric = el("discMetric");
+  const discMetricNote = el("discMetricNote");
+  const discSuggest = el("discSuggest");
+  const discDims = el("discDims");
+  const discDimsOut = el("discDimsOut");
+  const discSkip = el("discSkip");
+  const discSkipOut = el("discSkipOut");
+  const discSeed = el("discSeed");
+  const discSource = el("discSource");
+  const discRandom = el("discRandom");
+  const discLeapInput = el("discLeap");
+  const discLeapNext = el("discLeapNext");
+  const discLeapNote = el("discLeapNote");
+  const discStart = el("discStart");
+  const discStop = el("discStop");
+  const discProgressBar = el("discProgressBar");
+  const discProgressText = el("discProgressText");
+  const discChart = el("discChart");
+  const discRows = el("discRows");
+  const discCeilingNote = el("discCeilingNote");
+  const discVerdict = el("discVerdict");
+
   const readout = {
     exact: el("tExact"),
     qmc: el("tQmcError"),
     mc: el("tMcError"),
     ratio: el("tRatio"),
+  };
+
+  const discReadout = {
+    ratio: el("dRatio"),
+    value: el("dValue"),
+    random: el("dRandom"),
+    analytic: el("dAnalytic"),
+    ceiling: el("dCeiling"),
   };
 
   const reducedMotion =
@@ -125,9 +155,18 @@
     hover: null,
     pending: false,
     runId: 0,
-    running: false,
+
+    // The one sweep now walking its ladder, of either panel, or null. Both
+    // panels share it for the reason runSweep explains.
+    sweep: null,
+
+    // The last metrics() answer for the dimension count now on the slider.
+    // Whether a metric is available there, and how many points it affords, are
+    // the library's questions to answer, not this page's to guess.
+    metrics: null,
     qmc: [],
     mc: [],
+    disc: { seq: [], rnd: [], analytic: [] },
     lastAnnounce: 0,
   };
 
@@ -239,6 +278,7 @@
   // and this page has exactly one place where listeners are attached.
   let corrLeap = null;
   let convLeap = null;
+  let discLeap = null;
 
   // Both panels have a leap of their own, so this is a factory rather than two
   // copies of the same handler. Each instance owns one <input>, one note and
@@ -479,11 +519,47 @@
 
     budgetSelect.value = "16384";
 
+    fillSourceSelect(discSource, defaults.source);
+
+    // The discrepancy panel opens randomized for the same reason the sweep
+    // does: RQMC is what you would actually ship, and an unrandomized Halton
+    // at 39 dimensions would be showing the leaping defect on top of the
+    // saturation this panel exists to show.
+    fillRandomizationSelect(discSource, discRandom);
+    discRandom.value = firstRandomized(discSource, discRandom);
+
+    discSkip.min = "0";
+    discSkip.max = String(info.maxSkip);
+    discSkip.value = String(defaults.skip);
+    discSeed.value = String(defaults.seed);
+    discLeapInput.min = "1";
+    discLeapInput.max = String(info.maxLeap);
+    discLeapInput.value = String(defaults.leap);
+    discDims.value = String(defaults.dims || DOCUMENTED.dims);
+
+    discMetric.innerHTML = "";
+
+    for (const spec of info.discrepancies || []) {
+      const option = document.createElement("option");
+      option.value = spec.key;
+      option.textContent = spec.label;
+      option.title = spec.description || "";
+      discMetric.append(option);
+    }
+
+    // The menu stays fully populated at every dimension count. What changes is
+    // whether Start is enabled, under the library's own refusal — the same
+    // shape as the leap control, where an inadmissible value is shown and
+    // explained rather than removed.
+    discMetric.value = defaults.metric || discMetric.options[0].value;
+
     applyCorrSource();
     applyConvSource();
+    applyDiscSource();
     updateCorrNote();
     applyIntegrand();
     syncOutputs();
+    refreshMetrics();
 
     buildInfo.textContent = `${info.goVersion} · ${info.goos}/${info.goarch}`;
   }
@@ -494,6 +570,8 @@
     corrSkipOut.textContent = corrSkip.value;
     convDimsOut.textContent = convDims.value;
     convSkipOut.textContent = convSkip.value;
+    discDimsOut.textContent = discDims.value;
+    discSkipOut.textContent = discSkip.value;
   }
 
   // firstRandomized is the sweep's opening choice: the first entry of the
@@ -540,6 +618,25 @@
     }
 
     applyIntegrand();
+  }
+
+  // Each source carries its own dimension ceiling, and the discrepancy panel
+  // ranges from 1 rather than from 2: star discrepancy in one dimension has a
+  // closed form the library's tests pin, and it is the one place on this page
+  // where the sequence beats random by a factor of forty.
+  function applyDiscSource() {
+    const spec = sourceSpec(discSource);
+
+    if (!spec) {
+      return;
+    }
+
+    const ceiling = Math.max(1, Math.min(state.info.maxDims, spec.maxDims));
+
+    discDims.min = "1";
+    discDims.max = String(ceiling);
+    discDims.value = String(Math.min(ceiling, intValue(discDims, ceiling)));
+    syncOutputs();
   }
 
   // The hover prompt names the bases only when there are bases to name.
@@ -809,9 +906,14 @@
   // A geometric ladder at √2 per step: dense enough that a slope is readable
   // on log–log axes, sparse enough that the whole sweep is a couple of dozen
   // blocking calls rather than a couple of hundred.
-  function sweepPoints(ceiling) {
+  //
+  // The floor is a parameter because the discrepancy panel's ceiling can be
+  // below the convergence panel's first rung: star discrepancy at six
+  // dimensions affords 32 points in total, and a ladder starting at 64 would
+  // be one rung long.
+  function sweepPoints(ceiling, floor) {
     const values = [];
-    let n = 64;
+    let n = Math.min(floor || 64, ceiling);
 
     while (n < ceiling) {
       const rounded = Math.round(n);
@@ -840,22 +942,133 @@
     drawChart();
   }
 
-  async function startSweep() {
-    if (state.running || !state.ready) {
-      return;
-    }
-
-    if (convLeap && !convLeap.admissible()) {
-      setStatus(convLeap.reason(), "error");
-
+  // runSweep is the ladder BOTH panels walk. It was extracted from the
+  // convergence sweep rather than copied for it: the yield-and-recheck dance
+  // below is subtle enough that two copies would drift, and the second copy is
+  // always the one that forgets to re-check the id before the blocking call.
+  //
+  // job = {
+  //   steps          array of N values, in order
+  //   exportName     the Go export to call, once per step
+  //   request(n)     the options object for step n
+  //   onResult(r, i) draw it
+  //   buttons        {start, stop}
+  //   progress       {bar, text}
+  //   label(r)       the left half of the progress line
+  //   announce(r)    the aria-live sentence
+  //   status         the status line while it runs
+  // }
+  //
+  // The two sweeps SHARE state.runId, deliberately. The page has one thread
+  // and every rung is a blocking call into Go, so two sweeps could not run
+  // side by side even with separate ids — they would interleave, each freezing
+  // the other's yields, and both progress bars would crawl. Sharing the id
+  // makes "start the other panel" mean "cancel this one", which is what the
+  // machine was going to do anyway; the difference is that the cancelled
+  // panel's transport is restored here instead of being left disabled.
+  async function runSweep(job) {
+    if (!state.ready || state.sweep === job) {
       return;
     }
 
     state.runId += 1;
-    state.running = true;
 
     const runId = state.runId;
-    const ns = sweepPoints(parseInt(budgetSelect.value, 10) || 16384);
+
+    if (state.sweep) {
+      finishSweep(state.sweep, "superseded by the other sweep");
+    }
+
+    state.sweep = job;
+    job.buttons.start.disabled = true;
+    job.buttons.stop.disabled = false;
+    job.progress.bar.style.width = "0%";
+    setStatus(job.status, "loading");
+
+    for (let step = 0; step < job.steps.length; step += 1) {
+      // The guard is checked before the blocking call, not only after it: Stop
+      // and a restart both land in the yield below, and neither should get one
+      // more Go call out of a sweep that is already over.
+      if (runId !== state.runId) {
+        return;
+      }
+
+      const result = call(job.exportName, job.request(job.steps[step]));
+
+      if (runId !== state.runId) {
+        return;
+      }
+
+      if (!result) {
+        finishSweep(job, "sweep stopped — see the status line");
+
+        return;
+      }
+
+      job.onResult(result, step);
+
+      const done = step + 1;
+      job.progress.bar.style.width = `${(done / job.steps.length) * 100}%`;
+      job.progress.text.textContent = `${job.label(result)} · ${done} / ${job.steps.length}`;
+      announce(job.announce(result));
+
+      // THE yield. A synchronous Go call cannot be interrupted, so this gap is
+      // the only moment a Stop click or a restart can be dispatched. It is not
+      // a politeness; delete it and the Stop button becomes decorative.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    if (runId !== state.runId) {
+      return;
+    }
+
+    finishSweep(job, "sweep complete");
+  }
+
+  function finishSweep(job, message) {
+    if (state.sweep === job) {
+      state.sweep = null;
+    }
+
+    job.buttons.start.disabled = false;
+    job.buttons.stop.disabled = true;
+    job.progress.text.textContent = message;
+
+    if (statusEl.dataset.state !== "error") {
+      setStatus(message, "ready");
+    }
+
+    // A panel whose Start is not unconditionally legal gets the last word on
+    // its own transport: the discrepancy panel re-asks metrics() here, so a
+    // sweep that ended at a dimension count where the metric is unavailable
+    // does not leave an enabled button that Go would only refuse.
+    if (job.onFinish) {
+      job.onFinish();
+    }
+  }
+
+  function stopSweep() {
+    const job = state.sweep;
+
+    if (!job) {
+      return;
+    }
+
+    // Bumping the id is what actually cancels: the loop re-reads it after its
+    // next yield, sees a stranger's number, and returns without touching
+    // anything the new sweep owns.
+    state.runId += 1;
+    finishSweep(job, "stopped — partial results kept");
+    setStatus("Sweep stopped", "ready");
+  }
+
+  function startSweep() {
+    if (convLeap && !convLeap.admissible()) {
+      setStatus(convLeap.reason(), "error");
+
+      return Promise.resolve();
+    }
+
     const request = {
       source: convSource.value,
       randomization: convRandom.value,
@@ -867,83 +1080,26 @@
     };
 
     resetSweep();
-    startButton.disabled = true;
-    stopButton.disabled = false;
-    setStatus("Sweeping N…", "loading");
 
-    for (let step = 0; step < ns.length; step += 1) {
-      // The guard is checked before the blocking call, not only after it: Stop
-      // and a restart both land in the yield below, and neither should get one
-      // more Go call out of a sweep that is already over.
-      if (runId !== state.runId) {
-        return;
-      }
+    return runSweep({
+      steps: sweepPoints(parseInt(budgetSelect.value, 10) || 16384),
+      exportName: "converge",
+      request: (n) => Object.assign({}, request, { n: n }),
+      buttons: { start: startButton, stop: stopButton },
+      progress: { bar: progressBar, text: progressText },
+      status: "Sweeping N…",
+      label: (result) => `N = ${result.n.toLocaleString("en-US")}`,
+      announce: (result) =>
+        `N ${result.n}, QMC error ${sci(Math.abs(result.qmcError))}.`,
+      onResult: (result) => {
+        state.qmc.push({ x: result.n, y: Math.abs(result.qmcError) });
+        state.mc.push({ x: result.n, y: Math.abs(result.mcError) });
 
-      const result = call(
-        "converge",
-        Object.assign({}, request, { n: ns[step] }),
-      );
-
-      if (runId !== state.runId) {
-        return;
-      }
-
-      if (!result) {
-        finishSweep(runId, "sweep stopped — see the status line");
-
-        return;
-      }
-
-      state.qmc.push({ x: result.n, y: Math.abs(result.qmcError) });
-      state.mc.push({ x: result.n, y: Math.abs(result.mcError) });
-
-      appendRow(result);
-      updateSweepReadout(result);
-      drawChart();
-
-      const done = step + 1;
-      progressBar.style.width = `${(done / ns.length) * 100}%`;
-      progressText.textContent = `N = ${result.n.toLocaleString("en-US")} · ${done} / ${ns.length}`;
-      announce(`N ${result.n}, QMC error ${sci(Math.abs(result.qmcError))}.`);
-
-      // THE yield. A synchronous Go call cannot be interrupted, so this gap is
-      // the only moment a Stop click or a restart can be dispatched. It is not
-      // a politeness; delete it and the Stop button becomes decorative.
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    }
-
-    finishSweep(runId, "sweep complete");
-  }
-
-  function finishSweep(runId, message) {
-    if (runId !== state.runId) {
-      return;
-    }
-
-    state.running = false;
-    startButton.disabled = false;
-    stopButton.disabled = true;
-    progressText.textContent = message;
-
-    if (statusEl.dataset.state !== "error") {
-      setStatus(message, "ready");
-    }
-  }
-
-  function stopSweep() {
-    if (!state.running) {
-      return;
-    }
-
-    // Bumping the id is what actually cancels: the loop re-reads it after its
-    // next yield, sees a stranger's number, and returns without touching
-    // anything the new sweep owns.
-    state.runId += 1;
-    state.running = false;
-    startButton.disabled = false;
-    stopButton.disabled = true;
-    progressText.textContent = "stopped — partial results kept";
-    setStatus("Sweep stopped", "ready");
+        appendRow(result);
+        updateSweepReadout(result);
+        drawChart();
+      },
+    });
   }
 
   function appendRow(result) {
@@ -1020,6 +1176,250 @@
     );
   }
 
+  // --- discrepancy sweep ---------------------------------------------------
+
+  // The discrepancy ladder starts lower than the convergence one, because its
+  // ceiling can be below the convergence panel's first rung: star discrepancy
+  // at six dimensions affords 32 points in total, and a ladder starting at 64
+  // would be one rung long and would not draw a line.
+  const DISC_FLOOR = 16;
+
+  // times formats a ratio. Every number Go sends arrives jsNumber-nullable —
+  // NaN and ±Inf become null on the way out — and null.toFixed is a TypeError
+  // that would kill a sweep mid-ladder, so nothing here calls toFixed on a
+  // value it has not tested first.
+  function times(value) {
+    if (value === null || value === undefined || !isFinite(value)) {
+      return "—";
+    }
+
+    return `${value.toFixed(2)}×`;
+  }
+
+  function currentMetric() {
+    const list = (state.metrics && state.metrics.metrics) || [];
+
+    return list.find((entry) => entry.key === discMetric.value) || null;
+  }
+
+  // refreshMetrics is this panel's leaps(): it asks Go whether the selected
+  // metric can be computed at the dimension count now on the slider, and how
+  // many points it can afford there.
+  //
+  // Neither answer is derived here. The star ceiling is a property of the
+  // library's own work budget and the centred-L2 ceiling is a property of a
+  // measured js/wasm cost model, and both live in the Go file that owns them.
+  // When the library refuses, its sentence is printed verbatim: it names the
+  // dimension count, the leaf count, that the ceiling is a property of the
+  // problem rather than a tuning knob, and the affordable point counts per
+  // dimension. No paraphrase of that is worth writing.
+  function refreshMetrics() {
+    const result = call("metrics", {
+      source: discSource.value,
+      dims: intValue(discDims, 39),
+    });
+
+    state.metrics = result;
+
+    const entry = currentMetric();
+
+    if (!entry) {
+      discMetricNote.textContent =
+        "The metric menu could not be checked; reload the page if this persists.";
+      discSuggest.hidden = true;
+      discStart.disabled = true;
+      discReadout.ceiling.textContent = "—";
+      discCeilingNote.textContent = "—";
+
+      return;
+    }
+
+    if (!entry.available) {
+      discMetricNote.innerHTML = `<b>Refused:</b> ${escapeHTML(entry.reason || "this metric is not available here")}`;
+
+      const suggestion = entry.suggestedDims;
+      const offered = suggestion !== null && suggestion !== undefined;
+
+      discSuggest.hidden = !offered;
+
+      if (offered) {
+        discSuggest.textContent = `Drop to ${suggestion} dimension${suggestion === 1 ? "" : "s"}`;
+      }
+
+      discStart.disabled = true;
+      discReadout.ceiling.textContent = "—";
+      discCeilingNote.textContent =
+        "There is no N ceiling to report: this metric cannot be computed at this dimension count at any point count.";
+
+      return;
+    }
+
+    discMetricNote.innerHTML = `<b>${escapeHTML(entry.label)}.</b> ${escapeHTML(entry.description)}`;
+    discSuggest.hidden = true;
+    discStart.disabled = !state.ready || state.sweep !== null;
+    discReadout.ceiling.textContent = entry.maxPoints.toLocaleString("en-US");
+    discCeilingNote.innerHTML = ceilingSentence(entry);
+  }
+
+  // The sentence that keeps a moving ceiling from reading as a bug. It is the
+  // only control on either page whose range changes when a different control
+  // moves, and the two metrics move it for entirely different reasons.
+  function ceilingSentence(entry) {
+    const affordable = `<b>${entry.maxPoints.toLocaleString("en-US")}</b> points at <b>${entry.dims}</b> dimensions`;
+
+    if (entry.key === "star") {
+      return `<b>The N ceiling moves with the dimension slider.</b> Exact star discrepancy is NP-hard in the dimension, so its ceiling does not fall as dimensions are added — it collapses: ${affordable}, against a few thousand at two. Expect a short ladder, two or three rungs wide, and read the ratio rather than the slope.`;
+    }
+
+    return `<b>The N ceiling moves with the dimension slider.</b> Centred L2 costs O(N²s) and the library computes one N in a single atomic call, so it cannot be sliced the way the sweep itself is; capping N is the only lever left, and the cap has to fall as dimensions are added — ${affordable}, against a few thousand in two or three. This is a browser-responsiveness limit and not a mathematical one: the library will measure as many points as you have patience for.`;
+  }
+
+  function resetDiscSweep() {
+    state.disc = { seq: [], rnd: [], analytic: [] };
+    discRows.innerHTML = "";
+    discReadout.ratio.textContent = "—";
+    discReadout.ratio.dataset.tone = "";
+    discReadout.value.textContent = "—";
+    discReadout.random.textContent = "—";
+    discReadout.analytic.textContent = "—";
+    discVerdict.textContent =
+      "Press Start. The page opens on 39 dimensions and centred L2, which is the configuration in which this statistic says nothing.";
+    discProgressBar.style.width = "0%";
+    drawDiscChart();
+  }
+
+  function startDiscSweep() {
+    const entry = currentMetric();
+
+    if (!entry || !entry.available) {
+      setStatus(
+        (entry && entry.reason) || "that metric is unavailable here",
+        "error",
+      );
+
+      return Promise.resolve();
+    }
+
+    if (discLeap && !discLeap.admissible()) {
+      setStatus(discLeap.reason(), "error");
+
+      return Promise.resolve();
+    }
+
+    const request = {
+      metric: discMetric.value,
+      source: discSource.value,
+      randomization: discRandom.value,
+      dims: intValue(discDims, 39),
+      skip: intValue(discSkip, 64),
+      leap: discLeap ? discLeap.value() : 1,
+      seed: intValue(discSeed, 1),
+    };
+
+    resetDiscSweep();
+
+    return runSweep({
+      steps: sweepPoints(entry.maxPoints, DISC_FLOOR),
+      exportName: "discrepancy",
+      request: (n) => Object.assign({}, request, { n: n }),
+      buttons: { start: discStart, stop: discStop },
+      progress: { bar: discProgressBar, text: discProgressText },
+      status: "Measuring discrepancy…",
+      label: (result) => `N = ${result.n.toLocaleString("en-US")}`,
+      announce: (result) => `N ${result.n}, ratio ${times(result.ratio)}.`,
+      onFinish: refreshMetrics,
+      onResult: (result) => {
+        state.disc.seq.push({ x: result.n, y: result.value });
+        state.disc.rnd.push({ x: result.n, y: result.randomValue });
+
+        // Star has no closed form for the random expectation, so its third
+        // series simply stays empty and the chart draws two.
+        if (result.analytic !== null && result.analytic !== undefined) {
+          state.disc.analytic.push({ x: result.n, y: result.analytic });
+        }
+
+        appendDiscRow(result);
+        updateDiscReadout(result);
+        drawDiscChart();
+      },
+    });
+  }
+
+  function appendDiscRow(result) {
+    const row = document.createElement("tr");
+    row.innerHTML =
+      `<td>${result.n.toLocaleString("en-US")}</td>` +
+      `<td>${sci(result.value)}</td>` +
+      `<td>${sci(result.randomValue)}</td>` +
+      `<td class="${result.separates ? "win" : "lose"}">${times(result.ratio)}</td>`;
+    discRows.append(row);
+  }
+
+  // Both the tone and the sentence are Go's. Whether 1.28 counts as "still
+  // separating them" is a judgement about a measured decay, and the threshold
+  // it was picked from lives beside the measurements in discrepancy.go; a page
+  // that re-decided it here would be a second copy of that judgement, free to
+  // disagree with the constant.
+  function updateDiscReadout(result) {
+    discReadout.ratio.textContent = times(result.ratio);
+    discReadout.ratio.dataset.tone = result.separates ? "good" : "bad";
+    discReadout.value.textContent = sci(result.value);
+    discReadout.random.textContent = sci(result.randomValue);
+    discReadout.analytic.textContent =
+      result.analytic === null || result.analytic === undefined
+        ? "no closed form"
+        : sci(result.analytic);
+    discReadout.ceiling.textContent = result.maxPoints.toLocaleString("en-US");
+    discVerdict.textContent = result.verdict;
+  }
+
+  function drawDiscChart() {
+    const seqColor = Render.readVar("--halton", "#46e0c8");
+    const rndColor = Render.readVar("--random", "#ffb04a");
+    const refColor = Render.readVar("--mark", "#ff5d8f");
+
+    Render.drawLogLog(
+      discChart,
+      [
+        {
+          points: state.disc.seq,
+          color: seqColor,
+          glyph: "circle",
+          width: 1.9,
+        },
+        {
+          points: state.disc.rnd,
+          color: rndColor,
+          glyph: "cross",
+          dash: [6, 4],
+          width: 1.6,
+        },
+        {
+          points: state.disc.analytic,
+          color: refColor,
+          glyph: "none",
+          dash: [2, 4],
+          width: 1.2,
+        },
+      ],
+      {
+        // No reference slopes, deliberately. Neither statistic's theoretical
+        // rate is a power law — the classical star bound carries a (log N)^s —
+        // so a straight 1/N line here would be a decoration that read as a
+        // claim. The analytic random expectation is drawn instead, and that
+        // one is exact.
+        xLabel: "N — points drawn",
+        yLabel: "discrepancy",
+        empty: "press Start to sweep N",
+
+        // One decade, not the default two. A star sweep at four dimensions
+        // runs from 0.11 to 0.06 and the forced second decade would squash the
+        // whole picture into the top of the plot.
+        yMinSpan: 1,
+      },
+    );
+  }
+
   // --- wiring ------------------------------------------------------------
 
   function wireControls() {
@@ -1039,6 +1439,15 @@
       source: convSource,
       dims: convDims,
       onChange: resetSweep,
+    });
+
+    discLeap = leapControl({
+      input: discLeapInput,
+      button: discLeapNext,
+      note: discLeapNote,
+      source: discSource,
+      dims: discDims,
+      onChange: resetDiscSweep,
     });
 
     for (const input of [corrDims, corrCount, corrSkip]) {
@@ -1098,6 +1507,64 @@
 
     convRandom.addEventListener("change", resetSweep);
 
+    for (const input of [discDims, discSkip]) {
+      input.addEventListener("input", () => {
+        syncOutputs();
+
+        // The dimension count decides three things at once here: which leaps
+        // are admissible, whether the metric is available at all, and how many
+        // points it can afford. All three are Go's to answer.
+        if (input === discDims) {
+          discLeap.refresh();
+          refreshMetrics();
+        }
+
+        resetDiscSweep();
+      });
+    }
+
+    discMetric.addEventListener("change", () => {
+      refreshMetrics();
+      resetDiscSweep();
+    });
+
+    discSource.addEventListener("change", () => {
+      fillRandomizationSelect(discSource, discRandom);
+      applyDiscSource();
+      discLeap.refresh();
+      refreshMetrics();
+      resetDiscSweep();
+    });
+
+    discRandom.addEventListener("change", resetDiscSweep);
+    discSeed.addEventListener("change", resetDiscSweep);
+
+    // Offered, never applied silently — the leap control's rule. The number on
+    // screen has to be the number the measurement used.
+    discSuggest.addEventListener("click", () => {
+      const entry = currentMetric();
+
+      if (!entry || entry.suggestedDims === null) {
+        return;
+      }
+
+      discDims.value = String(entry.suggestedDims);
+      syncOutputs();
+      discLeap.refresh();
+      refreshMetrics();
+      resetDiscSweep();
+    });
+
+    discStart.addEventListener("click", () => {
+      startDiscSweep().catch((err) => {
+        console.error(err);
+        setStatus(`discrepancy sweep failed: ${err && err.message}`, "error");
+        stopSweep();
+      });
+    });
+
+    discStop.addEventListener("click", stopSweep);
+
     startButton.addEventListener("click", () => {
       startSweep().catch((err) => {
         console.error(err);
@@ -1117,6 +1584,7 @@
       resizeTimer = window.setTimeout(() => {
         drawHeat();
         drawChart();
+        drawDiscChart();
       }, 120);
     });
 
@@ -1124,11 +1592,13 @@
       Render.invalidateTheme();
       drawHeat();
       drawChart();
+      drawDiscChart();
     });
 
     // The first verdicts, drawn once the controls carry their defaults.
     corrLeap.refresh();
     convLeap.refresh();
+    discLeap.refresh();
   }
 
   // --- boot --------------------------------------------------------------
@@ -1230,11 +1700,17 @@
     corrRandom.disabled = false;
     convSource.disabled = false;
     convRandom.disabled = false;
+    discSource.disabled = false;
+    discRandom.disabled = false;
     startButton.disabled = false;
 
+    // discStart is NOT enabled here. Whether the selected metric can run at
+    // the dimension count on the slider is the library's answer, and
+    // refreshMetrics has already asked it.
     setStatus("WASM ready", "ready");
     refreshCorrelation();
     drawChart();
+    resetDiscSweep();
   }
 
   initWasm().catch((err) => {

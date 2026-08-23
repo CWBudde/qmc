@@ -668,8 +668,9 @@
   // and 1/sqrt(N) turn the comparison into reading which line each series runs
   // parallel to.
   //
-  // series: [{points: [{x, y}], color, glyph: "circle"|"cross", dash, width}]
+  // series: [{points: [{x, y}], color, glyph: "circle"|"cross"|"none", dash, width}]
   // refs:   [{slope, label, anchor: {x, y}, color}]
+  // opts:   {xLabel, yLabel, empty, refs, yMinSpan}
   function drawLogLog(canvas, series, options) {
     const { ctx, width, height } = fitCanvas(canvas);
     const opts = options || {};
@@ -693,7 +694,12 @@
     }
 
     const xb = logBounds(xs, 1);
-    const yb = logBounds(ys, 2);
+
+    // Two decades is right for an error curve that falls by three or four over
+    // a sweep, and wrong for a star discrepancy sweep that lives inside one:
+    // forcing the extra decade there squashes the whole picture into the top
+    // half of the plot. yMinSpan lets a caller that knows its range say so.
+    const yb = logBounds(ys, opts.yMinSpan === undefined ? 2 : opts.yMinSpan);
 
     if (!xb || !yb) {
       frame(ctx, CHART_PAD.left, CHART_PAD.top, plotW, plotH);
@@ -827,6 +833,14 @@
       // distinguishable where they cross and in greyscale.
       ctx.save();
       ctx.setLineDash([]);
+
+      if (s.glyph === "none") {
+        // A reference curve, not a measurement: no markers, because there is
+        // nothing at those x values that was actually computed.
+        ctx.restore();
+
+        continue;
+      }
 
       if (s.glyph === "cross") {
         ctx.strokeStyle = color;

@@ -122,7 +122,9 @@ Two honest caveats, both measured:
 <https://cwbudde.github.io/qmc/>. Everything it shows is computed by this library compiled
 to `js/wasm` — there is no JavaScript reimplementation of the sequence. It has two pages: a
 **Point Lab** (scatter explorer plus digit inspector) and a **Discrepancy Bench**
-(correlation heatmap plus convergence chart).
+(correlation heatmap, convergence chart, and a discrepancy sweep against a pseudorandom
+baseline — where the saturation described below is visible as three curves lying on top of
+one another).
 
 ```bash
 just run-wasm-demo
