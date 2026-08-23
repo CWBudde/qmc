@@ -87,8 +87,8 @@ var randomizations = map[string]randomizationSpec{
 	},
 	"nested": {
 		key:         "nested",
-		label:       "Nested affine scrambling",
-		description: "A fresh affine permutation per digit position, conditioned on the digits above it. At 39 dimensions it integrates two to three times more accurately than random-digit scrambling, but its worst adjacent-pair |r| over 30 seeds was 0.373 against 0.161, and it costs roughly eight times as much per point.",
+		label:       "Nested scrambling",
+		description: "A fresh uniform digit permutation per node of the scramble tree, conditioned on the digits above the digit being rewritten. At 39 dimensions it integrates about twice as accurately as random-digit scrambling — 41x against Monte Carlo over 40 seeds, against 24x — and its worst adjacent-pair |r| over 30 seeds is 0.141 against 0.161. It costs roughly forty times as much per point, which is what the uniform draw buys.",
 		option:      qmc.WithNestedScrambling,
 	},
 	"shift": {

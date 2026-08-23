@@ -38,20 +38,19 @@ The sequence menu and the randomization menu are both built from `info()`, and
 the second is rebuilt whenever the first changes, because the two do not
 overlap:
 
-| Sequence | Randomizations                                          |
-| -------- | ------------------------------------------------------- |
-| Halton   | none, random-digit scrambling, nested affine scrambling |
-| Sobol    | none, digital shift, Owen scrambling                    |
+| Sequence | Randomizations                                   |
+| -------- | ------------------------------------------------ |
+| Halton   | none, random-digit scrambling, nested scrambling |
+| Sobol    | none, digital shift, Owen scrambling             |
 
 The library's constructors refuse an option that does not apply to the
 generator being built, naming it, and this page does not duplicate that rule —
 it only offers each sequence the menu `info()` reports for it, and falls back to
 the unrandomized entry when a selection does not survive a change of sequence.
 Every menu entry's description is the option's own doc comment, unflattering
-parts included: nested affine scrambling integrates two to three times better
-than random-digit scrambling and has a worse worst-case adjacent-pair
-correlation, and Owen scrambling is nearly free on `At` and three times the cost
-on `Next`.
+parts included: nested scrambling integrates about twice as well as
+random-digit scrambling and costs about forty times as much per point, and Owen
+scrambling is nearly free on `At` and three times the cost on `Next`.
 
 Two things the page hides rather than guesses. Sobol has no prime bases — it is
 base 2 everywhere — so the base readouts blank out instead of reporting a number

@@ -755,7 +755,7 @@
       return "<b>No randomization.</b> The digits are read straight off the index, so the coordinate and the unscrambled coordinate are the same number.";
     }
 
-    // Nested affine scrambling is randomized but has no permutation table to
+    // Nested scrambling is randomized but has no permutation table to
     // show: its permutation depends on the digits above the one being
     // rewritten, so there is one per node of a tree that is derived on the fly
     // and never stored. The library returns nil for exactly this reason, and
