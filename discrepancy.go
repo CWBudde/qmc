@@ -33,12 +33,12 @@ const maxStarDims = 6
 //
 // The number is measured, not asserted. BenchmarkStarDiscrepancy walks the two
 // shapes that bracket the tree: 1024 points in 2 dimensions is wide and
-// shallow at 5.26e5 leaves and takes 15.3 ms, and 200 points in 4 dimensions is
-// narrow and deep at 7.01e7 leaves and takes 2.02 s. Those are 29.1 and 28.8
+// shallow at 5.26e5 leaves and takes 14.6 ms, and 160 points in 4 dimensions is
+// narrow and deep at 2.91e7 leaves and takes 764 ms. Those are 27.7 and 26.3
 // nanoseconds per leaf — the cost per leaf is flat across shapes, which is what
 // makes a leaf count a usable proxy for wall clock at all. 3e7 leaves is
-// therefore about 0.87 seconds on the machine this was measured on: a wait, not
-// a hang, which is the line this constant is drawing.
+// therefore about 0.8 seconds on the machine this was measured on (a 12th-gen
+// mobile i7): a wait, not a hang, which is the line this constant is drawing.
 //
 // Raising it is a decision about how long a caller should be made to wait, not
 // a way to reach a larger problem: the cost is N^s/s!, so ten times the budget

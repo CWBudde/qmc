@@ -142,6 +142,92 @@ copies, so nothing a caller does to the returned slice can perturb the sequence.
 fmt.Printf("dimension 38 uses base %d\n", g.Bases()[38])
 ```
 
+## Discrepancy
+
+Two ways to measure how evenly a point set fills the cube, and they fail in opposite
+directions: one is exact and cannot be computed above a handful of dimensions, the other is
+cheap in any dimension and stops meaning anything in high ones.
+
+`Draw(seq, n)` collects `n` points into a matrix for either of them. It is built on `AtInto`,
+so it leaves the generator's cursor where it was and the same matrix drawn twice is the same
+matrix; the rows alias one backing array, which is two allocations and the difference between
+a cache-resident inner loop and a scattered one.
+
+```go
+g, err := qmc.NewHalton(3, qmc.WithSkip(64), qmc.WithScrambling(seed))
+if err != nil {
+    return err
+}
+
+d, err := qmc.StarDiscrepancy(qmc.Draw(g, 512))
+if err != nil {
+    return err // above 6 dimensions, or past the work budget, this is where you find out
+}
+
+fmt.Printf("D*_512 = %.6f\n", d)
+```
+
+`StarDiscrepancy` returns the exact `D*_N` — the largest relative error any origin-anchored
+box makes about how much of the cube it covers, which is the quantity the Koksma-Hlawka bound
+multiplies by an integrand's variation. It is a supremum, not a sample and not a lower bound.
+Scrambled Halton against `math/rand`, ten seeds each; lower is better:
+
+| s   | N   | scrambled Halton | `math/rand` | ratio      |
+| --- | --- | ---------------- | ----------- | ---------- |
+| 1   | 512 | 0.001953         | 0.039848    | **20.40x** |
+| 2   | 64  | 0.045907         | 0.148041    | 3.22x      |
+| 2   | 512 | 0.009727         | 0.053237    | **5.47x**  |
+| 3   | 512 | 0.017966         | 0.069954    | 3.89x      |
+| 4   | 160 | 0.055348         | 0.128141    | 2.32x      |
+
+The gaps in that table are the cost. Restricting each dimension's box corners to the points'
+own coordinates is exact and still leaves C(N+s,s) ≈ N^s/s! boxes to walk, and computing the
+exact star discrepancy is NP-hard in the dimension (Gnewuch, Srivastav & Winker, _Journal of
+Complexity_ 25(2), 2009) — so the ceiling is arithmetic, not an unfinished optimisation.
+`StarDiscrepancy` therefore **refuses** above 6 dimensions or above a budget of 3e7 search-tree
+leaves, and returns an error rather than a partial answer or a hang: at a flat ~27 ns per leaf
+the budget is about 0.8 seconds, and a caller cannot tell a hang apart from a slow machine.
+Affordable point counts are 7744 at 2 dimensions, 562 at 3, 161 at 4, 78 at 5 and 49 at 6,
+which is why the s=4 row above stops at 160. Benchmarks: 14.6 ms at 2 dimensions and N=1024,
+764 ms at 4 dimensions and N=160.
+
+`CenteredL2Discrepancy` is the alternative above that. It averages over the same family of
+boxes instead of taking a supremum, has Hickernell's closed form at O(N²s) in any dimension,
+and returns the square root — 24.5 ms at 39 dimensions and N=1024, 484 ms at N=4096.
+
+**Read this before believing a CD2 number.** For N independent uniform points the expectation
+is exactly `E[CD2²] = ((5/4)^s - (13/12)^s)/N`, and it grows fast enough with _s_ that a good
+point set and a random one converge onto it together. Measured at N=1024 over ten seeds,
+against that analytic value:
+
+| s   | CD2 Halton | CD2 random | analytic | random ÷ Halton | diagonal share |
+| --- | ---------- | ---------- | -------- | --------------- | -------------- |
+| 2   | 0.001370   | 0.017054   | 0.019488 | **12.45x**      | 402%           |
+| 5   | 0.006376   | 0.040198   | 0.039026 | 6.30x           | 196%           |
+| 10  | 0.033736   | 0.080573   | 0.083190 | 2.39x           | 131%           |
+| 15  | 0.097509   | 0.159105   | 0.156561 | 1.63x           | 113%           |
+| 20  | 0.220000   | 0.280846   | 0.282599 | 1.28x           | 106%           |
+| 30  | 0.818767   | 0.885773   | 0.882090 | 1.08x           | 101%           |
+| 39  | 2.365729   | 2.404613   | 2.419777 | **1.02x**       | 100.4%         |
+
+The last row is not a verdict on the sequence, and taking it as one would contradict the
+integration table above. Over the very same 39-dimensional 1024-point sets, RMS integration
+error is 8.06e-04 for QMC against 1.32e-02 for Monte Carlo — **16.4x**. The statistic, not the
+point set, is what has stopped working.
+
+The last column says why. The `i = j` diagonal terms of the double sum account for 100.4% of
+the total at 39 dimensions: the statistic has become entirely its own diagonal, and the
+diagonal depends only on each coordinate's marginal spread, not at all on how the points sit
+relative to one another. Everything CD2 was meant to measure lives in a residual smaller than
+the rounding of the terms around it.
+
+It is a decay and not a cliff — 12.5x at 2 dimensions, 2.4x at 10, 1.28x at 20, 1.02x at 39 —
+so there is no honest dimension at which to refuse, which is why this one documents a caveat
+where `StarDiscrepancy` returns an error. The self-check: compare your number against
+`sqrt(((5/4)^s - (13/12)^s)/N)`. If it is not several times below that, the statistic is
+telling you about your marginals and nothing else, and you want an integration test or
+`StarDiscrepancy` in a projection instead.
+
 ## Use scrambling above ~20 dimensions
 
 The Halton sequence places its _d_-th coordinate by the radical inverse in base _p_d_, the

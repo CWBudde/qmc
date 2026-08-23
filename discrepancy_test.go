@@ -590,14 +590,20 @@ func randomPoints(rng *rand.Rand, n, s int) [][]float64 {
 // TestQMCBeatsPseudorandomOnStarDiscrepancy is the positive control for the
 // star walk: the statistic has to see the property the package exists for.
 //
-// The asserted factor is 1.5, far below the measured 2.5-3x, for the same
-// reason integration_test.go asserts 5x against a measured 20x — an unlucky
+// The asserted factor is 1.5, far below the measured 3.9x, for the same reason
+// integration_test.go asserts 5x against a measured 16x — an unlucky
 // scrambling seed must not turn a working package red.
+//
+// Three seeds rather than ten: this shape is 2.3e7 leaves per call, which is
+// most of a second each and roughly seventeen times that under -race, and it
+// is by a wide margin the most expensive test in the package. The measured
+// spread across seeds is a few percent against an asserted margin of more than
+// twofold, so the extra seeds would buy nothing but wall clock.
 func TestQMCBeatsPseudorandomOnStarDiscrepancy(t *testing.T) {
 	const (
 		dims      = 3
 		n         = 512
-		streams   = 5
+		streams   = 3
 		wantRatio = 1.5
 	)
 

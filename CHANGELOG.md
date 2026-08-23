@@ -9,6 +9,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `StarDiscrepancy(points)`, the exact `D*_N` — a supremum over origin-anchored
+  boxes, not a sample of them and not a lower bound, so it is the number the
+  Koksma-Hlawka bound actually multiplies. Measured over scrambled Halton
+  against `math/rand`, ten seeds each: 20.40x better at 1 dimension and N=512,
+  5.47x at 2 dimensions and N=512, 2.32x at 4 dimensions and N=160. Exactness
+  is the whole cost. Restricting each dimension's box corners to the surviving
+  points' own coordinates is exact and still leaves C(N+s,s) ≈ N^s/s! leaves to
+  walk, and the problem is NP-hard in the dimension (Gnewuch, Srivastav &
+  Winker 2009), so this **refuses** above 6 dimensions or above a budget of 3e7
+  leaves rather than returning a partial answer. The budget is measured, not
+  asserted: the cost per leaf is flat across tree shapes at about 27 ns (27.7 at
+  2 dimensions, 26.3 at 4), which makes 3e7 leaves roughly 0.8 seconds — a wait
+  rather than a hang, which is the line it draws, because a caller cannot tell a
+  hang apart from a slow machine. Affordable point counts are 7744 at 2
+  dimensions, 562 at 3, 161 at 4, 78 at 5 and 49 at 6.
+
+- `CenteredL2Discrepancy(points)`, Hickernell's CD2 in closed form at O(N²s) in
+  any dimension — 24.5 ms at 39 dimensions and N=1024, 484 ms at N=4096 — and
+  returning the square root, which is what the literature tabulates. It is the
+  option above `StarDiscrepancy`'s ceiling, and it stops being informative
+  before anyone reaches for it there. For N uniform points the expectation is
+  exactly `((5/4)^s - (13/12)^s)/N`, and measured at N=1024 over ten seeds the
+  random-to-Halton ratio decays with the dimension count: 12.45x at 2
+  dimensions, 2.39x at 10, 1.28x at 20, 1.02x at 39, where scrambled Halton
+  scores 2.366 against random's 2.405 and the analytic 2.420. That last row is a
+  fact about the statistic and not about the points: over the very same sets,
+  RMS integration error is 8.06e-04 against Monte Carlo's 1.32e-02, a factor of
+  16.4. The mechanism is in the arithmetic — at 39 dimensions the `i = j`
+  diagonal terms alone are 100.4% of the total, and the diagonal depends only on
+  each coordinate's marginal spread, not on how the points sit relative to one
+  another. Because it is a decay and not a cliff there is no honest dimension at
+  which to refuse, so this documents the caveat where `StarDiscrepancy` returns
+  an error, with the self-check attached: if your number is not several times
+  below `sqrt(((5/4)^s - (13/12)^s)/N)`, it is telling you about your marginals
+  and nothing else.
+
+- `Draw(seq, n)`, the bulk point matrix both statistics take. Built on `AtInto`
+  rather than `Next`, so it leaves the caller's cursor where it was and the same
+  matrix drawn twice is the same matrix. The rows alias one backing array and
+  are capped at their own length: two allocations, which is what
+  `CenteredL2Discrepancy` walking the matrix N²/2 times needs from a cache.
+
 - `WithLeap(n)`, which takes every n-th point of the underlying sequence: point
   i becomes raw index `skip + 1 + i*n`. `WithLeap(1)` is bit-identical to an
   unleaped generator, so nothing recorded against an earlier version changes.

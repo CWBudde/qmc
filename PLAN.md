@@ -182,18 +182,74 @@ Two things worth knowing before anyone reaches for it:
   entirely — 301 ns/op against 46.0 — and forfeits the (t,m,s)-net balance property at any
   leap, so an odd leap is legal there and still measures 8.8e-03 against 1.8e-04 unleaped.
 
-### Discrepancy measurement
+### Discrepancy measurement — done
 
-Star discrepancy is the textbook quantity. Note that the centred L2 discrepancy saturates
-badly in high dimensions — measured at 39 dimensions and 1024 points it scores scrambled
-Halton at 2.38 against 2.40 for pure random, which says nothing useful, while integration
-error over the same points differs by 18x. Any discrepancy API should say where it stops
-being informative.
+- [x] `StarDiscrepancy(points)` is the exact `D*_N`, a supremum over origin-anchored boxes
+      rather than a sample of them. Both halves are enumerated over the same grid — the
+      overshoot with the corner counted strictly, the undershoot with it counted inclusively
+      — because taking only one returns a lower bound that happens to be right in exactly the
+      small cases anyone would hand-check, which is why the test checks it against a
+      brute-force enumeration instead. Measured against `math/rand` over ten seeds each,
+      scrambled Halton scores 20.40x better at 1 dimension and N=512, 5.47x at 2 dimensions
+      and N=512, 3.89x at 3 and N=512, 2.32x at 4 and N=160. The ratio decays with the
+      dimension count and improves with the point count, which is the shape the theory
+      predicts.
+- [x] **The ceiling is a refusal, and it sees N as well as s.** Restricting each dimension's
+      candidates to the surviving points' own coordinates is exact and turns the naive
+      (N+1)^s grid into C(N+s,s) ≈ N^s/s! leaves, but the problem is NP-hard in the dimension
+      (Gnewuch, Srivastav & Winker 2009), so no amount of tuning moves the limit far. A
+      dimension ceiling alone would not have been a gate — 5 dimensions and 3000 points is
+      inside it and is 2.0e15 leaves — so there is a work budget of 3e7 leaves beside it. The
+      budget is calibrated, not asserted: `BenchmarkStarDiscrepancy` walks the two shapes that
+      bracket the tree, 1024 points in 2 dimensions (wide and shallow, 5.26e5 leaves, 14.6 ms)
+      and 160 points in 4 dimensions (narrow and deep, 2.91e7 leaves, 764 ms). Those are 27.7
+      and 26.3 ns per leaf — flat across shapes, which is the only thing that makes a leaf
+      count a usable proxy for wall clock — so 3e7 leaves is about 0.8 seconds. That is the
+      line: a wait, not a hang, because a caller cannot tell a hang apart from a slow machine.
+      Affordable point counts are 7744 at 2 dimensions, 562 at 3, 161 at 4, 78 at 5 and 49 at
+      6, and the refusal names them, names which of the two gates tripped, and points at
+      `CenteredL2Discrepancy` **with** its caveat attached rather than bare.
+- [x] `CenteredL2Discrepancy(points)` is Hickernell's CD2 in closed form, O(N²s) in any
+      dimension, returning the square root: 24.5 ms at 39 dimensions and N=1024, 484 ms at
+      N=4096. The two easy mistakes in the construction — anchoring the boxes at the cube's
+      centre rather than at the nearest corner, and summing over the full-dimensional
+      projection rather than all 2^s - 1 of them — both leave a plausible-looking number, so
+      the test integrates the definition numerically rather than trusting the formula.
+- [x] The saturation is documented at the call site, as this section asked, and it is
+      **provable rather than merely observed**. For N i.i.d. uniform points
+      `E[CD2²] = ((5/4)^s - (13/12)^s)/N`, which is 2.4198 at 39 dimensions and N=1024 and
+      matches the measured random figure of 2.4046 to 0.6%.
 
-- [ ] `Discrepancy(points)` for low dimensions (exact star discrepancy is expensive above
-      a handful of dimensions)
-- [ ] An `L2` centred discrepancy, which is cheap in any dimension, with its
-      high-dimensional saturation documented at the call site
+This plan's uncommitted "2.38 against 2.40" measures here as **2.366 against 2.405** — same
+conclusion, a slightly wider gap — and its claimed 18x integration contrast is **16.4x** at
+N=1024 (QMC RMS 8.06e-04 against Monte Carlo's 1.32e-02). Two things worth knowing before
+anyone quotes a CD2 number:
+
+- **The statistic becomes its own diagonal.** At 39 dimensions the `i = j` terms of the double
+  sum account for 100.4% of the expectation on their own, and the diagonal depends only on
+  each coordinate's marginal spread, not at all on how the points sit relative to one another.
+  Everything CD2 was meant to measure lives in the residual. That is the mechanism behind the
+  2.37-against-2.40 row, and it is why that row is a fact about the statistic and not about
+  the point set — the integration error over the very same points differs by 16.4x.
+- **It is a decay, not a cliff**, which is why the function returns a number where
+  `StarDiscrepancy` returns an error. Measured at N=1024 over ten seeds, the random-to-Halton
+  ratio runs 12.45x at 2 dimensions, 6.30x at 5, 2.39x at 10, 1.63x at 15, 1.28x at 20, 1.08x
+  at 30 and 1.02x at 39, with the diagonal's share of the expectation going 402%, 196%, 131%,
+  113%, 106%, 101%, 100.4% alongside it. Informative below roughly ten dimensions, weak by
+  twenty, dead by thirty, and no dimension at which a refusal would be honest. The caller gets
+  a self-check instead: compare the number against `sqrt(((5/4)^s - (13/12)^s)/N)`, and if it
+  is not several times below that, use an integration test or `StarDiscrepancy` in a
+  projection.
+
+Still open:
+
+- Neither statistic is exposed by the WebAssembly demo. The Discrepancy Bench panel is named
+  for the quantity and shows correlation and convergence instead. Both are affordable in the
+  browser at the sizes the panel already draws, so this is unfinished rather than refused.
+- There is no lower-bound or randomized estimator for the star discrepancy above 6 dimensions,
+  which is the only way that quantity is reachable at the dimension counts this package is
+  aimed at. It would be an approximation with its own error to characterise, and nothing in
+  the package needs it yet.
 
 ## Testing
 

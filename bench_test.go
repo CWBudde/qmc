@@ -181,10 +181,15 @@ func BenchmarkAtIntoLeaped(b *testing.B) {
 // that division is done; see the constant's comment for the arithmetic.
 //
 // The two shapes are chosen to bracket the tree: 1024 points in 2 dimensions
-// is wide and shallow (5.3e5 leaves, dominated by the per-node sort), 200
-// points in 4 dimensions is narrow and deep (7.0e7 leaves, dominated by the
-// leaves themselves). Per-leaf cost differs by an order of magnitude between
-// them, which is why the budget is set from the expensive end.
+// is wide and shallow (5.26e5 leaves, dominated by the per-node sort), 160
+// points in 4 dimensions is narrow and deep (2.91e7 leaves, dominated by the
+// leaves themselves). They come out at 27.7 and 26.3 nanoseconds per leaf, so
+// the per-leaf cost is flat across shapes — which is the fact that makes a
+// leaf count usable as a wall-clock budget at all, and would stop being true
+// if the pruner or the sort were changed.
+//
+// The 4-dimensional shape sits just under starBoxBudget on purpose. Raise it
+// much and the benchmark trips the refusal it is calibrating.
 func BenchmarkStarDiscrepancy(b *testing.B) {
 	for _, c := range []struct {
 		name string
@@ -192,7 +197,7 @@ func BenchmarkStarDiscrepancy(b *testing.B) {
 		n    int
 	}{
 		{"2d-1024", 2, 1024},
-		{"4d-200", 4, 200},
+		{"4d-160", 4, 160},
 	} {
 		b.Run(c.name, func(b *testing.B) {
 			g, err := qmc.NewHalton(c.dims, qmc.WithSkip(64), qmc.WithScrambling(1))
