@@ -1,0 +1,149 @@
+package qmc_test
+
+import (
+	"fmt"
+
+	"github.com/cwbudde/qmc"
+)
+
+// These examples are the package's documentation on pkg.go.dev, which the
+// README links to with a badge. They are also tests: the `// Output:` blocks
+// are compared against what the code actually prints, so an example that
+// drifts out of date fails the build instead of quietly teaching the wrong
+// API. That is the reason to prefer an Example over a code block in a doc
+// comment.
+//
+// They live in package qmc_test, not qmc, so they can only reach the exported
+// API — an example that compiled against an unexported helper would not
+// compile for the reader copying it out.
+//
+// Every printed value goes through fmt.Printf with explicit precision. Raw
+// float64s would make these outputs hostage to the last bit of a formatting
+// change, and four decimals is already more than enough to show that the
+// coordinates are where they should be.
+
+// Draw points from a 5-dimensional sequence.
+//
+// The first point of an unscrambled, unskipped Halton sequence is the classic
+// one: 1/2, 1/3, 1/5, 1/7, 1/11 — the reciprocal of each dimension's prime
+// base. Index 0 of the raw sequence is the all-zeros origin and is never
+// returned, which is why counting starts here.
+func ExampleNewHalton() {
+	g, err := qmc.NewHalton(5)
+	if err != nil {
+		panic(err)
+	}
+
+	for i := 0; i < 3; i++ {
+		p := g.Next()
+		fmt.Printf("point %d: %.4f %.4f %.4f %.4f %.4f\n", i, p[0], p[1], p[2], p[3], p[4])
+	}
+	// Output:
+	// point 0: 0.5000 0.3333 0.2000 0.1429 0.0909
+	// point 1: 0.2500 0.6667 0.4000 0.2857 0.1818
+	// point 2: 0.7500 0.1111 0.6000 0.4286 0.2727
+}
+
+// At is the reproducible entry point: it depends only on the index and the
+// generator's configuration, never on how many points have been drawn. That is
+// what lets a worker pool claim indices from a shared counter and still
+// reconstruct exactly which point produced which result — the property that
+// makes a failed run re-runnable.
+func ExampleHalton_At() {
+	g, err := qmc.NewHalton(3)
+	if err != nil {
+		panic(err)
+	}
+
+	// Draw some points through the cursor first; At must not care.
+	g.Next()
+	g.Next()
+
+	a := g.At(7)
+	b := g.At(7)
+
+	fmt.Printf("At(7)      = %.4f %.4f %.4f\n", a[0], a[1], a[2])
+	fmt.Printf("again      = %.4f %.4f %.4f\n", b[0], b[1], b[2])
+	fmt.Printf("identical  = %v\n", a[0] == b[0] && a[1] == b[1] && a[2] == b[2])
+	// Output:
+	// At(7)      = 0.0625 0.8889 0.6400
+	// again      = 0.0625 0.8889 0.6400
+	// identical  = true
+}
+
+// WithSkip discards a burn-in. The first few Halton points sit near a corner
+// of the box in every large-base coordinate, so a few dozen points of burn-in
+// is the standard remedy.
+func ExampleWithSkip() {
+	plain, err := qmc.NewHalton(3)
+	if err != nil {
+		panic(err)
+	}
+
+	skipped, err := qmc.NewHalton(3, qmc.WithSkip(64))
+	if err != nil {
+		panic(err)
+	}
+
+	p := plain.At(64)
+	s := skipped.At(0)
+
+	fmt.Printf("plain.At(64)   = %.4f %.4f %.4f\n", p[0], p[1], p[2])
+	fmt.Printf("skipped.At(0)  = %.4f %.4f %.4f\n", s[0], s[1], s[2])
+	// Output:
+	// plain.At(64)   = 0.5078 0.7284 0.1360
+	// skipped.At(0)  = 0.5078 0.7284 0.1360
+}
+
+// AtInto writes into a caller-owned buffer and allocates nothing, which is
+// what an optimizer's inner loop wants. The buffer must have room for Dims()
+// coordinates; a shorter one panics rather than being silently truncated.
+func ExampleHalton_AtInto() {
+	g, err := qmc.NewHalton(4, qmc.WithSkip(64))
+	if err != nil {
+		panic(err)
+	}
+
+	point := make([]float64, g.Dims())
+	for i := 0; i < 2; i++ {
+		g.AtInto(i, point)
+		fmt.Printf("%d: %.4f %.4f %.4f %.4f\n", i, point[0], point[1], point[2], point[3])
+	}
+	// Output:
+	// 0: 0.5078 0.7284 0.1360 0.3294
+	// 1: 0.2578 0.1728 0.3360 0.4723
+}
+
+// Bases reports the prime base behind each dimension. It is the number that
+// explains a dimension's behaviour, which is why a UI drawing the sequence
+// wants it: dimension 8 uses base 23, so unscrambled it needs 23 points before
+// it stops looking like a ramp.
+func ExampleHalton_Bases() {
+	g, err := qmc.NewHalton(10)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(g.Bases())
+	// Output:
+	// [2 3 5 7 11 13 17 19 23 29]
+}
+
+// Scrambling is what makes the sequence usable above roughly twenty
+// dimensions. It keeps the low-discrepancy structure but breaks the lockstep
+// ramps of the high dimensions, at the cost of making the points depend on a
+// seed — so fix the seed and the run is reproducible again.
+func ExampleWithScrambling() {
+	for _, seed := range []uint64{1, 2} {
+		g, err := qmc.NewHalton(39, qmc.WithSkip(64), qmc.WithScrambling(seed))
+		if err != nil {
+			panic(err)
+		}
+
+		p := g.At(0)
+		fmt.Printf("seed %d: dim 0 = %.4f, dim 38 = %.4f\n", seed, p[0], p[38])
+	}
+	// Output:
+	// seed 1: dim 0 = 0.5078, dim 38 = 0.1334
+	// seed 2: dim 0 = 0.4922, dim 38 = 0.2366
+}
