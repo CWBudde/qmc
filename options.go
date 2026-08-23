@@ -7,10 +7,62 @@ package qmc
 // place.
 type Option func(*settings)
 
+// randomization names the scheme that turns a deterministic sequence into a
+// randomized one (RQMC).
+//
+// It is a single field rather than one bool per scheme because the schemes are
+// mutually exclusive: a generator has one randomization or none. Modelling that
+// as four independent bools would make "scrambled and digitally shifted" a
+// representable state that no constructor knows what to do with, and the usual
+// outcome of a representable-but-meaningless state is that some branch silently
+// picks a winner. Here the last option applied wins, which is what the
+// functional-options ordering already promises, and a scheme that does not
+// apply to the generator being built is an error at construction rather than
+// something quietly ignored.
+type randomization uint8
+
+const (
+	randomizeNone randomization = iota
+
+	// randomizeDigitPermutation is Halton's random-digit scrambling: one
+	// permutation of the digit alphabet per dimension. See scramble.go.
+	randomizeDigitPermutation
+
+	// randomizeNested is Halton's nested affine digit scrambling, which
+	// conditions each digit's permutation on the digits above it. See nested.go.
+	randomizeNested
+
+	// randomizeDigitalShift is Sobol's digital shift: one random word per
+	// dimension, XORed into every point. See sobol.go.
+	randomizeDigitalShift
+
+	// randomizeOwen is Sobol's hash-based Owen scrambling. See owen.go.
+	randomizeOwen
+)
+
+// String reports the option a caller wrote, so a constructor rejecting a
+// randomization it does not implement can name it back to them.
+func (r randomization) String() string {
+	switch r {
+	case randomizeNone:
+		return "none"
+	case randomizeDigitPermutation:
+		return "WithScrambling"
+	case randomizeNested:
+		return "WithNestedScrambling"
+	case randomizeDigitalShift:
+		return "WithDigitalShift"
+	case randomizeOwen:
+		return "WithOwenScrambling"
+	default:
+		return "unknown"
+	}
+}
+
 type settings struct {
-	skip     int
-	scramble bool
-	seed     uint64
+	skip      int
+	randomize randomization
+	seed      uint64
 }
 
 // WithSkip discards the first n points of the underlying sequence (a burn-in).
@@ -42,7 +94,7 @@ func WithSkip(n int) Option {
 // not worth much. Fix the seed and the run is reproducible again.
 func WithScrambling(seed uint64) Option {
 	return func(s *settings) {
-		s.scramble = true
+		s.randomize = randomizeDigitPermutation
 		s.seed = seed
 	}
 }

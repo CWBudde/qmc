@@ -60,12 +60,26 @@ func NewHalton(dims int, opts ...Option) (*Halton, error) {
 		opt(&cfg)
 	}
 
+	// A randomization is rejected here rather than ignored. The schemes are
+	// not interchangeable — a digital shift is defined on base-2 digits and
+	// this generator has no base-2 digits outside dimension 0 — so an option
+	// that does not apply is a caller mistake, and the two ways to absorb a
+	// caller mistake are both worse than saying so: silently dropping it hands
+	// back an unrandomized sequence under a name that promises randomization,
+	// and quietly substituting the nearest scheme gives them points that are
+	// reproducible but not the ones they asked for.
+	switch cfg.randomize {
+	case randomizeNone, randomizeDigitPermutation:
+	default:
+		return nil, fmt.Errorf("qmc: %s does not apply to a Halton generator", cfg.randomize)
+	}
+
 	h := &Halton{
 		dims:  dims,
 		bases: primesUpTo(dims),
 		skip:  cfg.skip,
 	}
-	if cfg.scramble {
+	if cfg.randomize == randomizeDigitPermutation {
 		h.perms = make([][]int32, dims)
 		for d, base := range h.bases {
 			h.perms[d] = newPermutation(base, cfg.seed, d)
