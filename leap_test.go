@@ -608,7 +608,7 @@ func TestLeapingBreaksHighDimensionalCorrelation(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		worst, pair := worstAdjacentCorrelation(draw(g, corrPoints))
+		worst, pair := worstAdjacentCorrelation(Draw(g, corrPoints))
 		worsts = append(worsts, worst)
 
 		if worst > worstOverall {

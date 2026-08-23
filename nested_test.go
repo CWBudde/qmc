@@ -641,7 +641,7 @@ func TestNestedCorrelationOverThirtySeeds(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			w, pair := worstAdjacentCorrelation(draw(g, corrPoints))
+			w, pair := worstAdjacentCorrelation(Draw(g, corrPoints))
 			if w > worst {
 				worst, at = w, pair
 			}

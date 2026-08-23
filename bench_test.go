@@ -1,6 +1,7 @@
 package qmc_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/cwbudde/qmc"
@@ -167,5 +168,101 @@ func BenchmarkAtIntoLeaped(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		g.AtInto(i, dst)
 		sink += dst[0]
+	}
+}
+
+// Discrepancy benchmarks.
+//
+// These are not inner-loop calls — a caller measures a point set once — but
+// they are the only benchmarks in this package whose numbers become part of
+// the API. starBoxBudget is a wall-clock promise expressed in leaf counts, and
+// the only honest way to set it is to divide a measured time by the
+// C(N+s,s) leaves that shape actually has. BenchmarkStarDiscrepancy is where
+// that division is done; see the constant's comment for the arithmetic.
+//
+// The two shapes are chosen to bracket the tree: 1024 points in 2 dimensions
+// is wide and shallow (5.3e5 leaves, dominated by the per-node sort), 200
+// points in 4 dimensions is narrow and deep (7.0e7 leaves, dominated by the
+// leaves themselves). Per-leaf cost differs by an order of magnitude between
+// them, which is why the budget is set from the expensive end.
+func BenchmarkStarDiscrepancy(b *testing.B) {
+	for _, c := range []struct {
+		name string
+		dims int
+		n    int
+	}{
+		{"2d-1024", 2, 1024},
+		{"4d-200", 4, 200},
+	} {
+		b.Run(c.name, func(b *testing.B) {
+			g, err := qmc.NewHalton(c.dims, qmc.WithSkip(64), qmc.WithScrambling(1))
+			if err != nil {
+				b.Fatal(err)
+			}
+
+			pts := qmc.Draw(g, c.n)
+
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for i := 0; i < b.N; i++ {
+				d, err := qmc.StarDiscrepancy(pts)
+				if err != nil {
+					b.Fatal(err)
+				}
+
+				sink += d
+			}
+		})
+	}
+}
+
+// BenchmarkCenteredL2Discrepancy runs at the package's design point, where the
+// statistic is O(N^2 s) and says nothing (see CenteredL2Discrepancy's
+// saturation caveat). The quadratic is the reason the wasm demo has to slice
+// this work: quadrupling n from 1024 to 4096 costs sixteen times as much, and
+// there is no way to subdivide a single call.
+func BenchmarkCenteredL2Discrepancy(b *testing.B) {
+	for _, n := range []int{1024, 4096} {
+		b.Run(fmt.Sprintf("39d-%d", n), func(b *testing.B) {
+			g, err := qmc.NewHalton(benchDims, qmc.WithSkip(64), qmc.WithScrambling(1))
+			if err != nil {
+				b.Fatal(err)
+			}
+
+			pts := qmc.Draw(g, n)
+
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for i := 0; i < b.N; i++ {
+				d, err := qmc.CenteredL2Discrepancy(pts)
+				if err != nil {
+					b.Fatal(err)
+				}
+
+				sink += d
+			}
+		})
+	}
+}
+
+// BenchmarkDraw pins the allocation count that Draw's doc comment promises:
+// two, one for the flat backing array and one for the row headers, whatever n
+// is. A refactor that gave each row its own array would still be correct and
+// would still pass every other test, and this is the only place it would show
+// up.
+func BenchmarkDraw(b *testing.B) {
+	g, err := qmc.NewHalton(benchDims, qmc.WithSkip(64), qmc.WithScrambling(1))
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		pts := qmc.Draw(g, 4096)
+		sink += pts[0][0]
 	}
 }

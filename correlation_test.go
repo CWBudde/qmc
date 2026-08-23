@@ -33,7 +33,7 @@ func TestScramblingBreaksHighDimensionalCorrelation(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		pts := draw(g, corrPoints)
+		pts := Draw(g, corrPoints)
 
 		worst, pair := worstAdjacentCorrelation(pts)
 		if worst > tolerance {
@@ -57,7 +57,7 @@ func TestUnscrambledStillShowsTheDefect(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	worst, pair := worstAdjacentCorrelation(draw(g, corrPoints))
+	worst, pair := worstAdjacentCorrelation(Draw(g, corrPoints))
 	if worst < 0.5 {
 		t.Fatalf("unscrambled worst adjacent-pair |corr| = %.4f at dims %d/%d; "+
 			"expected the known defect (~0.81), so the scrambled comparison no longer means anything",
@@ -65,15 +65,6 @@ func TestUnscrambledStillShowsTheDefect(t *testing.T) {
 	}
 
 	t.Logf("unscrambled: worst adjacent-pair |corr| = %.4f at dims %d/%d", worst, pair, pair+1)
-}
-
-func draw(g *Halton, n int) [][]float64 {
-	out := make([][]float64, n)
-	for i := range out {
-		out[i] = g.At(i)
-	}
-
-	return out
 }
 
 // worstAdjacentCorrelation returns the largest |Pearson r| over every pair of
