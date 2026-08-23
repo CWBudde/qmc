@@ -53,15 +53,27 @@ func jsDigits(opts js.Value) any {
 
 	digits := baseDigits(rawIndex, base)
 
-	var permuted, permutation []any
+	// Declared as any rather than []any so that an unscrambled generator sends
+	// JavaScript a null instead of an empty array.
+	//
+	// js.ValueOf converts a []any through arrayConstructor.New(len(x)), and a
+	// nil slice has length zero, so a typed nil arrives in the page as [] — an
+	// object, and therefore truthy. The page tests `if (!d.permutation)` to
+	// decide whether to describe the digits as scrambled, so a typed nil made
+	// the digit inspector announce "Scrambling is on" with an empty permutation
+	// on the demo's default view, which is the one with scrambling off. Only an
+	// untyped nil reaches ValueOf's nil case and becomes null.
+	var permuted, permutation any
 
 	if perm := generator.Permutation(dim); perm != nil {
 		permutation = int32sToJS(perm)
 
-		permuted = make([]any, len(digits))
+		mapped := make([]any, len(digits))
 		for i, digit := range digits {
-			permuted[i] = int(perm[digit])
+			mapped[i] = int(perm[digit])
 		}
+
+		permuted = mapped
 	}
 
 	return map[string]any{
