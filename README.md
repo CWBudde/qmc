@@ -6,6 +6,10 @@
 Quasi-Monte Carlo sequences for Go: deterministic, low-discrepancy point sets that fill a
 unit hypercube more evenly than independent random sampling does.
 
+**[Try it in your browser →](https://cwbudde.github.io/qmc/)** — watch a 39-dimensional
+Halton sequence collapse onto a diagonal ramp, and one toggle dissolve it, with the library
+itself compiled to WebAssembly.
+
 No dependencies.
 
 ```bash
