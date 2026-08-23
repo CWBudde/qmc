@@ -40,6 +40,9 @@
   const countOut = el("countOut");
   const skipInput = el("skip");
   const skipOut = el("skipOut");
+  const leapInput = el("leap");
+  const leapNextButton = el("leapNext");
+  const leapNote = el("leapNote");
   const axisXSelect = el("axisX");
   const axisYSelect = el("axisY");
   const seedInput = el("seed");
@@ -57,6 +60,7 @@
     baseYRow: el("tBaseYRow"),
     points: el("tPoints"),
     skip: el("tSkip"),
+    leap: el("tLeap"),
     seed: el("tSeed"),
     randomization: el("tRandomization"),
   };
@@ -92,6 +96,11 @@
     selected: -1,
     lastAnnounce: 0,
     pending: false,
+
+    // The last answer from the leaps() export. Cached because refresh() has to
+    // consult it before every draw and the answer only changes when the
+    // sequence, the dimension count or the leap does.
+    leapCheck: null,
   };
 
   // Reusable views over JS-owned ArrayBuffers, one set per point cloud so the
@@ -228,6 +237,7 @@
       dims: intValue(dimsInput, 39),
       count: intValue(countInput, 600),
       skip: intValue(skipInput, 64),
+      leap: intValue(leapInput, 1),
       seed: intValue(seedInput, 1),
       axisX: intValue(axisXSelect, 0),
       axisY: intValue(axisYSelect, 1),
@@ -409,12 +419,15 @@
     countInput.max = String(info.maxPoints);
     skipInput.min = "0";
     skipInput.max = String(info.maxSkip);
+    leapInput.min = "1";
+    leapInput.max = String(info.maxLeap);
     digitIndexInput.min = "0";
     digitIndexInput.max = String(info.maxIndex);
 
     dimsInput.value = String(defaults.dims);
     countInput.value = String(defaults.count);
     skipInput.value = String(defaults.skip);
+    leapInput.value = String(defaults.leap);
     seedInput.value = String(defaults.seed);
 
     fillDimensionSelect(axisXSelect, defaults.dims, defaults.axisX);
@@ -428,6 +441,7 @@
     fillRandomizationSelect(defaults.randomization);
     applySource();
     syncOutputs();
+    refreshLeapCheck();
 
     buildInfo.textContent = `${info.goVersion} · ${info.goos}/${info.goarch}`;
   }
@@ -436,6 +450,72 @@
     dimsOut.textContent = dimsInput.value;
     countOut.textContent = Number(countInput.value).toLocaleString("en-US");
     skipOut.textContent = skipInput.value;
+  }
+
+  // --- the leap control --------------------------------------------------
+
+  // Which leaps a generator accepts depends on its bases, so it depends on the
+  // sequence and on the dimension count — and the page is not allowed to work
+  // that out. It asks the leaps() export, which decides by handing the number
+  // to the constructor, exactly as the points call is about to.
+  //
+  // The verdict is cached rather than recomputed per draw, and it is what
+  // refresh() consults before asking for points: an inadmissible leap is
+  // reported here, in the note under the control that caused it, instead of
+  // being sent to Go so that the status line can show a constructor error over
+  // a blank stage.
+  function refreshLeapCheck() {
+    const leap = intValue(leapInput, 1);
+
+    const result = call("leaps", {
+      source: sourceSelect.value,
+      dims: intValue(dimsInput, 39),
+      leap: leap,
+    });
+
+    state.leapCheck = result;
+    renderLeapNote(result);
+
+    // Nothing to walk to when the current leap is already admissible, and
+    // nothing to walk to when the whole range up to maxLeap is refused.
+    leapNextButton.disabled = !(
+      result &&
+      result.suggested &&
+      result.suggested !== leap
+    );
+  }
+
+  function renderLeapNote(result) {
+    if (!result) {
+      leapNote.textContent =
+        "The leap could not be checked; leave it at 1 until the module answers again.";
+      return;
+    }
+
+    const examples = (result.examples || []).join(", ");
+
+    if (result.leap <= 1) {
+      leapNote.innerHTML = `Leap <b>1</b> is every point in order, which is what the sequence does with no leaping at all. Raise it and point <i>i</i> becomes raw index <b>skip + 1 + i·L</b> — a stride through the sequence, offered as a deterministic alternative to scrambling. <b>L</b> must share no factor with any base in use${examples ? `; here the smallest that qualify are <b>${examples}</b>` : ""}.`;
+      return;
+    }
+
+    if (result.admissible) {
+      leapNote.innerHTML = `Leap <b>${result.leap}</b> shares no factor with any base in use, so every coordinate still sees its whole digit alphabet. Point <i>i</i> is raw index <b>skip + 1 + i·${result.leap}</b>.`;
+      return;
+    }
+
+    // The refusal is the library's own sentence, not a paraphrase. It names
+    // the dimension and the base, which is the part that explains the trap;
+    // rewording it here would be a second copy of a message that already
+    // exists, and it is the copy that would drift.
+    leapNote.innerHTML = `<b>Refused:</b> ${escapeHTML(result.reason || "this leap is not admissible here")}. Every raw index would then leave that coordinate's leading digit unchanged, confining it to one strip of width 1/base — and scrambling does not rescue it, because a permuted constant is still constant.${result.suggested ? ` The next admissible leap is <b>${result.suggested}</b>.` : ""}`;
+  }
+
+  function escapeHTML(text) {
+    const box = document.createElement("span");
+    box.textContent = text;
+
+    return box.innerHTML;
   }
 
   // --- drawing -----------------------------------------------------------
@@ -454,6 +534,16 @@
 
   function refresh() {
     if (!state.ready) {
+      return;
+    }
+
+    // A leap that shares a factor with a base is refused by the constructor,
+    // so asking for points would put a Go error on the status line over a
+    // stale stage. The note under the control has already said why, in the
+    // library's own words, so the draw is simply not attempted.
+    if (state.leapCheck && !state.leapCheck.admissible) {
+      setStatus(state.leapCheck.reason, "error");
+
       return;
     }
 
@@ -525,6 +615,8 @@
         : String(sequence.baseY);
     telemetry.points.textContent = sequence.count.toLocaleString("en-US");
     telemetry.skip.textContent = String(sequence.skip);
+    telemetry.leap.textContent = String(sequence.leap);
+    telemetry.leap.dataset.tone = sequence.leap > 1 ? "good" : "";
     telemetry.seed.textContent = String(sequence.seed);
     telemetry.randomization.textContent = sequence.randomization;
     telemetry.randomization.dataset.tone =
@@ -634,6 +726,7 @@
       index: intValue(digitIndexInput, 0),
       dim: intValue(digitDimSelect, 0),
       skip: intValue(skipInput, 64),
+      leap: intValue(leapInput, 1),
       seed: intValue(seedInput, 1),
     });
 
@@ -723,7 +816,10 @@
     }
 
     dBase.textContent = String(d.base);
-    dRawIndex.textContent = `${d.rawIndex} (index ${d.index} + skip)`;
+    dRawIndex.textContent =
+      d.leap > 1
+        ? `${d.rawIndex} (skip + 1 + index ${d.index} × leap ${d.leap})`
+        : `${d.rawIndex} (index ${d.index} + skip)`;
     dValue.textContent = formatCoordinate(d.value);
     dPlainValue.textContent = formatCoordinate(d.unscrambledValue);
 
@@ -839,11 +935,31 @@
 
         if (input === dimsInput) {
           rebuildDimensionSelects();
+
+          // A leap admissible at six dimensions can be refused at seven, where
+          // the next prime joins the base list, so the verdict is not a
+          // property of the leap alone.
+          refreshLeapCheck();
         }
 
         scheduleRefresh();
       });
     }
+
+    leapInput.addEventListener("input", () => {
+      refreshLeapCheck();
+      scheduleRefresh();
+    });
+
+    leapNextButton.addEventListener("click", () => {
+      if (!state.leapCheck || !state.leapCheck.suggested) {
+        return;
+      }
+
+      leapInput.value = String(state.leapCheck.suggested);
+      refreshLeapCheck();
+      scheduleRefresh();
+    });
 
     for (const control of [axisXSelect, axisYSelect]) {
       control.addEventListener("change", () => {
@@ -857,6 +973,11 @@
     sourceSelect.addEventListener("change", () => {
       fillRandomizationSelect();
       applySource();
+
+      // Sobol is base 2 in every dimension, so it refuses every even leap and
+      // nothing else; Halton's answer depends on its whole prime list. The
+      // verdict has to be re-asked whenever the sequence changes.
+      refreshLeapCheck();
       scheduleRefresh();
     });
 

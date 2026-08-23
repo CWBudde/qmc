@@ -58,6 +58,36 @@ that would look like an explanation of the picture. And it has no digit alphabet
 to permute, so the digit inspector is removed rather than left showing Halton's
 last values beside Sobol data.
 
+## Leaping
+
+A leap takes every _L_-th point instead of every point: point _i_ becomes raw
+index `skip + 1 + i*L`. It is the one remedy for the Halton defect that needs no
+seed, and both pages expose it as a plain number — the Point Lab beside the
+burn-in, the Bench once per panel, so the heatmap and the sweep can be leaped
+independently.
+
+It is also the only control here whose legal values depend on the other
+controls. _L_ must share no factor with any base in use, and if it does, that
+coordinate's leading digit never changes and it spends the whole run inside one
+strip of width 1/base — scrambling does not rescue it, because a permuted
+constant is still constant. The library refuses that at construction, by name.
+At 39 Halton dimensions the smallest admissible leap is therefore **173**, and
+Sobol is base 2 in every dimension so it refuses every even leap.
+
+That sparsity is why there is a sixth export, `leaps`. It reports whether the
+current number is admissible for the sequence and dimension count now selected,
+which nearby values are, and — when it is not — the constructor's own refusal,
+naming the dimension and the base. The page renders that sentence verbatim under
+the control and does not ask for points, so an illegal leap reads as a sparse
+control rather than as a broken one. Admissibility is decided by **building a
+generator and reading the error**, not by re-deriving coprimality in the demo:
+the library is the only place that says what a constructor accepts, and a second
+copy here is the copy that would go stale.
+
+The Bench's comparison against the README's quoted 0.81 and 0.14 is withdrawn as
+soon as a leap is set, the same way a changed burn-in withdraws it — those
+figures are measured unleaped, and a leaped run is a different experiment.
+
 ## Build and run
 
 ```bash
@@ -87,6 +117,7 @@ version mismatch.
 | File            | Role                                                      |
 | --------------- | --------------------------------------------------------- |
 | `main.go`       | Export table; publishes `globalThis.qmc`                  |
+| `leap.go`       | The `leaps` export: which leaps a generator accepts       |
 | `index.html`    | Point Lab markup, with its DOM contract                   |
 | `analysis.html` | Discrepancy Bench markup, with its DOM contract           |
 | `style.css`     | The shared instrument-rack stylesheet; owns the palette   |
@@ -95,8 +126,9 @@ version mismatch.
 | `analysis.js`   | Bench controller: heatmap, hover, the cancellable N-sweep |
 | `favicon.svg`   | An even point set and a clumped one, in 32 pixels         |
 
-The Go side publishes five exports — `info`, `points`, `correlate`, `converge`
-and `digits` — each taking one options object and returning one plain object.
+The Go side publishes six exports — `info`, `points`, `correlate`, `converge`,
+`digits` and `leaps` — each taking one options object and returning one plain
+object.
 `info()` is the capability table: every `<select>` on both pages ships empty in
 the HTML and is filled from it, and every slider's range is overwritten from it
 at boot. Raising a limit in the library raises it in the UI without anyone

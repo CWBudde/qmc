@@ -40,6 +40,9 @@
         #corrDims #corrDimsOut        dimensions
         #corrCount #corrCountOut      points
         #corrSkip #corrSkipOut        burn-in
+        #corrLeap #corrLeapNext       leap, and the button that walks to the
+                                      next admissible one
+        #corrLeapNote                 the leaps() verdict for this panel
         #corrSeed                     seed
         #corrSource                   <select> of sequences, from info()
         #corrRandom                   <select> of randomizations, refilled
@@ -53,6 +56,9 @@
         #budget                       <select> of sweep ceilings, filled by JS
         #convDims #convDimsOut        dimensions
         #convSkip #convSkipOut        burn-in
+        #convLeap #convLeapNext       leap, and the button that walks to the
+                                      next admissible one
+        #convLeapNote                 the leaps() verdict for this panel
         #convSeed                     seed
         #convSource #convRandom       sequence and randomization <select>s
         #start #stop                  transport for the sweep
@@ -183,6 +189,21 @@
                 <label for="corrSeed">seed</label>
                 <input type="number" id="corrSeed" step="1" min="0" value="1" />
               </div>
+              <div class="field field--wide">
+                <label for="corrLeap">leap</label>
+                <input
+                  type="number"
+                  id="corrLeap"
+                  min="1"
+                  max="1000"
+                  step="1"
+                  value="1"
+                />
+              </div>
+              <div class="button-row">
+                <button id="corrLeapNext" disabled>Next admissible leap</button>
+              </div>
+              <p class="field-note" id="corrLeapNote">—</p>
             </div>
 
             <div class="control-group" style="min-width: 0">
@@ -249,6 +270,21 @@
                 <label for="convSeed">seed</label>
                 <input type="number" id="convSeed" step="1" min="0" value="1" />
               </div>
+              <div class="field field--wide">
+                <label for="convLeap">leap</label>
+                <input
+                  type="number"
+                  id="convLeap"
+                  min="1"
+                  max="1000"
+                  step="1"
+                  value="1"
+                />
+              </div>
+              <div class="button-row">
+                <button id="convLeapNext" disabled>Next admissible leap</button>
+              </div>
+              <p class="field-note" id="convLeapNote">—</p>
               <p class="field-note" id="integrandNote">—</p>
             </div>
 

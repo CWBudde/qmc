@@ -36,6 +36,7 @@ func jsPoints(opts js.Value) any {
 		dims  = clampInt(readInt(opts, "dims", defaultDims), 1, spec.maxDims)
 		count = clampInt(readInt(opts, "count", defaultCount), 1, maxPoints)
 		skip  = clampInt(readInt(opts, "skip", defaultSkip), 0, maxSkip)
+		leap  = clampInt(readInt(opts, "leap", defaultLeap), 1, maxLeap)
 		seed  = readUint64(opts, "seed", defaultSeed)
 	)
 
@@ -67,7 +68,7 @@ func jsPoints(opts js.Value) any {
 			xy = append(xy, float32(point[axisX]), float32(point[axisY]))
 		}
 	} else {
-		generator, err := newGenerator(source, dims, skip, randomization, seed)
+		generator, err := newGenerator(source, dims, skip, leap, randomization, seed)
 		if err != nil {
 			return errorResult("points: %v", err)
 		}
@@ -90,11 +91,17 @@ func jsPoints(opts js.Value) any {
 	out := opts.Get("out")
 
 	response := map[string]any{
-		"count":         count,
-		"dims":          dims,
-		"axisX":         axisX,
-		"axisY":         axisY,
-		"skip":          skip,
+		"count": count,
+		"dims":  dims,
+		"axisX": axisX,
+		"axisY": axisY,
+		"skip":  skip,
+
+		// Echoed even though the right-hand panel ignores it. A leap applies
+		// to the sequence only: taking every L-th draw of an independent
+		// uniform stream is another independent uniform stream, so leaping the
+		// comparison set would change nothing and suggest it had.
+		"leap":          leap,
 		"randomization": randomization,
 		"seed":          float64(seed),
 		"source":        source,

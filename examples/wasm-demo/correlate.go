@@ -43,10 +43,11 @@ func jsCorrelate(opts js.Value) any {
 		dims          = clampInt(readInt(opts, "dims", defaultDims), 2, min(maxCorrelateDims, spec.maxDims))
 		count         = clampInt(readInt(opts, "count", defaultCount), 2, maxCorrelatePoints)
 		skip          = clampInt(readInt(opts, "skip", defaultSkip), 0, maxSkip)
+		leap          = clampInt(readInt(opts, "leap", defaultLeap), 1, maxLeap)
 		seed          = readUint64(opts, "seed", defaultSeed)
 	)
 
-	generator, err := newGenerator(source, dims, skip, randomization, seed)
+	generator, err := newGenerator(source, dims, skip, leap, randomization, seed)
 	if err != nil {
 		return errorResult("correlate: %v", err)
 	}
@@ -142,6 +143,7 @@ func jsCorrelate(opts js.Value) any {
 		"randomization": randomization,
 		"seed":          float64(seed),
 		"skip":          skip,
+		"leap":          leap,
 	}
 
 	putFloats(response, out, "matrix", matrix)

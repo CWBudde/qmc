@@ -151,6 +151,21 @@ WithScrambling(…))` costs ~32 ms and allocates proportionally to the sum of th
       Dimension 1 is the only such dimension in the first eight of the embedded table (32 of
       32 direction numbers, against dimension 0's 1 of 32), and an even leap pins it to one
       half of [0,1) at every skip tried, taking integration from 2.6e-04 to 1.2e-01.
+- [x] The demo exposes it. A leap is an independent numeric knob rather than a randomization,
+      so it does not go in `examples/wasm-demo/info.go`'s `randomizations` map; it is a
+      `readInt` in each of `points.go`, `correlate.go`, `converge.go` and `digits.go`, a sixth
+      parameter on `newGenerator`, and a control on all three panels. `maxLeap` is 1000, fixed
+      by Sobol's 2^32 raw-index ceiling against the convergence sweep's 200,000 points.
+
+      The interesting part is a new export, `leaps`, which answers whether a leap is
+      admissible for the sequence and dimension count now selected, and which nearby value is.
+      Without it the control would look broken rather than sparse: at 39 Halton dimensions the
+      smallest admissible leap is 173, so almost every number a slider can reach is refused.
+      It decides by building a generator and reading the constructor's error rather than by
+      re-deriving coprimality, on the same reasoning `info.go` gives for randomizations — the
+      library is the only place that says what a constructor accepts. Verified in a browser:
+      the heatmap's worst adjacent |r| goes 0.808 to 0.228 at leap 173, and the refusal on
+      screen is the library's own sentence, naming the dimension and the base.
 
 Two things worth knowing before anyone reaches for it:
 
@@ -166,14 +181,6 @@ Two things worth knowing before anyone reaches for it:
   of 173 against 512 unleaped. On Sobol a leap also costs `Next` the Gray-code recurrence
   entirely — 301 ns/op against 46.0 — and forfeits the (t,m,s)-net balance property at any
   leap, so an odd leap is legal there and still measures 8.8e-03 against 1.8e-04 unleaped.
-
-Still open:
-
-- [ ] The demo does not expose it. A leap is an independent numeric knob rather than a
-      randomization, so it does not fit `examples/wasm-demo/info.go`'s `randomizations` map,
-      whose `option` signature is `func(seed uint64) qmc.Option`. It would need a slider and a
-      `readInt` call in each of `points.go`, `correlate.go`, `converge.go` and `digits.go` —
-      and the demo still has no tests, so it should not ride along with a library change.
 
 ### Discrepancy measurement
 

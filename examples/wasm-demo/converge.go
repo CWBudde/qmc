@@ -179,11 +179,12 @@ func jsConverge(opts js.Value) any {
 		randomization = readString(opts, "randomization", randomizationNone)
 		dims          = clampInt(readInt(opts, "dims", defaultDims), 1, maxConvergeDims)
 		skip          = clampInt(readInt(opts, "skip", defaultSkip), 0, maxSkip)
+		leap          = clampInt(readInt(opts, "leap", defaultLeap), 1, maxLeap)
 		seed          = readUint64(opts, "seed", defaultSeed)
 		n             = clampInt(readInt(opts, "n", defaultConvergeN), 1, maxConvergeN)
 	)
 
-	generator, err := newGenerator(source, dims, skip, randomization, seed)
+	generator, err := newGenerator(source, dims, skip, leap, randomization, seed)
 	if err != nil {
 		return errorResult("converge: %v", err)
 	}
@@ -231,6 +232,7 @@ func jsConverge(opts js.Value) any {
 
 		"source":        source,
 		"randomization": randomization,
+		"leap":          leap,
 		"seed":          float64(seed),
 	}
 }
@@ -246,10 +248,12 @@ func jsConverge(opts js.Value) any {
 // type assertion rather than by widening the interface here.
 //
 // A randomization the chosen generator does not accept is passed through to
-// the constructor and refused there, by name. Deciding it here instead would
-// be a second copy of a policy the library already states, and the copy is the
-// one that would go stale.
-func newGenerator(source string, dims, skip int, randomization string, seed uint64) (qmc.Sequence, error) {
+// the constructor and refused there, by name. So is a leap that shares a
+// factor with one of the bases. Deciding either here instead would be a second
+// copy of a policy the library already states, and the copy is the one that
+// would go stale — see leap.go, which answers "is this leap admissible?" by
+// asking this function rather than by re-deriving the rule.
+func newGenerator(source string, dims, skip, leap int, randomization string, seed uint64) (qmc.Sequence, error) {
 	spec, ok := sources[source]
 	if !ok || spec.construct == nil {
 		return nil, fmt.Errorf("unknown sequence %q", source)
@@ -260,7 +264,7 @@ func newGenerator(source string, dims, skip int, randomization string, seed uint
 		return nil, fmt.Errorf("unknown randomization %q", randomization)
 	}
 
-	options := []qmc.Option{qmc.WithSkip(skip)}
+	options := []qmc.Option{qmc.WithSkip(skip), qmc.WithLeap(leap)}
 	if entry.option != nil {
 		options = append(options, entry.option(seed))
 	}

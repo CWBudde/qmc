@@ -49,6 +49,9 @@
   const corrRandom = el("corrRandom");
   const corrNote = el("corrNote");
   const corrBaseNote = el("corrBaseNote");
+  const corrLeapInput = el("corrLeap");
+  const corrLeapNext = el("corrLeapNext");
+  const corrLeapNote = el("corrLeapNote");
 
   const integrandSelect = el("integrand");
   const integrandNote = el("integrandNote");
@@ -60,6 +63,9 @@
   const convSeed = el("convSeed");
   const convSource = el("convSource");
   const convRandom = el("convRandom");
+  const convLeapInput = el("convLeap");
+  const convLeapNext = el("convLeapNext");
+  const convLeapNote = el("convLeapNote");
   const startButton = el("start");
   const stopButton = el("stop");
   const progressBar = el("progressBar");
@@ -91,6 +97,11 @@
     dims: 39,
     count: 600,
     skip: 64,
+
+    // The README's figures are unleaped. A leap is a different experiment —
+    // the same generator sampled on a stride — so it disqualifies the
+    // comparison exactly the way a different burn-in does.
+    leap: 1,
     plain: 0.81,
     scrambled: 0.14,
   };
@@ -222,6 +233,108 @@
     return Number.isFinite(value) ? value : fallback;
   }
 
+  // --- the leap controls -------------------------------------------------
+
+  // Created in wireControls, because the factory attaches its own listeners
+  // and this page has exactly one place where listeners are attached.
+  let corrLeap = null;
+  let convLeap = null;
+
+  // Both panels have a leap of their own, so this is a factory rather than two
+  // copies of the same handler. Each instance owns one <input>, one note and
+  // one "next admissible" button, and remembers the last verdict the leaps()
+  // export gave for that combination of sequence, dimension count and leap.
+  //
+  // The page never decides for itself whether a leap is legal. Which leaps a
+  // generator accepts depends on its bases — every even number is refused by
+  // Sobol, and Halton's answer moves as dimensions are added — and the export
+  // settles it by building a generator and reading the constructor's error,
+  // which is the same thing the correlate or converge call is about to do.
+  function leapControl(parts) {
+    const local = { verdict: null };
+
+    function refresh() {
+      const leap = intValue(parts.input, 1);
+
+      const result = call("leaps", {
+        source: parts.source.value,
+        dims: intValue(parts.dims, 39),
+        leap: leap,
+      });
+
+      local.verdict = result;
+      render(result, leap);
+
+      parts.button.disabled = !(
+        result &&
+        result.suggested &&
+        result.suggested !== leap
+      );
+    }
+
+    function render(result, leap) {
+      if (!result) {
+        parts.note.textContent =
+          "The leap could not be checked; leave it at 1 until the module answers again.";
+
+        return;
+      }
+
+      const examples = (result.examples || []).join(", ");
+
+      if (leap <= 1) {
+        parts.note.innerHTML = `Leap <b>1</b> is every point in order. Raise it and point <i>i</i> becomes raw index <b>skip + 1 + i·L</b> — a deterministic alternative to scrambling, with no seed${examples ? `. The smallest admissible leaps here are <b>${examples}</b>` : ""}.`;
+
+        return;
+      }
+
+      if (result.admissible) {
+        parts.note.innerHTML = `Leap <b>${leap}</b> shares no factor with any base in use, so every coordinate still sees its whole digit alphabet.`;
+
+        return;
+      }
+
+      // The library's own sentence, not a paraphrase: it names the dimension
+      // and the base, which is the part that explains the trap.
+      parts.note.innerHTML = `<b>Refused:</b> ${escapeHTML(result.reason || "this leap is not admissible here")}. That coordinate's leading digit would never change, confining it to one strip of width 1/base — and scrambling does not rescue it.${result.suggested ? ` The next admissible leap is <b>${result.suggested}</b>.` : ""}`;
+    }
+
+    parts.input.addEventListener("input", () => {
+      refresh();
+
+      if (parts.onChange) {
+        parts.onChange();
+      }
+    });
+
+    parts.button.addEventListener("click", () => {
+      if (!local.verdict || !local.verdict.suggested) {
+        return;
+      }
+
+      parts.input.value = String(local.verdict.suggested);
+      refresh();
+
+      if (parts.onChange) {
+        parts.onChange();
+      }
+    });
+
+    return {
+      refresh: refresh,
+      value: () => intValue(parts.input, 1),
+      admissible: () => !local.verdict || local.verdict.admissible,
+      reason: () => (local.verdict && local.verdict.reason) || "",
+    };
+  }
+
+  function escapeHTML(text) {
+    const box = document.createElement("span");
+    box.textContent = text;
+
+    return box.innerHTML;
+  }
+
   // sourceSpec, randomizationsFor and fillSourceSelect are the page's whole
   // knowledge of what a sequence offers: every menu entry, every ceiling and
   // every description comes from info(). Neither menu is written out here, and
@@ -334,11 +447,17 @@
     );
     corrSkip.value = String(defaults.skip);
     corrSeed.value = String(defaults.seed);
+    corrLeapInput.min = "1";
+    corrLeapInput.max = String(info.maxLeap);
+    corrLeapInput.value = String(defaults.leap);
 
     convSkip.min = "0";
     convSkip.max = String(info.maxSkip);
     convSkip.value = String(defaults.skip);
     convSeed.value = String(defaults.seed);
+    convLeapInput.min = "1";
+    convLeapInput.max = String(info.maxLeap);
+    convLeapInput.value = String(defaults.leap);
 
     integrandSelect.innerHTML = "";
 
@@ -526,12 +645,22 @@
       return;
     }
 
+    // An inadmissible leap is refused by the constructor, so the call would
+    // only put a Go error on the status line over a stale heatmap. The note
+    // under the control has already said why, in the library's own words.
+    if (corrLeap && !corrLeap.admissible()) {
+      setStatus(corrLeap.reason(), "error");
+
+      return;
+    }
+
     const result = call("correlate", {
       source: corrSource.value,
       randomization: corrRandom.value,
       dims: intValue(corrDims, 39),
       count: intValue(corrCount, 600),
       skip: intValue(corrSkip, 64),
+      leap: corrLeap ? corrLeap.value() : 1,
       seed: intValue(corrSeed, 1),
       out: sinks.correlate,
     });
@@ -593,11 +722,12 @@
       (scrambled || result.randomization === "none") &&
       result.dims === DOCUMENTED.dims &&
       result.count === DOCUMENTED.count &&
-      result.skip === DOCUMENTED.skip;
+      result.skip === DOCUMENTED.skip &&
+      result.leap === DOCUMENTED.leap;
 
     docReference.innerHTML = sameSetup
       ? `At this exact configuration the README quotes <b>${target.toFixed(2)}</b> ${scrambled ? "(worst of five seeds)" : ""}. You are seeing <b>${worst.toFixed(3)}</b> at seed ${result.seed}.`
-      : `The README's figures — <b>0.81</b> unscrambled, <b>0.14</b> scrambled — are measured on Halton at 39 dimensions, 600 points, burn-in 64. This is ${result.source} with randomization ${result.randomization}, ${result.dims} dimensions, ${result.count.toLocaleString("en-US")} points, burn-in ${result.skip}, so the numbers are not directly comparable.`;
+      : `The README's figures — <b>0.81</b> unscrambled, <b>0.14</b> scrambled — are measured on Halton at 39 dimensions, 600 points, burn-in 64, no leap. This is ${result.source} with randomization ${result.randomization}, ${result.dims} dimensions, ${result.count.toLocaleString("en-US")} points, burn-in ${result.skip}, leap ${result.leap}, so the numbers are not directly comparable.`;
   }
 
   // A source without prime bases sends bases: null, so the clause naming them
@@ -715,6 +845,12 @@
       return;
     }
 
+    if (convLeap && !convLeap.admissible()) {
+      setStatus(convLeap.reason(), "error");
+
+      return;
+    }
+
     state.runId += 1;
     state.running = true;
 
@@ -725,6 +861,7 @@
       randomization: convRandom.value,
       dims: intValue(convDims, 8),
       skip: intValue(convSkip, 64),
+      leap: convLeap ? convLeap.value() : 1,
       seed: intValue(convSeed, 1),
       integrand: integrandSelect.value,
     };
@@ -886,9 +1023,35 @@
   // --- wiring ------------------------------------------------------------
 
   function wireControls() {
+    corrLeap = leapControl({
+      input: corrLeapInput,
+      button: corrLeapNext,
+      note: corrLeapNote,
+      source: corrSource,
+      dims: corrDims,
+      onChange: scheduleCorrelate,
+    });
+
+    convLeap = leapControl({
+      input: convLeapInput,
+      button: convLeapNext,
+      note: convLeapNote,
+      source: convSource,
+      dims: convDims,
+      onChange: resetSweep,
+    });
+
     for (const input of [corrDims, corrCount, corrSkip]) {
       input.addEventListener("input", () => {
         syncOutputs();
+
+        // A leap admissible at six dimensions can be refused at seven, where
+        // the next prime joins the base list, so the verdict is not a property
+        // of the leap alone.
+        if (input === corrDims) {
+          corrLeap.refresh();
+        }
+
         scheduleCorrelate();
       });
     }
@@ -899,6 +1062,10 @@
       fillRandomizationSelect(corrSource, corrRandom);
       applyCorrSource();
       updateCorrNote();
+
+      // Sobol is base 2 in every dimension, so it refuses every even leap and
+      // nothing else; Halton's answer depends on its whole prime list.
+      corrLeap.refresh();
       scheduleCorrelate();
     });
 
@@ -908,7 +1075,13 @@
     });
 
     for (const input of [convDims, convSkip]) {
-      input.addEventListener("input", syncOutputs);
+      input.addEventListener("input", () => {
+        syncOutputs();
+
+        if (input === convDims) {
+          convLeap.refresh();
+        }
+      });
     }
 
     integrandSelect.addEventListener("change", () => {
@@ -919,6 +1092,7 @@
     convSource.addEventListener("change", () => {
       fillRandomizationSelect(convSource, convRandom);
       applyConvSource();
+      convLeap.refresh();
       resetSweep();
     });
 
@@ -951,6 +1125,10 @@
       drawHeat();
       drawChart();
     });
+
+    // The first verdicts, drawn once the controls carry their defaults.
+    corrLeap.refresh();
+    convLeap.refresh();
   }
 
   // --- boot --------------------------------------------------------------

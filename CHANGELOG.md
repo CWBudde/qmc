@@ -41,6 +41,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it to one half of `[0,1)` and multiplies the integration error by several
   hundred.
 
+- A leap control on all three panels of the WebAssembly demo, and a sixth
+  export, `leaps`, behind it. Admissible leaps are sparse — 173 is the smallest
+  at 39 Halton dimensions, and Sobol refuses every even one — so a control that
+  could only discover this by asking for points and getting an error back would
+  look broken rather than sparse. `leaps` reports whether the current number is
+  admissible for the sequence and dimension count selected, which nearby values
+  are, and otherwise the constructor's own refusal, which the page renders
+  verbatim. It decides by building a generator and reading the error rather than
+  by re-deriving coprimality in the demo.
+
 ## [0.2.0] - 2026-08-23
 
 ### Added

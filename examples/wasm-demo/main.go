@@ -25,6 +25,7 @@ var exports = map[string]func(js.Value) any{
 	"correlate": jsCorrelate,
 	"converge":  jsConverge,
 	"digits":    jsDigits,
+	"leaps":     jsLeaps,
 }
 
 // live keeps the js.Func values referenced so they are never released. A

@@ -42,6 +42,7 @@ func jsDigits(opts js.Value) any {
 		index         = clampInt(readInt(opts, "index", 0), 0, maxIndex)
 		dim           = clampInt(readInt(opts, "dim", defaultAxisY), 0, spec.maxDims-1)
 		skip          = clampInt(readInt(opts, "skip", defaultSkip), 0, maxSkip)
+		leap          = clampInt(readInt(opts, "leap", defaultLeap), 1, maxLeap)
 		seed          = readUint64(opts, "seed", defaultSeed)
 	)
 
@@ -51,7 +52,7 @@ func jsDigits(opts js.Value) any {
 	// precisely so that a generator built for 5 dimensions and one built for
 	// 39 agree on the permutations of their first 5, so a 38-dimension
 	// inspector shows the same permutation the 39-dimension scatter plot used.
-	sequence, err := newGenerator(source, dim+1, skip, randomization, seed)
+	sequence, err := newGenerator(source, dim+1, skip, leap, randomization, seed)
 	if err != nil {
 		return errorResult("digits: %v", err)
 	}
@@ -63,7 +64,7 @@ func jsDigits(opts js.Value) any {
 		return errorResult("digits: %s is not a Halton generator", spec.label)
 	}
 
-	plainSequence, err := newGenerator(source, dim+1, skip, randomizationNone, 0)
+	plainSequence, err := newGenerator(source, dim+1, skip, leap, randomizationNone, 0)
 	if err != nil {
 		return errorResult("digits: %v", err)
 	}
@@ -76,11 +77,16 @@ func jsDigits(opts js.Value) any {
 	base := generator.Bases()[dim]
 
 	// The index the digits are actually of. At(i) maps point i onto raw Halton
-	// index skip+1+i — the +1 because index 0 is the degenerate origin, all
-	// zeros before scrambling, which no caller wants back. Both numbers are
+	// index skip+1+i*leap — the +1 because index 0 is the degenerate origin,
+	// all zeros before scrambling, which no caller wants back. Both numbers are
 	// surfaced because the page has to explain the offset: a user who types 0
 	// and sees the digits of 65 needs to be told where the 65 came from.
-	rawIndex := skip + 1 + index
+	//
+	// This is also the clearest view of the shared-factor trap the library
+	// refuses at construction. Step the index by one with a leap that is a
+	// multiple of this dimension's base and the least significant digit — the
+	// one the mirror reflects to the front of the coordinate — never moves.
+	rawIndex := skip + 1 + index*leap
 
 	digits := baseDigits(rawIndex, base)
 
@@ -111,6 +117,7 @@ func jsDigits(opts js.Value) any {
 		"source":        source,
 		"randomization": randomization,
 		"index":         index,
+		"leap":          leap,
 		"rawIndex":      rawIndex,
 		"dim":           dim,
 		"base":          base,

@@ -50,6 +50,10 @@
                                 filled from dims)
         #count #countOut        points drawn
         #skip #skipOut          burn-in discarded before the first point
+        #leap #leapNext         leap: take every L-th point of the sequence
+        #leapNote               live verdict on the current leap, from
+                                info()'s sibling export leaps(); the page never
+                                decides admissibility itself
         #seed                   randomization seed
         #newSeed                randomize the seed
         #resetView              back to the info() defaults
@@ -61,7 +65,7 @@
                                 randomization, text straight from info()
 
       Telemetry, all .v spans:
-        #tBaseX #tBaseY #tPoints #tSkip #tSeed #tRandomization
+        #tBaseX #tBaseY #tPoints #tSkip #tLeap #tSeed #tRandomization
         #tBaseXRow #tBaseYRow   the two base rows; hidden for a source with
                                 no prime bases
 
@@ -187,6 +191,9 @@
           <span class="k">burn-in</span><span class="v" id="tSkip">—</span>
         </div>
         <div>
+          <span class="k">leap</span><span class="v" id="tLeap">—</span>
+        </div>
+        <div>
           <span class="k">seed</span><span class="v" id="tSeed">—</span>
         </div>
         <div>
@@ -252,6 +259,21 @@
             corner of the box in every large-base coordinate. A burn-in throws
             it and its neighbours away.
           </p>
+          <div class="field field--wide">
+            <label for="leap">leap</label>
+            <input
+              type="number"
+              id="leap"
+              min="1"
+              max="1000"
+              step="1"
+              value="1"
+            />
+          </div>
+          <div class="button-row">
+            <button id="leapNext" disabled>Next admissible leap</button>
+          </div>
+          <p class="field-note" id="leapNote">—</p>
         </div>
 
         <div class="control-group">

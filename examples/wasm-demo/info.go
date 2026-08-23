@@ -25,6 +25,19 @@ const (
 	maxDims  = 64
 	maxSkip  = 4096
 	maxIndex = 1000000
+
+	// maxLeap is small on purpose, and the number that fixes it is Sobol's.
+	//
+	// A leap multiplies the raw index: point i is raw index skip+1+i*leap, so
+	// the largest raw index this page can ask for is maxLeap times the largest
+	// count any export offers. Sobol's direction numbers run out at 2^32 and
+	// fill panics past that, which guard() would turn into a dead instance
+	// rather than a red box. The binding case is the convergence sweep at
+	// maxConvergeN = 200,000 points; 200,000 * 1000 is 2e8, two decimal orders
+	// below the ceiling, and every other export is smaller still. Halton has
+	// no such wall but does grow a digit per factor of the base, which is the
+	// other reason not to offer a leap of a million.
+	maxLeap = 1000
 )
 
 // The shared defaults. They are not neutral: they aim the demo straight at the
@@ -42,6 +55,11 @@ const (
 	defaultAxisX  = 37
 	defaultAxisY  = 38
 	defaultSource = "halton"
+
+	// defaultLeap is 1, which is exactly "no leaping": WithLeap(1) is
+	// bit-identical to no option at all, so the page opens on the same point
+	// set it did before the control existed.
+	defaultLeap = 1
 
 	// The unrandomized entry of every source's menu. Its key is shared across
 	// sources so that switching sequence keeps a request valid without the
@@ -259,6 +277,7 @@ func jsInfo(_ js.Value) any {
 		"maxDims":            maxDims,
 		"maxPoints":          maxPoints,
 		"maxSkip":            maxSkip,
+		"maxLeap":            maxLeap,
 		"maxIndex":           maxIndex,
 		"maxCorrelateDims":   maxCorrelateDims,
 		"maxCorrelatePoints": maxCorrelatePoints,
@@ -271,6 +290,7 @@ func jsInfo(_ js.Value) any {
 			"dims":          defaultDims,
 			"count":         defaultCount,
 			"skip":          defaultSkip,
+			"leap":          defaultLeap,
 			"seed":          defaultSeed,
 			"axisX":         defaultAxisX,
 			"axisY":         defaultAxisY,
