@@ -470,9 +470,9 @@
     syncOutputs();
   }
 
-  // The description is the library's, forwarded through info(). The band that
-  // the unrandomized Halton view shows is this page's own observation, so it is
-  // appended rather than folded into a claim about the option.
+  // The description is the library's, forwarded through info(). What the map
+  // beside it actually does is this page's own observation, so it is appended
+  // rather than folded into a claim about the option.
   function updateCorrNote() {
     const entry = randomizationSpec(corrSource, corrRandom);
 
@@ -482,12 +482,29 @@
       return;
     }
 
-    const aside =
-      entry.key === "none"
-        ? " The bright band hugging the diagonal is adjacent high-dimensional coordinates walking up their ramps together; pick a randomization and it should collapse."
-        : " Watch the off-diagonal warmth fall away — and note that it does not fall to exactly zero, because a finite point set never has exactly independent coordinates.";
+    corrNote.innerHTML = `<b>${entry.label}.</b> ${entry.description}${correlationAside(entry)}`;
+  }
 
-    corrNote.innerHTML = `<b>${entry.label}.</b> ${entry.description}${aside}`;
+  // The aside follows the source, because the two sequences fail differently
+  // and the same sentence cannot describe both maps. primeBases is the flag
+  // that separates them: one base per dimension is exactly what makes a
+  // high-dimensional coordinate ramp, and the ramp is what puts the band on
+  // the diagonal. Sobol is base 2 everywhere and has no band — at the defaults
+  // above, seed 1, its worst adjacent |r| is 0.027 against Halton's 0.808 — so
+  // promising a collapse there would have this text contradicting the picture
+  // next to it.
+  function correlationAside(entry) {
+    const ramps = (sourceSpec(corrSource) || {}).primeBases;
+
+    if (entry.key === "none") {
+      return ramps
+        ? " The bright band hugging the diagonal is adjacent high-dimensional coordinates walking up their ramps together; pick a randomization and it should collapse."
+        : " There is no band to collapse here: base 2 in every dimension leaves the unrandomized map already near-independent, worst adjacent |r| 0.027 against Halton's 0.808 at the defaults above, seed 1.";
+    }
+
+    return ramps
+      ? " Watch the off-diagonal warmth fall away — and note that it does not fall to exactly zero, because a finite point set never has exactly independent coordinates."
+      : " Expect the map to stay much as it was. Pairwise correlation was never the defect this randomization is for; what it buys is a distribution over seeds, which is what the error curve below is drawn from.";
   }
 
   // --- correlation -------------------------------------------------------

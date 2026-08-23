@@ -236,8 +236,27 @@
 
   // --- controls built from info() ----------------------------------------
 
+  // The index the user asked for is kept in data-wanted, apart from the one
+  // the shortened menu can currently show.
+  //
+  // Shrinking the sequence has to clamp an axis that is now past the last
+  // dimension, but clamping the stored value destroys the choice for good.
+  // Measured before this was split: dragging dimensions 39 → 38 → 39 left the
+  // y axis stuck on dimension 37, and a drag down to 4 and back left both axes
+  // on dimension 3 — one coordinate against itself, drawn as a perfect
+  // diagonal on the page whose entire argument is that a diagonal means the
+  // pair has collapsed. Re-clamping from the remembered request instead makes
+  // the slider round-trip.
   function fillDimensionSelect(select, dims, preferred) {
-    const wanted = preferred === undefined ? intValue(select, 0) : preferred;
+    const remembered = Number.parseInt(select.dataset.wanted, 10);
+    const wanted =
+      preferred !== undefined
+        ? preferred
+        : Number.isNaN(remembered)
+          ? intValue(select, 0)
+          : remembered;
+
+    select.dataset.wanted = String(wanted);
 
     select.innerHTML = "";
 
@@ -248,10 +267,14 @@
       select.append(option);
     }
 
-    // Shrinking the sequence can strand a selected axis past the last
-    // dimension. Clamp rather than silently reset to zero, so nudging
-    // dimensions down and back up lands where it started.
     select.value = String(Math.max(0, Math.min(dims - 1, wanted)));
+  }
+
+  // A pick made in the menu is a new request, so it replaces the remembered
+  // one. Without this the axis would spring back to the pre-clamp dimension
+  // the moment the slider moved again.
+  function rememberDimension(select) {
+    select.dataset.wanted = String(intValue(select, 0));
   }
 
   function rebuildDimensionSelects() {
@@ -822,9 +845,14 @@
       });
     }
 
-    for (const control of [axisXSelect, axisYSelect, seedInput]) {
-      control.addEventListener("change", scheduleRefresh);
+    for (const control of [axisXSelect, axisYSelect]) {
+      control.addEventListener("change", () => {
+        rememberDimension(control);
+        scheduleRefresh();
+      });
     }
+
+    seedInput.addEventListener("change", scheduleRefresh);
 
     sourceSelect.addEventListener("change", () => {
       fillRandomizationSelect();
@@ -875,7 +903,10 @@
       draw();
     });
 
-    digitDimSelect.addEventListener("change", refreshDigits);
+    digitDimSelect.addEventListener("change", () => {
+      rememberDimension(digitDimSelect);
+      refreshDigits();
+    });
 
     digitPrev.addEventListener("click", () => stepDigitIndex(-1));
     digitNext.addEventListener("click", () => stepDigitIndex(1));
