@@ -40,7 +40,8 @@ var oneMinusEpsilon = math.Nextafter(1, 0)
 type Halton struct {
 	dims  int
 	bases []int
-	perms [][]int32 // nil when unscrambled
+	perms [][]int32        // nil unless random-digit scrambling is on
+	nest  *nestedScrambler // nil unless nested affine scrambling is on
 	skip  int
 
 	cursor int // index of the next point Next will return
@@ -69,7 +70,7 @@ func NewHalton(dims int, opts ...Option) (*Halton, error) {
 	// and quietly substituting the nearest scheme gives them points that are
 	// reproducible but not the ones they asked for.
 	switch cfg.randomize {
-	case randomizeNone, randomizeDigitPermutation:
+	case randomizeNone, randomizeDigitPermutation, randomizeNested:
 	default:
 		return nil, fmt.Errorf("qmc: %s does not apply to a Halton generator", cfg.randomize)
 	}
@@ -79,7 +80,10 @@ func NewHalton(dims int, opts ...Option) (*Halton, error) {
 		bases: primesUpTo(dims),
 		skip:  cfg.skip,
 	}
-	if cfg.randomize == randomizeDigitPermutation {
+	switch cfg.randomize {
+	case randomizeNested:
+		h.nest = newNestedScrambler(cfg.seed, dims)
+	case randomizeDigitPermutation:
 		h.perms = make([][]int32, dims)
 		for d, base := range h.bases {
 			h.perms[d] = newPermutation(base, cfg.seed, d)
@@ -126,6 +130,12 @@ func (h *Halton) Bases() []int {
 // mapped through it. The returned slice is that permutation: entry i is the
 // digit that digit i is rewritten to, so it has exactly Bases()[dim] entries
 // and each of 0..base-1 appears once.
+//
+// Nested affine scrambling (WithNestedScrambling) also returns nil, and not
+// because it is unscrambled: it has no permutation table to hand out. Its
+// permutations depend on the digits above the one being rewritten, so there is
+// one per node of a tree with p^k nodes at depth k, derived on the fly and
+// never stored.
 //
 // A dim outside [0, Dims()) returns nil rather than panicking, because the
 // callers are display code walking a dimension list that may be out of step
@@ -213,11 +223,19 @@ func (h *Halton) fill(i int, dst []float64) {
 	}
 
 	index := h.skip + 1 + i
-	for d := 0; d < h.dims; d++ {
-		if h.perms == nil {
-			dst[d] = radicalInverse(index, h.bases[d])
-		} else {
+
+	switch {
+	case h.nest != nil:
+		for d := 0; d < h.dims; d++ {
+			dst[d] = nestedRadicalInverse(index, h.bases[d], h.nest.roots[d])
+		}
+	case h.perms != nil:
+		for d := 0; d < h.dims; d++ {
 			dst[d] = scrambledRadicalInverse(index, h.bases[d], h.perms[d])
+		}
+	default:
+		for d := 0; d < h.dims; d++ {
+			dst[d] = radicalInverse(index, h.bases[d])
 		}
 	}
 }
