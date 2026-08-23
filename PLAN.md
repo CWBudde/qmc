@@ -329,7 +329,18 @@ Open items:
 
 ## Downstream
 
-- [ ] `mayfly.WithQMCInitialPopulation` — metaheuristics initialize their populations with
-      uniform random draws (`mayfly/helpers.go`), and a low-discrepancy initial population
-      is a well-documented cheap improvement. Wants measuring on mayfly's own benchmark
-      suite, not asserting.
+- [x] `mayfly.WithQMCInitialPopulation` landed against v0.2.0 and was measured rather than
+      asserted: Standard MA, 30 runs, 500 iterations, over mayfly's 16-problem benchmark
+      suite. Owen-scrambled Sobol is significantly better on two problems (Rastrigin at 30
+      dimensions, mean 14.09→9.66 at p<0.001; Ackley at 10 dimensions,
+      0.851→0.303 at p=0.007) and significantly worse on none; nested-scrambled Halton
+      reaches p<0.05 nowhere. Two hits in thirty-two tests is close to what 0.05 produces
+      by chance, so the honest reading is a mildly favorable direction with a large effect
+      in two places, and mayfly kept uniform draws as its default. Four of the sixteen
+      problems are solved to machine precision by every strategy and say nothing at all —
+      worth knowing before anyone measures this again. Write-up in
+      `mayfly/docs/qmc-initialization.md`.
+- [ ] The population is 40 points in up to 30 dimensions, which is the regime where this
+      package has never been measured: `integration_test.go` works at n=4096. A sample that
+      small is mostly the first few strata, and whether the scrambling constants are right
+      there is an open question the mayfly numbers hint at but cannot answer.
