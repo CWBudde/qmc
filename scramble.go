@@ -8,14 +8,17 @@ package qmc
 // 0, 1/p_d, 2/p_d, ... — a linear ramp, not a sample. Two adjacent
 // high-dimensional coordinates therefore ramp together and correlate almost
 // perfectly until the sample count passes the product of their bases. Measured
-// on 39 dimensions and 600 points, coordinates 37 and 38 correlate at +0.76.
+// on 39 dimensions and 600 points after skipping 64, coordinates 34 and 35
+// correlate at 0.81.
 //
-// Random-digit scrambling applies an independent uniform permutation of the
-// digit alphabet {0..b-1} to every digit position of every dimension. The
-// sequence keeps its low-discrepancy structure — a permutation maps each
-// elementary interval onto another elementary interval of the same size — but
-// the ramps are destroyed. The same measurement over five seeds gives a worst
-// adjacent-pair correlation of 0.117.
+// Random-digit scrambling draws one uniform permutation of the digit alphabet
+// {0..b-1} per dimension and maps every digit of that dimension's radical
+// inverse through it. The permutation is independent across dimensions but
+// reused across the digit positions within a dimension. The sequence keeps its
+// low-discrepancy structure — a permutation maps each elementary interval onto
+// another elementary interval of the same size — but the ramps are destroyed.
+// The same measurement over five seeds gives a worst adjacent-pair correlation
+// of 0.14.
 //
 // Reference: Braaten, E. and Weller, G. (1979), "An improved low-discrepancy
 // sequence for multidimensional quasi-Monte Carlo integration".

@@ -12,8 +12,8 @@ import (
 // scrambling the last coordinates have not yet left their first period —
 // dimension 38 has base 167, so its first 167 points are 0, 1/167, 2/167, ...
 // in order — and adjacent high dimensions therefore ramp in lockstep. The
-// measured worst adjacent-pair correlation is 0.76 with no burn-in and still
-// 0.65 after skipping 64 points.
+// measured worst adjacent-pair correlation is 0.84 with no burn-in and still
+// 0.81 after skipping 64 points, in both cases between dimensions 34 and 35.
 //
 // Scrambling is the fix, and this test is what keeps it fixed.
 const (
@@ -60,7 +60,7 @@ func TestUnscrambledStillShowsTheDefect(t *testing.T) {
 	worst, pair := worstAdjacentCorrelation(draw(g, corrPoints))
 	if worst < 0.5 {
 		t.Fatalf("unscrambled worst adjacent-pair |corr| = %.4f at dims %d/%d; "+
-			"expected the known defect (~0.65), so the scrambled comparison no longer means anything",
+			"expected the known defect (~0.81), so the scrambled comparison no longer means anything",
 			worst, pair, pair+1)
 	}
 

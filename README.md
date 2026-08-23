@@ -80,10 +80,12 @@ knobs on a 600-evaluation budget actually asks for:
 | unscrambled, skip 64                 | **0.81**                                     |
 | scrambled, skip 64, worst of 5 seeds | **0.14**                                     |
 
-`WithScrambling` applies an independent uniform permutation of the digit alphabet to every
-digit position of every dimension (random-digit scrambling, Braaten & Weller 1979). The
-sequence keeps its low-discrepancy structure — a digit permutation maps each elementary
-interval onto another of the same size — but the ramps are gone.
+`WithScrambling` draws one uniform permutation of the digit alphabet per dimension and maps
+every digit of that dimension's radical inverse through it (random-digit scrambling, Braaten
+& Weller 1979). The permutations are independent across dimensions; within a dimension the
+same permutation applies at every digit position. The sequence keeps its low-discrepancy
+structure — a digit permutation maps each elementary interval onto another of the same size
+— but the ramps are gone.
 
 The cost is that the sequence becomes seed-dependent: this is randomized quasi-Monte Carlo
 (RQMC), not plain QMC. Fix the seed and runs are reproducible again.
@@ -100,8 +102,9 @@ cheap and it is the standard remedy.
 
 There is no fixed base table. Primes are sieved on demand, so `NewHalton(500)` works.
 Scrambling allocates one permutation per dimension, sized by that dimension's prime, so
-memory grows roughly as the sum of the first _d_ primes — a few kilobytes at 39
-dimensions, a few megabytes at 5000.
+memory grows roughly as the sum of the first _d_ primes, four bytes per entry. That is about
+12 KB at 39 dimensions and 3.5 MB at 500, but the sum grows faster than _d_ does: 5000
+dimensions cost around 475 MB, so scrambling at that scale is a decision to make on purpose.
 
 ## License
 
