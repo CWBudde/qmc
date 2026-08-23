@@ -1,5 +1,7 @@
 package qmc
 
+import "fmt"
+
 // primesUpTo returns the first n prime numbers.
 //
 // The bases of a Halton sequence are the primes, one per dimension, so the
@@ -29,6 +31,10 @@ func primesUpTo(n int) []int {
 		got := sieve(limit)
 		if len(got) >= n {
 			return got[:n]
+		}
+
+		if limit > (^int(0)>>1)/2 {
+			panic(fmt.Sprintf("qmc: %d primes do not fit in memory on this platform", n))
 		}
 
 		limit *= 2

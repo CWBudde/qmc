@@ -44,7 +44,6 @@ type Halton struct {
 	skip  int
 
 	cursor int // index of the next point Next will return
-	buf    []float64
 }
 
 // NewHalton returns a generator over dims dimensions.
@@ -65,7 +64,6 @@ func NewHalton(dims int, opts ...Option) (*Halton, error) {
 		dims:  dims,
 		bases: primesUpTo(dims),
 		skip:  cfg.skip,
-		buf:   make([]float64, dims),
 	}
 	if cfg.scramble {
 		h.perms = make([][]int32, dims)
@@ -88,9 +86,12 @@ func (h *Halton) Next() []float64 {
 	return out
 }
 
-// NextInto writes the next point into dst, which must have room for Dims()
-// coordinates. It allocates nothing, which matters in an optimizer's inner
-// loop.
+// NextInto writes the next point into dst. It allocates nothing, which matters
+// in an optimizer's inner loop.
+//
+// dst must have room for Dims() coordinates; a shorter one panics. Absorbing
+// it instead would leave the tail coordinates holding zeros or stale values,
+// which look like plausible positions and would steer a search silently.
 func (h *Halton) NextInto(dst []float64) {
 	h.fill(h.cursor, dst)
 	h.cursor++
@@ -116,7 +117,8 @@ func (h *Halton) At(i int) []float64 {
 	return out
 }
 
-// AtInto is At without the allocation.
+// AtInto is At without the allocation. As with NextInto, dst shorter than
+// Dims() panics rather than being silently truncated.
 func (h *Halton) AtInto(i int, dst []float64) { h.fill(i, dst) }
 
 func (h *Halton) fill(i int, dst []float64) {
@@ -125,7 +127,7 @@ func (h *Halton) fill(i int, dst []float64) {
 	}
 
 	index := h.skip + 1 + i
-	for d := 0; d < h.dims && d < len(dst); d++ {
+	for d := 0; d < h.dims; d++ {
 		if h.perms == nil {
 			dst[d] = radicalInverse(index, h.bases[d])
 		} else {
@@ -154,6 +156,18 @@ func radicalInverse(index int, base int) float64 {
 		f /= float64(base)
 	}
 
+	// The true value is 1 - base^-m, so an index whose digits are all maximal
+	// rounds up to 1 — or past it, as base 167 does — once base^-m falls below
+	// an ulp. That needs an index around 1.7e16, far beyond anything a sampler
+	// reaches, but [0,1) is what this package promises and a promise that
+	// holds only for small inputs is not one. The clamp cannot perturb a
+	// reachable index: it fires only where the result had already rounded to
+	// 1, so the bit-identical guarantee against the generator this replaced is
+	// untouched.
+	if result >= oneMinusEpsilon {
+		return oneMinusEpsilon
+	}
+
 	return result
 }
 
@@ -174,16 +188,33 @@ func scrambledRadicalInverse(index int, base int, perm []int32) float64 {
 	if base < 2 || index < 0 {
 		return 0
 	}
-	// Stop reversing before the accumulator could overflow. At base 2 this is
-	// 63 digits, far more than any index a sampler will reach.
-	limit := ^uint64(0) / uint64(base)
+	// Stop reversing before the accumulator could overflow. The bound has to
+	// leave room for the digit as well as the multiply: at base 167 an
+	// accumulator sitting exactly on ^uint64(0)/base wraps on the next step to
+	// a small positive value, which passes the guard again, so the loop would
+	// carry on with garbage rather than stop.
+	//
+	// Overrunning is refused rather than broken out of, because breaking out
+	// is silently wrong in a worse way: reversed and invBaseN advance together,
+	// so a truncated reversal returns the exactly-correct value of a different,
+	// shorter index. Two far-apart indices would land on one point with nothing
+	// to show for it.
+	//
+	// The bound is unreachable in practice — it needs an index above 6e17 even
+	// at base 167 — so this costs one comparison per digit and never fires.
+	limit := (^uint64(0) - uint64(base-1)) / uint64(base)
 
 	var reversed uint64
 
 	invBase := 1 / float64(base)
 	invBaseN := 1.0
 
-	for i := index; i > 0 && reversed <= limit; i /= base {
+	for i := index; i > 0; i /= base {
+		if reversed > limit {
+			panic(fmt.Sprintf(
+				"qmc: index %d has too many base-%d digits to reverse without overflow", index, base))
+		}
+
 		reversed = reversed*uint64(base) + uint64(perm[i%base])
 		invBaseN *= invBase
 	}
