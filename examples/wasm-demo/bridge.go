@@ -73,6 +73,29 @@ func isObject(value js.Value) bool {
 // every caller had to fill in defaults the Go side already knows — which is
 // exactly the duplication the info() capability table exists to avoid.
 
+// readInt reads a count, a dimension index, a skip — anything the page sends as
+// a plain integer option.
+//
+// The range check before the conversion is the load-bearing part. JavaScript
+// has one number type and it is a double, so `{count: 1e300}` typed into the
+// console, or left in a stale cached script, arrives here as a perfectly
+// ordinary finite value that is nowhere near representable as an int. The Go
+// spec leaves float-to-integer conversion implementation-defined when the
+// value does not fit the target type, so int(1e300) is not "some big number",
+// it is whatever the target happens to produce — and clampInt cannot recognise
+// it as out of range afterwards, because it may well land inside the limits.
+// That would quietly defeat the whole point of clamping in Go rather than
+// trusting the page (see the note above the limits in info.go).
+//
+// int is 64 bits wide on js/wasm (only uintptr is 32; see the wasm job in
+// .github/workflows/test.yml), so the threshold is 2^63, not 2^31 — but the
+// page can reach it with one keystroke, and NaN/Inf are already handled above.
+//
+// So the value is saturated to the int range while it is still a float64, and
+// only then converted. Saturating rather than rejecting matches clampInt and
+// the rest of the read* helpers: a control dragged to its end stop should hit
+// the limit, not raise an error. The bounds come from math.MaxInt/math.MinInt
+// so this stays correct on a 64-bit host build as well as under wasm.
 func readInt(opts js.Value, key string, fallback int) int {
 	if !isObject(opts) {
 		return fallback
@@ -86,6 +109,14 @@ func readInt(opts js.Value, key string, fallback int) int {
 	number := value.Float()
 	if math.IsNaN(number) || math.IsInf(number, 0) {
 		return fallback
+	}
+
+	if number >= math.MaxInt {
+		return math.MaxInt
+	}
+
+	if number <= math.MinInt {
+		return math.MinInt
 	}
 
 	return int(number)
