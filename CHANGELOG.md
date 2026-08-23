@@ -9,6 +9,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The Sobol sequence, `NewSobol`, with Joe and Kuo direction numbers for 1024
+  dimensions embedded from `third_party/joe-kuo` under their BSD-3 notice, and
+  `WithDirectionNumbers` for a caller's own table beyond that. Direction
+  numbers cannot be derived — the initial values come from those authors'
+  numerical search — so embedding a table or shipping a markedly worse sequence
+  were the only honest options. `At` evaluates directly and is safe for
+  concurrent use; `Next` uses the Gray-code recurrence and runs at 65 ns/op
+  against 471 for Halton's `NextInto` at 39 dimensions. Requiring both forces
+  Gray-code ordering on the sequence itself, so dimension 1 goes 0.5, 0.75,
+  0.25 — matching Joe and Kuo's own `sobol.cc` and scipy rather than the
+  ordering a reader might expect, and documented on the type.
+- `Sequence`, the interface both generators satisfy. It carries `Dims`, the
+  stateful cursor and the stateless index-addressed form, and deliberately not
+  `Bases` or `Permutation`: those are Halton-specific, and the honest answer to
+  a question that does not apply to Sobol is that the caller is holding the
+  wrong type, not a zero value. Settled before the second sequence landed,
+  because adding an interface afterwards to a package with two concrete types
+  is a breaking change.
+- `WithDigitalShift` and `WithOwenScrambling` randomize Sobol;
+  `WithNestedScrambling` randomizes Halton. Measured against the same Monte
+  Carlo baseline on a smooth 39-dimensional product integrand at n=4096 over
+  ten streams: MC 4.3e-03, random-digit Halton 2.4e-04 (17.7x), shifted Sobol
+  1.5e-04 (29.5x), Owen-scrambled Sobol 1.4e-04 (32.0x), nested-affine Halton
+  8.1e-05 (53.2x).
+- Two of those carry caveats the doc comments state rather than bury. Nested
+  affine scrambling integrates best on this integrand but its worst adjacent-
+  pair correlation over thirty seeds is 0.37 against random-digit's 0.16, and
+  it costs about 8x per point — it suits integration, not a parameter sweep.
+  Owen scrambling is nearly free on `AtInto` (370 ns/op against 360 for a
+  digital shift) but roughly 3x on `NextInto` (197 against 65), because the
+  Gray-code recurrence is precisely what cannot carry a non-linear scramble.
+- A randomization that does not apply to a generator is now refused by name at
+  construction rather than ignored. Ignoring it would hand back a deterministic
+  sequence to code that is about to average over seeds, which would report an
+  error estimate of exactly zero.
 - `(*Halton).Bases()` returns the prime base of each dimension, in order, as a
   defensive copy. The d-th base is the d-th prime, and it is what explains a
   dimension's behaviour: dimension 38 uses base 167.
@@ -37,6 +72,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The package doc comment moved from `halton.go` to `sequence.go` and now
+  covers both generators, with guidance on which to reach for.
+- The correlation figures in the README are now quoted as a median and a tail
+  over thirty seeds rather than a worst case over five. The statistic is
+  high-variance: a change that was a pure re-instantiation of the scrambling,
+  not a change of scheme, moved a five-seed worst case from 0.40 to 0.12.
 - Corrected stale comments in `.golangci.yml` that had been copied from a
   sibling DSP repository and described identifiers and a project layout that do
   not exist here.

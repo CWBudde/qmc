@@ -12,6 +12,15 @@ ordered by consequence within each section, not by effort.
 
 Kept here only until the next release, as context for the sections below.
 
+- **Sobol** landed with Joe-Kuo direction numbers for 1024 dimensions, `WithDirectionNumbers`
+  for a caller's own table, direct `At` and a Gray-code `Next`. Output verified bit-identical
+  against Joe and Kuo's own `sobol.cc` and against scipy. Measured 29.5x better than Monte
+  Carlo at 39 dimensions against scrambled Halton's 17.7x.
+- **Owen scrambling** (base-2, hash-based, Burley 2020) and **`WithDigitalShift`** randomize
+  Sobol; **`WithNestedScrambling`** — nested affine, not full Owen, and named for what it is —
+  randomizes Halton.
+- **The `Sequence` interface**, settled before the second generator landed, since adding one
+  afterwards to a package with two concrete types would have been a breaking change.
 - The suite could not distinguish this library's output from pseudorandom noise. The
   correlation test passes for `math/rand` (0.124, against a 0.25 threshold — better than
   the real generator's 0.141). `integration_test.go` now pins QMC integration error
@@ -29,11 +38,12 @@ Kept here only until the next release, as context for the sections below.
 
 ### API surface
 
-- The package is called `qmc` and its doc comment promises "sequences", plural, but ships
-  one and exposes no interface. `NewSobol` below is described as returning "the same
-  generator surface" — that surface does not exist as a type, so nothing enforces it.
-  Decide the shape **before** Sobol lands, because adding an interface afterwards to a
-  package with two concrete types is a breaking change.
+- `Sequence` now exists and both generators satisfy it, asserted at compile time. What is
+  still open is everything it deliberately left off: a caller holding a `Sequence` cannot ask
+  what randomization is in effect, how many dimensions the concrete generator can reach, or
+  whether it has prime bases — the WebAssembly demo needs all three and gets them from a
+  hand-maintained table on the side. A small `Describe()` returning a value type would remove
+  that duplication without putting Halton-specific methods on the interface.
 - `type Option func(*settings)` exports a function type over an unexported struct. This is
   a deliberate and common way to stop third parties writing options, but it renders in
   godoc as `func(*settings)`, which reads as a leak. Either document the intent on the
@@ -59,12 +69,15 @@ Kept here only until the next release, as context for the sections below.
 
 ### Performance
 
-Benchmarks now exist (`bench_test.go`); nothing has been optimised against them yet.
-Measured at 39 dimensions: `AtInto` 800 ns/op, scrambled 1279 ns/op, `Next` 1074 ns/op
-with one 320 B allocation.
+Benchmarks now exist (`bench_test.go`, `sobol_bench_test.go`); nothing has been optimised
+against them yet. Note the Halton figures recorded in `bench_test.go` were taken on a
+different machine from the Sobol ones, so they are not comparable to each other — the
+same-machine numbers are in `sobol_bench_test.go`'s header. Re-measuring all of them
+together is worth doing before anyone optimises against them.
 
-- `fill` re-tests `h.perms == nil` on every coordinate of every point. Hoist the branch out
-  of the loop, or split into two loops.
+- ~~`fill` re-tests `h.perms == nil` on every coordinate of every point.~~ Done: the branch
+  is hoisted and the dispatch is now three-way. `Sobol.NextInto` does the same for its Owen
+  branch, which is where it matters most — that call is 65 ns/op across 39 dimensions.
 - Both inner loops divide by a non-constant base once per digit. A precomputed reciprocal,
   or specialising the base-2 case that dimension 0 always uses, is the obvious first cut.
 - There is no bulk API. The WebAssembly demo — the heaviest known consumer — calls `AtInto`
@@ -76,30 +89,31 @@ with one 320 B allocation.
 
 ## New sequences and randomisation
 
-### Sobol
+### Sobol — done, with these left open
 
-Sobol sequences have better high-dimensional behaviour than Halton and do not degrade with
-dimension the way large-prime radical inverses do. Needs direction numbers — Joe & Kuo's
-tables are the usual source, and they are large enough that generating or embedding them
-is its own decision.
+- [x] Direction numbers, Gray-code `Next`, direct `At`, digital shift, Owen scrambling
+- [ ] The embedded table stops at 1024 dimensions. `WithDirectionNumbers` covers the rest,
+      but nothing in the repository generates or verifies a table beyond that, so a caller
+      who needs 5000 dimensions is on their own with a file format and a validator.
+- [ ] Balance holds only on a 2^m-aligned block of raw indices, which the tests work around
+      with `WithSkip(2^m - 1)`. Nothing in the API tells a caller that, and it is the kind of
+      thing that makes a stratification check look broken when it is the question that is.
+- [ ] Joe and Kuo's D(6) table does not make every 2-D projection a net: of the 780 pairs
+      among the first 40 dimensions, 18 are balanced at every split at m=8 and 4 at m=10.
+      Worth a note in the docs — a caller picking two dimensions to plot may land on a bad
+      pair and conclude the sequence is broken.
 
-- [ ] Direction numbers (embed Joe & Kuo, or generate from primitive polynomials)
-- [ ] Gray-code recurrence for `Next`, direct evaluation for `At`
-- [ ] Digital-shift randomization, then Owen scrambling
-- [ ] Settle the shared generator interface first (see API surface above)
+### Scrambling — done, with one finding worth acting on
 
-### Owen scrambling
-
-Nested/Owen scrambling is stronger than the random-digit scrambling implemented here: it
-permutes each digit conditionally on the digits above it, which removes correlations that
-one permutation per dimension leaves behind. It costs a hash per digit rather than a table
-lookup.
-
-- [ ] Owen scrambling as an option alongside `WithScrambling`
-- [ ] Measure it against random-digit scrambling on both the correlation test and the new
-      integration test before recommending it — the cheaper scrambling already gets the
-      worst pair from 0.81 to 0.14 and integrates 18x better than Monte Carlo at 39
-      dimensions, and the remaining headroom may not be worth the per-digit hash
+- [x] Owen scrambling for Sobol, nested affine scrambling for Halton, both measured
+- [ ] Nested affine scrambling integrates best of everything measured (53.2x against Monte
+      Carlo at 39 dimensions) but has the worst correlation tail (0.37 worst over thirty
+      seeds against random-digit's 0.16). A diagnostic run with full permutations instead of
+      affine ones removed the tail entirely while keeping 44x. If the O(base) shuffle can be
+      amortised — a cached permutation per visited node, bounded by the tree depth actually
+      reached — that is the strictly better construction and it is already known to work.
+- [ ] The hash-based Owen scramble is exact in its nesting but approximate in the uniformity
+      of the permutation at each node. Nothing measures how much that approximation costs.
 
 ### Leaping
 
@@ -124,6 +138,17 @@ being informative.
 
 ## Testing
 
+- **A stratification test cannot police nesting.** Measured twice, independently, on both
+  new scrambling schemes: a scramble that has stopped being conditional on the digits above
+  it still maps elementary intervals onto elementary intervals, so it still produces a valid
+  net. Removing both bit reversals from `owenScramble` leaves the net-property test passing
+  across all 1024 dimensions at m=4, 8 and 12, along with the bijectivity, per-node
+  injectivity and `Next`/`At` agreement tests — only the dedicated nesting test fails. Any
+  future scrambling scheme needs a test that pins the conditional structure directly.
+- **Five seeds is not enough for the correlation statistic.** A change that was a pure
+  re-instantiation of the nested scrambling, not a change of scheme, moved a five-seed worst
+  case from 0.40 to 0.12. `correlation_test.go` still uses five and should quote a median and
+  a tail over thirty, as the README now does.
 - The demo module has no tests at all, and it duplicates library logic (see below), so
   nothing catches the two halves drifting apart.
 - Coverage sits at 93.2%, and the uncovered statements are precisely the defensive guards.
@@ -159,7 +184,7 @@ being informative.
 
 `.git/info/exclude` hides `/.trunk`, and no file under it is tracked. It duplicates what
 treefmt and golangci-lint already do, and it pins `go@1.21.0` against a module requiring
-1.23. Markdown and YAML linting exist *only* there, which means CI lints neither. Either
+1.23. Markdown and YAML linting exist _only_ there, which means CI lints neither. Either
 track it and drop treefmt, or delete the directory — keeping it untracked and half-wired
 is the worst of the three states.
 

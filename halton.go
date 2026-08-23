@@ -1,21 +1,3 @@
-// Package qmc provides quasi-Monte Carlo sequences: deterministic,
-// low-discrepancy point sets that fill a unit hypercube more evenly than
-// independent random sampling does.
-//
-// The package currently implements the Halton sequence, optionally with
-// random-digit scrambling. Points are returned as coordinates in [0,1), so a
-// caller maps them onto its own parameter ranges.
-//
-//	g, err := qmc.NewHalton(39, qmc.WithSkip(64), qmc.WithScrambling(seed))
-//	if err != nil {
-//		return err
-//	}
-//	for i := 0; i < 600; i++ {
-//		point := g.Next() // len(point) == 39, every coordinate in [0,1)
-//		...
-//	}
-//
-// Use scrambling above roughly twenty dimensions. See WithScrambling for why.
 package qmc
 
 import (
