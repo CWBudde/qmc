@@ -138,3 +138,34 @@ func BenchmarkNewHaltonHighDimsScrambled(b *testing.B) {
 		sink += float64(g.Dims())
 	}
 }
+
+// BenchmarkAtIntoLeaped measures what WithLeap actually costs, which is not
+// what it looks like it should cost.
+//
+// The implementation is one multiply in fill, and a multiply amortised over 39
+// coordinates should be unmeasurable. Measured at a leap of 173 it is 634
+// ns/op against AtInto's 512 — about 24%. The multiply is not where that goes:
+// a leap reaches raw index skip+1+i*leap instead of skip+1+i, so at the same
+// point count it is working on indices 173 times larger, and a radical inverse
+// costs one loop iteration per digit. Dimension 0 gains about 7.4 base-2 digits
+// and dimension 38 about one base-167 digit.
+//
+// So the cost of leaping is proportional to log(leap), not to the multiply, and
+// it is paid by every coordinate. Worth knowing before choosing a large leap
+// for its own sake.
+func BenchmarkAtIntoLeaped(b *testing.B) {
+	g, err := qmc.NewHalton(benchDims, qmc.WithSkip(64), qmc.WithLeap(173))
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	dst := make([]float64, benchDims)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		g.AtInto(i, dst)
+		sink += dst[0]
+	}
+}

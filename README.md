@@ -191,6 +191,67 @@ The first Halton point is `(1/2, 1/3, 1/5, 1/7, …)`, which sits near a corner 
 every coordinate with a large base. `WithSkip(64)` discards the first 64 points. It is
 cheap and it is the standard remedy.
 
+## Leaping
+
+`WithLeap(n)` takes every _n_-th point instead of every point: point _i_ becomes raw index
+`skip + 1 + i*n`. It is the third remedy for the high-dimensional Halton defect, after a
+burn-in and the two scrambling schemes, and the only deterministic one — no seed, so a leaped
+run is plain QMC and reproducible without recording anything.
+
+**A leap must be coprime to every base in use.** If a base _p_ divides _n_, every raw index is
+congruent to `skip+1` mod _p_, so that coordinate's leading base-_p_ digit never changes and
+the coordinate is confined to a single strip of width `1/p` — measured at 39 dimensions with a
+leap of 167, dimension 38 spends the entire run inside a strip covering 0.6% of its range,
+while still producing a plausible spread of values inside it. Scrambling does not rescue it: a
+permuted constant digit is still a constant digit, so the coordinate moves to a different
+strip of the same width. `NewHalton` and `NewSobol` therefore refuse such a leap by name
+rather than let it go wrong quietly. In practice, pick a prime above the largest base — above
+167 at 39 dimensions. On Sobol every base is 2, so the leap must simply be odd.
+
+Measured at 39 dimensions and 4096 points, over forty admissible leaps against forty
+scrambling seeds — one run, so these are a comparison rather than four sittings:
+
+| configuration          | RMS relative error | vs Monte Carlo |
+| ---------------------- | ------------------ | -------------- |
+| unleaped, unscrambled  | 3.9e-03            | 1.4x           |
+| `WithLeap`             | **1.0e-04**        | **54.3x**      |
+| `WithScrambling`       | 2.2e-04            | 24.4x          |
+| `WithNestedScrambling` | 1.3e-04            | 41.1x          |
+
+So leaping integrates better than either scrambling scheme, for free and without a seed. The
+catch is the other statistic — worst adjacent-pair |r| at 600 points, over thirty leaps:
+
+| configuration                   | median | p90  | worst    |
+| ------------------------------- | ------ | ---- | -------- |
+| unleaped, unscrambled, skip 64  | —      | —    | **0.81** |
+| `WithLeap`, skip 64             | 0.097  | 0.23 | **0.32** |
+| `WithScrambling`, skip 64       | 0.093  | 0.13 | **0.16** |
+| `WithNestedScrambling`, skip 64 | 0.089  | 0.12 | **0.14** |
+
+The medians agree; the tail does not. A leap only reorders the digits a coordinate visits, so
+two dimensions whose bases interact with the leap in commensurate ways still ramp together,
+and roughly one leap in ten draws such a pair. Leaping suits integration, where the average is
+what you get; it does not suit a parameter sweep, where the worst case is what you feel.
+
+It is not quite free, and not for the reason it looks: the implementation is one multiply, but
+a leaped generator works on raw indices _n_ times larger, so its radical inverses carry about
+`log(n)` more digits. `AtInto` at 39 dimensions costs 634 ns/op at a leap of 173 against 512
+unleaped.
+
+On **Sobol** the option exists for symmetry and is not the one to reach for — Sobol has no ramp
+defect to cure. An odd leap forfeits the (t,m,s)-net balance property unconditionally (8.8e-03
+against 1.8e-04 unleaped at 16 dimensions) and costs `Next` its Gray-code recurrence (301
+ns/op against 46.0). An **even** leap is refused, and the reason is worth stating because it is
+not the base-_p_ argument above: this package generates in Gray-code order, and the parity of
+the population count of `gray(m)` is exactly `m&1`, which is the leading bit of every
+dimension whose direction numbers all carry their own leading bit. Dimension 1 is such a
+dimension in the embedded table, so an even leap pins it to one half of `[0,1)` and multiplies
+the integration error by several hundred.
+
+`TestLeapingBreaksHighDimensionalCorrelation`, `TestLeapingIntegratesBetterThanAnUnleapedSequence`,
+`TestASharedFactorConfinesTheHaltonCoordinate` and `TestAnEvenLeapConfinesASobolCoordinate`
+keep every number and every claim above honest.
+
 ## Dimensionality
 
 **Sobol** covers 1024 dimensions from the embedded Joe & Kuo direction numbers.

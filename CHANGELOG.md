@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `WithLeap(n)`, which takes every n-th point of the underlying sequence: point
+  i becomes raw index `skip + 1 + i*n`. `WithLeap(1)` is bit-identical to an
+  unleaped generator, so nothing recorded against an earlier version changes.
+  It is the only deterministic remedy for Halton's high-dimensional ramp defect
+  — no seed, so a leaped run is plain QMC — and, measured at 39 dimensions and
+  4096 points over forty admissible leaps, the most accurate: 54.3x Monte Carlo
+  against random-digit scrambling's 24.4x and nested scrambling's 41.1x. Its
+  weakness is the tail rather than the average: worst adjacent-pair |r| over
+  thirty leaps runs median 0.097 but worst 0.32, against scrambling's 0.16, so
+  it suits integration and does not suit a parameter sweep. It is not free
+  either, and not because of the multiply — a leaped generator works on indices
+  n times larger, so every radical inverse carries about log(n) more digits, and
+  `AtInto` costs 634 ns/op at a leap of 173 against 512 unleaped.
+
+  A leap sharing a factor with a base is **refused at construction**, by name,
+  rather than documented and allowed. If a base p divides the leap, that
+  coordinate's leading base-p digit never changes and the coordinate spends the
+  whole run inside one strip of width 1/p — measured at 39 dimensions with a
+  leap of 167, dimension 38 covers 0.6% of its range — while still returning a
+  plausible spread of values inside the strip. Scrambling does not rescue it.
+
+  Sobol accepts an odd leap, for symmetry and measured, but it is not the option
+  to reach for there: it forfeits the (t,m,s)-net balance property
+  unconditionally and costs `Next` its Gray-code recurrence, 301 ns/op against
+  46.0. An even leap is refused. The mechanism differs from Halton's and is
+  written out at `WithLeap`: points are generated in Gray-code order, the parity
+  of the population count of `gray(m)` is exactly `m&1`, and that parity is the
+  leading bit of every dimension whose direction numbers all carry their own
+  leading bit — dimension 1 among them in the embedded table. An even leap pins
+  it to one half of `[0,1)` and multiplies the integration error by several
+  hundred.
+
 ## [0.2.0] - 2026-08-23
 
 ### Added

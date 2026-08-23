@@ -66,6 +66,11 @@ type settings struct {
 	randomize randomization
 	seed      uint64
 
+	// leap takes every leap-th point instead of every point. Zero means the
+	// option was never applied; leapOf turns that into the neutral 1. See
+	// WithLeap.
+	leap int
+
 	// directions carries a caller-supplied Joe-Kuo direction-number table for
 	// Sobol. nil means the embedded table. See WithDirectionNumbers.
 	directions io.Reader

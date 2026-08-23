@@ -195,3 +195,38 @@ func BenchmarkSobolNextIntoOwen(b *testing.B) {
 
 	sink = dst[0]
 }
+
+// BenchmarkSobolNextIntoLeaped is the cost WithLeap documents on this
+// generator, and the reason it says to reach for a scrambling option instead.
+//
+// The Gray-code recurrence is only valid between consecutive raw indices, so a
+// leaping NextInto cannot use it and falls back to the same work AtInto does.
+// Compare BenchmarkSobolNextInto: the gap between the two is the whole of what
+// the Gray-code ordering buys, paid back.
+//
+// Measured on the machine in this file's header: 301 ns/op leaped against 46.0
+// unleaped, a factor of 6.5, landing just above AtInto's 260 — as it must,
+// since it now does AtInto's work plus a cursor increment.
+func BenchmarkSobolNextIntoLeaped(b *testing.B) {
+	g, err := qmc.NewSobol(sobolBenchDims, qmc.WithSkip(64), qmc.WithLeap(173))
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	dst := make([]float64, sobolBenchDims)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		g.NextInto(dst)
+		sink += dst[0]
+
+		// The 32-bit raw index is reached 173 times sooner with this leap, so
+		// the cursor is rewound well before it can run out. Reset costs one
+		// accumulate, which at this leap is under a thousandth of the loop.
+		if i%1_000_000 == 999_999 {
+			g.Reset()
+		}
+	}
+}

@@ -41,6 +41,12 @@ const twoPowMinus32 = 1.0 / 4294967296.0
 // [0, 2^m), so the first 2^m points are the same point set either way and the
 // (t,m,s)-net balance property — the thing the sequence is for — is untouched.
 //
+// WithLeap does forfeit that property, unconditionally and at any leap: a
+// leaped run visits a strided subset of the raw indices, which is not a block
+// of 2^m of them however it is aligned. It also costs Next the recurrence
+// above. Both are written out at WithLeap, along with why an even leap is
+// refused outright.
+//
 // # Balance holds on aligned blocks, not on any window
 //
 // The (t,m,s)-net property — the first 2^m points falling one apiece into
@@ -122,11 +128,26 @@ type Sobol struct {
 
 	skip int
 
+	// leap is 1 unless WithLeap is on: point i is raw index skip+1+i*leap. Any
+	// value above 1 costs this generator its Gray-code fast path and its net
+	// balance, both explained at WithLeap.
+	leap int
+
 	// counter is the raw sequence index of the point Next will return, and
 	// state is that point's accumulator, already carrying shift. Together they
 	// are the whole of the Gray-code recurrence's state.
+	//
+	// They are the cursor only when leap is 1. A leaping generator cannot use
+	// the recurrence at all, so it counts points in cursor instead and reaches
+	// them through fill. The two never run at once — leap is fixed at
+	// construction — which is why one of the pair is always dead rather than
+	// the two needing to be kept in step.
 	counter uint32
 	state   []uint32
+
+	// cursor is the index of the next point NextInto will return, used only
+	// when leap is above 1.
+	cursor int
 }
 
 // embeddedTable parses the built-in direction numbers once per process.
@@ -305,10 +326,26 @@ func NewSobol(dims int, opts ...Option) (*Sobol, error) {
 		)
 	}
 
+	// Every Sobol base is 2, so the shared-factor trap reduces to one
+	// condition: the leap must be odd. An even leap holds the lowest bit of the
+	// raw index fixed, and that bit is the parity of the population count of
+	// the Gray code — which is the leading bit of every coordinate whose
+	// direction numbers all carry their own leading bit. Dimension 1 is one of
+	// those in the embedded table, so an even leap confines it to a half of
+	// [0,1) and multiplies the integration error by several hundred. Neither a
+	// digital shift nor an Owen scramble rescues it: both rewrite that leading
+	// bit, but they rewrite it the same way for every point, so it stays
+	// constant. The full argument is at WithLeap.
+	leap := leapOf(cfg)
+	if base, dim, conflict := leapConflict(leap, []int{2}); conflict {
+		return nil, errLeapConflict(leap, base, dim, 2)
+	}
+
 	s := &Sobol{
 		dims:       dims,
 		directions: make([]uint32, dims*sobolBits),
 		skip:       cfg.skip,
+		leap:       leap,
 		state:      make([]uint32, dims),
 	}
 
@@ -399,6 +436,19 @@ func (s *Sobol) Next() []float64 {
 // it instead would leave the tail coordinates holding zeros or stale values,
 // which look like plausible positions and would steer a search silently.
 func (s *Sobol) NextInto(dst []float64) {
+	// A leaping generator cannot use the recurrence below at all: it advances
+	// by one XOR because consecutive raw indices differ in exactly one
+	// Gray-code bit, and indices leap apart do not. So it walks its own point
+	// cursor through fill, which is the same work AtInto does — the cost
+	// WithLeap documents. fill's index guards stand in for the exhaustion
+	// panic below.
+	if s.leap > 1 {
+		s.fill(s.cursor, dst)
+		s.cursor++
+
+		return
+	}
+
 	// The branch is hoisted out of the loop rather than tested per dimension.
 	// This is the one place in the package where that matters: unrandomized,
 	// NextInto is 65 ns/op across 39 dimensions, so a predictable but repeated
@@ -437,6 +487,7 @@ func (s *Sobol) NextInto(dst []float64) {
 // again. The sequence itself is unchanged: a generator always yields the same
 // points for the same configuration.
 func (s *Sobol) Reset() {
+	s.cursor = 0
 	s.counter = uint32(s.skip + 1)
 	s.accumulate(s.counter, s.state)
 }
@@ -446,8 +497,8 @@ func (s *Sobol) Reset() {
 // generator's configuration, never on how many points have been drawn, and it
 // is safe to call from several goroutines at once.
 //
-// Point i corresponds to raw Sobol index skip+1+i, matching Halton's
-// convention in this package. Raw index 0 is the all-zeros origin — the same
+// Point i corresponds to raw Sobol index skip+1+i*leap — skip+1+i unless
+// WithLeap is in effect — matching Halton's convention in this package. Raw index 0 is the all-zeros origin — the same
 // degenerate point Halton's convention exists to avoid, arrived at for a
 // different reason: Halton's index 0 has no digits to invert, Sobol's selects
 // no direction numbers at all. Either way it is a corner of the cube that no
@@ -456,7 +507,8 @@ func (s *Sobol) Reset() {
 //
 // The mapping from i to a raw index is what decides whether a range of points
 // is balanced, so it is worth being explicit about here rather than only in
-// the type doc. The (t,m,s)-net property holds over 2^m raw indices starting
+// the type doc. A leap forfeits the balance outright, at any value; the rest of
+// this paragraph is about an unleaped generator. The (t,m,s)-net property holds over 2^m raw indices starting
 // on a multiple of 2^m; At(0)..At(2^m-1) is that block only when skip+1 is a
 // multiple of 2^m — which is what WithSkip(2^m - 1) arranges, and what the
 // default skip of 0 does not. Measured at 40 dimensions and m=8, taking
@@ -482,22 +534,30 @@ func (s *Sobol) fill(i int, dst []float64) {
 		i = 0
 	}
 
-	// skip is non-negative (WithSkip clamps) and i has just been clamped, so
-	// skip+1+i can only leave the representable range by overflowing upwards.
-	// It is refused rather than clamped, for the reason fill in halton.go
-	// gives: a wrapped sum goes negative, and a negative index would be
-	// clamped back to 0 and hand back the origin — the one point At documents
-	// it never returns — so the caller would get a plausible-looking point
-	// that is not the point they asked for. Clamping to MaxInt is the same
-	// failure wearing a different hat: every index past the limit would alias
-	// onto one point with nothing to show for it.
-	if i > math.MaxInt-1-s.skip {
+	// skip is non-negative (WithSkip clamps), leap is at least 1 (WithLeap
+	// clamps) and i has just been clamped, so skip+1+i*leap can only leave the
+	// representable range by overflowing upwards. It is refused rather than
+	// clamped, for the reason fill in halton.go gives: a wrapped sum goes
+	// negative, and a negative index would be clamped back to 0 and hand back
+	// the origin — the one point At documents it never returns — so the caller
+	// would get a plausible-looking point that is not the point they asked
+	// for. Clamping to MaxInt is the same failure wearing a different hat:
+	// every index past the limit would alias onto one point with nothing to
+	// show for it.
+	//
+	// The division is the exact test for i*leap <= MaxInt-1-skip, and it is
+	// done before the multiplication rather than after, since the
+	// multiplication is what would overflow. On a 64-bit platform the 32-bit
+	// check below fires first for every leap; on a 32-bit one this is the
+	// check that fires.
+	if i > (math.MaxInt-1-s.skip)/s.leap {
 		panic(fmt.Sprintf(
-			"qmc: point index %d with skip %d overflows the raw Sobol index", i, s.skip,
+			"qmc: point index %d with skip %d and leap %d overflows the raw Sobol index",
+			i, s.skip, s.leap,
 		))
 	}
 
-	raw := s.skip + 1 + i
+	raw := s.skip + 1 + i*s.leap
 
 	// The direction numbers cover 32 bits of index and no more, so index 2^32
 	// is not a point this generator has. Aliasing it onto index 0 by

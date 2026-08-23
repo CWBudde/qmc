@@ -127,13 +127,53 @@ WithScrambling(…))` costs ~32 ms and allocates proportionally to the sum of th
       tenth of the RMS integration error, so the constants stand — but this is the first
       instrument in the package with the resolution to evaluate changing them.
 
-### Leaping
+### Leaping — done
 
-Skipping every _L_-th point is sometimes used to decorrelate coordinates in place of
-scrambling. It is easy to add (`WithLeap(n)`, one multiply in `fill`) and easy to get
-wrong: a leap that shares a factor with a base makes that coordinate worse, not better.
+- [x] `WithLeap`, with the shared-factor trap documented and tested. It measured better than
+      expected and is now the most accurate option in the package for integration: 54.3x
+      Monte Carlo at 39 dimensions and 4096 points over forty admissible leaps, against
+      random-digit scrambling's 24.4x and nested scrambling's 41.1x, all four measured in one
+      run. It needs no seed, so it is plain QMC rather than RQMC — which is also its
+      limitation, since there is no averaging over seeds to give an error estimate.
+- [x] The trap is refused at construction rather than documented and allowed, on both
+      generators. If a base _p_ divides the leap, that coordinate's leading base-_p_ digit
+      never changes and it spends the whole run in one strip of width 1/_p_ — at 39
+      dimensions with a leap of 167, dimension 38 covers 0.6% of its range while still
+      returning a plausible spread of values inside the strip. Scrambling does not rescue it:
+      a permuted constant digit is still constant, so it moves to a different strip of the
+      same width. All three Halton randomizations were measured showing this.
+- [x] Sobol's version of the trap is **not** the base-2 restatement it looks like, and this is
+      the one thing here that had to be measured before it could be written down. Points are
+      generated in Gray-code order, so a stride in the raw index is not a stride in the
+      direct-form index and no bit is obviously pinned. What is pinned is the parity of the
+      population count of `gray(m)`, which is exactly `m&1` — and that parity is the leading
+      bit of every dimension whose direction numbers all carry their own leading bit.
+      Dimension 1 is the only such dimension in the first eight of the embedded table (32 of
+      32 direction numbers, against dimension 0's 1 of 32), and an even leap pins it to one
+      half of [0,1) at every skip tried, taking integration from 2.6e-04 to 1.2e-01.
 
-- [ ] `WithLeap`, with the shared-factor trap documented and tested
+Two things worth knowing before anyone reaches for it:
+
+- **The gain is in the average, not the tail.** Worst adjacent-pair |r| over thirty leaps runs
+  median 0.097, p90 0.23, worst 0.32, against `WithScrambling`'s 0.093/0.13/0.16. The medians
+  agree and the tail does not, because a leap only reorders the digits a coordinate visits, so
+  two dimensions whose bases interact with the leap commensurately still ramp together — the
+  same shape of defect the affine nested scrambling had. It suits integration; it does not
+  suit a parameter sweep.
+- **It is not free, and not because of the multiply.** The multiply is unmeasurable. What
+  costs is that a leaped generator works on raw indices _n_ times larger, so every radical
+  inverse carries about log(_n_) more digits: `AtInto` at 39 dimensions is 634 ns/op at a leap
+  of 173 against 512 unleaped. On Sobol a leap also costs `Next` the Gray-code recurrence
+  entirely — 301 ns/op against 46.0 — and forfeits the (t,m,s)-net balance property at any
+  leap, so an odd leap is legal there and still measures 8.8e-03 against 1.8e-04 unleaped.
+
+Still open:
+
+- [ ] The demo does not expose it. A leap is an independent numeric knob rather than a
+      randomization, so it does not fit `examples/wasm-demo/info.go`'s `randomizations` map,
+      whose `option` signature is `func(seed uint64) qmc.Option`. It would need a slider and a
+      `readInt` call in each of `points.go`, `correlate.go`, `converge.go` and `digits.go` —
+      and the demo still has no tests, so it should not ride along with a library change.
 
 ### Discrepancy measurement
 

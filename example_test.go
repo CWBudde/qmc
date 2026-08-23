@@ -147,3 +147,36 @@ func ExampleWithScrambling() {
 	// seed 1: dim 0 = 0.5078, dim 38 = 0.1334
 	// seed 2: dim 0 = 0.4922, dim 38 = 0.2366
 }
+
+// WithLeap takes every n-th point instead of every point, which decorrelates
+// Halton's high dimensions without a seed. The leap must be coprime to every
+// base in use, or the coordinate whose base it shares a factor with is confined
+// to a strip of width 1/base for the whole run — so the constructor refuses it.
+func ExampleWithLeap() {
+	// A prime above the largest base in use is coprime to all of them. At three
+	// dimensions the bases are 2, 3 and 5.
+	leaped, err := qmc.NewHalton(3, qmc.WithLeap(7))
+	if err != nil {
+		panic(err)
+	}
+
+	plain, err := qmc.NewHalton(3)
+	if err != nil {
+		panic(err)
+	}
+
+	l := leaped.At(2)
+	p := plain.At(14) // raw index 15 either way: skip+1+i*leap with i=2, leap=7
+
+	fmt.Printf("leaped.At(2)  = %.4f %.4f %.4f\n", l[0], l[1], l[2])
+	fmt.Printf("plain.At(14)  = %.4f %.4f %.4f\n", p[0], p[1], p[2])
+
+	// A leap sharing a factor with a base is refused, and the error names it.
+	_, err = qmc.NewHalton(3, qmc.WithLeap(6))
+	fmt.Println(err)
+
+	// Output:
+	// leaped.At(2)  = 0.9375 0.2593 0.1200
+	// plain.At(14)  = 0.9375 0.2593 0.1200
+	// qmc: leap 6 shares factor 2 with dimension 0's base 2; a leap must be coprime to every base, so pick a prime above 5
+}

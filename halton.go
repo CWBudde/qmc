@@ -25,6 +25,7 @@ type Halton struct {
 	perms [][]int32        // nil unless random-digit scrambling is on
 	nest  *nestedScrambler // nil unless nested scrambling is on
 	skip  int
+	leap  int // 1 unless WithLeap is on; point i is raw index skip+1+i*leap
 
 	cursor int // index of the next point Next will return
 }
@@ -57,10 +58,24 @@ func NewHalton(dims int, opts ...Option) (*Halton, error) {
 		return nil, fmt.Errorf("qmc: %s does not apply to a Halton generator", cfg.randomize)
 	}
 
+	bases := primesUpTo(dims)
+
+	// The leap is checked here, against the bases this generator will actually
+	// use, rather than being clamped or accepted with a warning. A leap sharing
+	// a factor with a base pins that coordinate's leading digit for the whole
+	// run, so the coordinate never leaves one strip of width 1/base — and it
+	// keeps returning a plausible spread of values inside that strip, which is
+	// precisely the failure a caller cannot see. See WithLeap.
+	leap := leapOf(cfg)
+	if base, dim, conflict := leapConflict(leap, bases); conflict {
+		return nil, errLeapConflict(leap, base, dim, bases[len(bases)-1])
+	}
+
 	h := &Halton{
 		dims:  dims,
-		bases: primesUpTo(dims),
+		bases: bases,
 		skip:  cfg.skip,
+		leap:  leap,
 	}
 	switch cfg.randomize {
 	case randomizeNested:
@@ -168,8 +183,9 @@ func (h *Halton) Reset() { h.cursor = 0 }
 // cursor. It is the reproducible entry point: At(i) depends only on i and the
 // generator's configuration, never on how many points have been drawn.
 //
-// Point i corresponds to raw Halton index skip+1+i, so index 0 — the
-// degenerate origin, all zeros before scrambling — is never returned.
+// Point i corresponds to raw Halton index skip+1+i*leap — skip+1+i unless
+// WithLeap is in effect — so index 0, the degenerate origin that is all zeros
+// before scrambling, is never returned.
 //
 // Negative i is treated as 0.
 func (h *Halton) At(i int) []float64 {
@@ -188,24 +204,30 @@ func (h *Halton) fill(i int, dst []float64) {
 		i = 0
 	}
 
-	// skip is non-negative (WithSkip clamps) and i has just been clamped, so
-	// skip+1+i can only leave the representable range by overflowing upwards.
-	// It is refused rather than clamped: a wrapped sum goes negative, and a
-	// negative index used to fall through radicalInverse's guard and hand back
-	// the all-zeros origin — the one point At documents it never returns — so
-	// the caller got a plausible-looking point that was not on the sequence.
-	// Clamping to MaxInt would be the same failure in a different disguise:
-	// every index past the limit would alias onto one point with nothing to
-	// show for it. This mirrors scrambledRadicalInverse, which already refuses
-	// an index it cannot represent instead of returning a shorter index's
-	// value.
-	if i > math.MaxInt-1-h.skip {
+	// skip is non-negative (WithSkip clamps), leap is at least 1 (WithLeap
+	// clamps) and i has just been clamped, so skip+1+i*leap can only leave the
+	// representable range by overflowing upwards. It is refused rather than
+	// clamped: a wrapped sum goes negative, and a negative index used to fall
+	// through radicalInverse's guard and hand back the all-zeros origin — the
+	// one point At documents it never returns — so the caller got a
+	// plausible-looking point that was not on the sequence. Clamping to MaxInt
+	// would be the same failure in a different disguise: every index past the
+	// limit would alias onto one point with nothing to show for it. This
+	// mirrors scrambledRadicalInverse, which already refuses an index it cannot
+	// represent instead of returning a shorter index's value.
+	//
+	// The division is the exact test for i*leap <= MaxInt-1-skip: integer
+	// division floors, so i is admissible precisely when it is at or below the
+	// quotient. Doing it this way rather than multiplying first is the point —
+	// the multiplication being guarded is the one that would overflow.
+	if i > (math.MaxInt-1-h.skip)/h.leap {
 		panic(fmt.Sprintf(
-			"qmc: point index %d with skip %d overflows the raw Halton index", i, h.skip,
+			"qmc: point index %d with skip %d and leap %d overflows the raw Halton index",
+			i, h.skip, h.leap,
 		))
 	}
 
-	index := h.skip + 1 + i
+	index := h.skip + 1 + i*h.leap
 
 	switch {
 	case h.nest != nil:
