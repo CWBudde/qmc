@@ -31,19 +31,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `WithNestedScrambling` randomizes Halton. Measured against the same Monte
   Carlo baseline on a smooth 39-dimensional product integrand at n=4096 over
   ten streams: MC 4.3e-03, random-digit Halton 2.4e-04 (17.7x), shifted Sobol
-  1.5e-04 (29.5x), Owen-scrambled Sobol 1.4e-04 (32.0x), nested-affine Halton
-  8.1e-05 (53.2x).
-- Two of those carry caveats the doc comments state rather than bury. Nested
-  affine scrambling integrates best on this integrand but its worst adjacent-
-  pair correlation over thirty seeds is 0.37 against random-digit's 0.16, and
-  it costs about 8x per point — it suits integration, not a parameter sweep.
-  Owen scrambling is nearly free on `AtInto` (370 ns/op against 360 for a
+  1.5e-04 (29.5x), Owen-scrambled Sobol 1.4e-04 (32.0x), nested Halton 1.4e-04
+  (31.9x). Ten streams is few enough to reorder the middle of that list; over
+  forty, random-digit Halton reads 24.4x and nested Halton 41.1x.
+- `WithNestedScrambling` draws a genuine uniform permutation of the digit
+  alphabet at every node of the scramble tree. It began as an affine
+  construction — `x → ax+b mod p`, free of shuffles — which integrated better
+  (49.9x over forty streams against 41.1x) but left a correlation tail the full
+  permutation does not: worst adjacent-pair |r| over thirty seeds 0.37 against
+  0.14, where random-digit scrambling scores 0.16. The affine map turns a
+  large-base coordinate's only varying digit into a ramp of another slope
+  rather than scattering it, and two dimensions drawing commensurate slopes
+  ramp together again. The uniform draw costs about 40x per point against
+  random-digit scrambling; it suits integration, not a parameter sweep.
+- Owen scrambling is nearly free on `AtInto` (370 ns/op against 360 for a
   digital shift) but roughly 3x on `NextInto` (197 against 65), because the
   Gray-code recurrence is precisely what cannot carry a non-linear scramble.
 - A randomization that does not apply to a generator is now refused by name at
   construction rather than ignored. Ignoring it would hand back a deterministic
   sequence to code that is about to average over seeds, which would report an
   error estimate of exactly zero.
+- `Sobol`'s documentation now says where its balance property holds: the
+  (t,m,s)-net property covers a 2^m-aligned block of raw indices, not any 2^m
+  consecutive points. At 40 dimensions and m=8 the default skip of 0 leaves all
+  40 dimensions unbalanced, which is what a caller running their own
+  stratification check sees before concluding the sequence is broken. The
+  package's own tests used `WithSkip(2^m - 1)` for this reason and said so
+  nowhere. Documented alongside it: Joe and Kuo's D(6) criterion optimises
+  two-dimensional projections without making them all nets — of the 780 pairs
+  among the first 40 dimensions, 18 are balanced at every split at m=8 and 4 at
+  m=10 — so dimensions 12 and 23 leave 224 of 256 cells empty where 0 and 1
+  fill every one.
+- `WithDirectionNumbers` documents the Joe-Kuo file format and every invariant
+  the validator enforces, and says what it cannot prove: that the numbers came
+  from the authors' search. The path above the embedded 1024-dimension ceiling
+  is now tested rather than assumed, with a synthesised 1200-dimension table
+  whose polynomials are found by running the primitivity check rather than
+  asserted.
 - `(*Halton).Bases()` returns the prime base of each dimension, in order, as a
   defensive copy. The d-th base is the d-th prime, and it is what explains a
   dimension's behaviour: dimension 38 uses base 167.
@@ -65,6 +89,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sequence with `rand.Float64()` would have left every test green. It no longer
   does: the substitution integrates 0.9x as well as Monte Carlo against a
   required 5x, while the generator itself achieves 18x.
+- `owen_uniformity_test.go` measures what the hash in `owenScramble` costs
+  against a textbook Owen scramble that stores one independent fair bit per
+  node. Node by node there is nothing to find: over 40000 seeds and all 8191
+  nodes to depth 12 the worst node sits 3.85 sigma from fair, where the largest
+  of 8191 fair coins is expected near 3.9. Jointly across a level there is —
+  the hash's flip-count variance runs from 0.09 to 3.06 of the binomial value
+  the true construction reproduces to within 4% — and a level-wide effect
+  spreads as ~1/2^k per pair, which is why no per-node statistic sees it. It
+  costs at most a tenth of the RMS integration error, so the constants are
+  unchanged; this is simply the first instrument in the package able to
+  evaluate a change to them.
 - Benchmarks for `Next`, `NextInto`, `At`, `AtInto` and construction. The
   `just bench` recipe had no benchmarks to run.
 - Runnable `Example` functions for the public API, so the pkg.go.dev page the

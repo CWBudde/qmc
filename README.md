@@ -75,32 +75,32 @@ Measured on a smooth 39-dimensional product integrand at n=4096 over ten randomi
 streams, against the same plain Monte Carlo baseline. Lower error is better; the multiplier
 is how many times more accurate than Monte Carlo on the same budget:
 
-| generator                             | RMS relative error | vs Monte Carlo |
-| ------------------------------------- | ------------------ | -------------- |
-| plain Monte Carlo (`math/rand`)       | 4.3e-03            | 1x             |
-| Halton, random-digit scrambling       | 2.4e-04            | **17.7x**      |
-| Sobol, digital shift                  | 1.5e-04            | **29.5x**      |
-| Sobol, Owen scrambling                | 1.4e-04            | **32.0x**      |
-| Halton, nested affine scrambling      | 8.1e-05            | **53.2x**      |
+| generator                       | RMS relative error | vs Monte Carlo |
+| ------------------------------- | ------------------ | -------------- |
+| plain Monte Carlo (`math/rand`) | 4.3e-03            | 1x             |
+| Halton, random-digit scrambling | 2.4e-04            | **17.7x**      |
+| Sobol, digital shift            | 1.5e-04            | **29.5x**      |
+| Sobol, Owen scrambling          | 1.4e-04            | **32.0x**      |
+| Halton, nested scrambling       | 1.4e-04            | **31.9x**      |
 
-Read that table with one caveat, because it is one integrand. Nested affine Halton coming
-out ahead of Sobol here is a real measurement, not a typo, but a smooth product with
-decaying coefficients is the case it suits best — and it carries a worse worst-case
-correlation than random-digit scrambling does, which the next section covers. The
-generators are gated in the test suite at a factor of five against Monte Carlo, not at
-these numbers, because the ratios move with the integrand and the assertion should not.
+Read that table with two caveats. It is one integrand, and a smooth product with decaying
+coefficients is the case nested scrambling suits best. And ten streams is not many: the
+same measurement over forty seeds moves random-digit Halton to 24.4x and nested Halton to
+41.1x, which is a different ordering against Sobol than the ten-stream column shows. The
+ratios move with the integrand and with the stream count, so the test suite gates the
+generators at a factor of five against Monte Carlo rather than at any of these numbers.
 
 ## Randomization
 
 Each option below applies to one generator and is refused by name by the other, rather than
 ignored. They are mutually exclusive: a generator has one randomization or none.
 
-| option                    | generator | what it does                                                              |
-| ------------------------- | --------- | ------------------------------------------------------------------------- |
-| `WithScrambling`          | Halton    | One digit permutation per dimension (Braaten & Weller 1979)                |
-| `WithNestedScrambling`    | Halton    | Per-digit affine permutation, conditioned on the digits above it           |
-| `WithDigitalShift`        | Sobol     | One random word per dimension, XORed into every point                      |
-| `WithOwenScrambling`      | Sobol     | Hash-based Owen scrambling: an independent flip at every node of the tree  |
+| option                 | generator | what it does                                                              |
+| ---------------------- | --------- | ------------------------------------------------------------------------- |
+| `WithScrambling`       | Halton    | One digit permutation per dimension (Braaten & Weller 1979)               |
+| `WithNestedScrambling` | Halton    | Uniform digit permutation per node, conditioned on the digits above it    |
+| `WithDigitalShift`     | Sobol     | One random word per dimension, XORed into every point                     |
+| `WithOwenScrambling`   | Sobol     | Hash-based Owen scrambling: an independent flip at every node of the tree |
 
 All four leave the low-discrepancy structure intact — each maps elementary intervals onto
 elementary intervals of the same size — and all four make the generator an RQMC sequence,
@@ -152,21 +152,26 @@ coordinates ramp together.
 Measured here at 39 dimensions and 600 points, which is what a parameter search over 39
 knobs on a 600-evaluation budget actually asks for:
 
-| configuration                          | median | p90  | worst    |
-| -------------------------------------- | ------ | ---- | -------- |
-| unscrambled, skip 64                   | —      | —    | **0.81** |
-| `WithScrambling`, skip 64              | 0.093  | 0.13 | **0.16** |
-| `WithNestedScrambling`, skip 64        | 0.090  | 0.20 | **0.37** |
+| configuration                   | median | p90  | worst    |
+| ------------------------------- | ------ | ---- | -------- |
+| unscrambled, skip 64            | —      | —    | **0.81** |
+| `WithScrambling`, skip 64       | 0.093  | 0.13 | **0.16** |
+| `WithNestedScrambling`, skip 64 | 0.089  | 0.12 | **0.14** |
 
 Those are absolute Pearson correlations over adjacent dimension pairs, taken over thirty
 seeds. Thirty rather than a handful because the statistic turns out to be high-variance: a
 change to the scrambling that was a pure re-instantiation, not a change of scheme, moved a
 five-seed worst case from 0.40 to 0.12. Quote the median and the tail, not one draw.
 
-The tail is where nested affine scrambling loses despite integrating better, and the cause
-is understood rather than guessed: at 600 points a large-base coordinate varies only in its
-first digit, where `x → ax+b mod p` is a ramp of a different slope rather than a scattering,
-so two dimensions that draw commensurate slopes ramp together again.
+That statistic is also what changed `WithNestedScrambling`. Until recently it drew each
+node's permutation from the affine family `x → ax+b mod p` rather than from all `p!`, which
+is free of shuffles but leaves a tail this table used to show as a worst of 0.37 against
+random-digit's 0.16. The cause was understood rather than guessed: at 600 points a
+large-base coordinate varies only in its first digit, where an affine map is a ramp of
+another slope rather than a scattering, so two dimensions drawing commensurate slopes ramp
+together again. Drawing a genuine uniform permutation per node removes the tail, at about
+forty times the cost per point and about a sixth of the integration advantage — the trade
+is written out at the top of `nested.go`.
 
 `WithScrambling` draws one uniform permutation of the digit alphabet per dimension and maps
 every digit of that dimension's radical inverse through it (random-digit scrambling, Braaten

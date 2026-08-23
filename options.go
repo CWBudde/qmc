@@ -30,8 +30,8 @@ const (
 	// permutation of the digit alphabet per dimension. See scramble.go.
 	randomizeDigitPermutation
 
-	// randomizeNested is Halton's nested affine digit scrambling, which
-	// conditions each digit's permutation on the digits above it. See nested.go.
+	// randomizeNested is Halton's nested digit scrambling, which conditions
+	// each digit's permutation on the digits above it. See nested.go.
 	randomizeNested
 
 	// randomizeDigitalShift is Sobol's digital shift: one random word per

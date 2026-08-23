@@ -1,6 +1,6 @@
 package qmc
 
-// This file implements nested affine digit scrambling.
+// This file implements nested digit scrambling.
 //
 // Random-digit scrambling (scramble.go) draws one permutation of the digit
 // alphabet per dimension and reuses it at every digit position of that
@@ -15,88 +15,100 @@ package qmc
 // earlier are rewritten independently from the divergence downwards, which is
 // what removes the correlation one permutation per dimension leaves behind.
 //
-// A faithful Owen scramble needs a uniform permutation of {0..p-1} at every
-// node. The nodes cannot be precomputed — there are p^k of them at depth k —
-// so each one costs an O(p) Fisher-Yates shuffle, per digit, per coordinate,
-// per point. At base 167 that is not a constant factor worth arguing about,
-// it is a different price bracket.
+// The permutation at each node is a genuine uniform draw from all p! of them,
+// by the same Fisher-Yates over the same rejection sampler random-digit
+// scrambling uses. There are p^k nodes at depth k so none of them can be
+// precomputed, and materialising one costs O(p); nestedDigit explains how that
+// is avoided without giving up the uniformity, and nestedRadicalInverse
+// explains why the obvious cache is not the way to avoid it.
 //
-// So this is not Owen scrambling and is not called that anywhere. The
-// permutation at each node is drawn from the p(p-1) affine maps
+// # This used to be an affine construction, and the swap is measured
 //
-//	x -> (a*x + b) mod p,   a in [1,p),  b in [0,p)
+// Until this version the permutation at a node was drawn not from all p! but
+// from the p(p-1) affine maps x -> (a*x + b) mod p, a in [1,p). That is free
+// of shuffles — p is prime and a is never 0, so every such map is a bijection
+// by arithmetic — and it made the scheme about five times cheaper than it is
+// now. What it cost was the shape of the correlation distribution. At 600
+// points a large-base coordinate has only its first digit varying, and on that
+// digit an affine map is a ramp of another slope rather than a scattering; two
+// neighbouring dimensions that draw commensurate slopes then ramp together
+// much as the unscrambled ones did. The affine family is also a vanishingly
+// thin slice of the permutations it stands in for — 20 of 120 at base 5, and
+// worse from there.
 //
-// rather than from all p! permutations. Because p is prime and a is never 0,
-// every such map is a bijection of the alphabet for free — no shuffle, no
-// permutation array to build or store — and drawing (a,b) is two hashed
-// integers. The nesting is genuine; only the family the permutation is drawn
-// from is cut down. For p = 2 and p = 3 it is not even cut down: p(p-1) is 2
-// and 6, exactly 2! and 3!, so dimensions 0 and 1 get a true Owen scramble.
-// The gap opens at base 5, where 20 of the 120 permutations remain, and widens
-// from there.
+// Both constructions measured at 39 dimensions on this machine, against
+// random-digit scrambling. Integration is the RMS relative error of the
+// product integrand at n=4096 as a factor against plain Monte Carlo, over 10
+// and over 40 scrambling seeds; correlation is the worst adjacent-pair |r| at
+// 600 points after skipping 64, over 30 seeds; cost is one 39-dimensional
+// point, median of seven runs.
 //
-// What the restriction costs is measurable. Below, at 39 dimensions, against
-// random-digit scrambling and against a full-permutation Owen scramble over
-// the same tree — run as a diagnostic to separate the nesting from the affine
-// restriction, too slow to ship. Integration is the RMS relative error of
-// integration_test.go's product integrand at n=4096, as a factor against plain
-// Monte Carlo; correlation is correlation_test.go's worst adjacent-pair |r| at
-// 600 points after skipping 64, over 30 seeds (20 for the diagnostic).
+//	                     integration          adjacent-pair |r|       one point
+//	                     10 str.  40 str.   median    p90    worst        ns
+//	random-digit          17.7x    24.4x     0.093  0.126    0.161        548
+//	nested affine (was)   53.2x    49.9x     0.090  0.195    0.373       4038
+//	nested full (is)      31.9x    41.1x     0.089  0.123    0.141      20881
 //
-//	                     integration          adjacent-pair |r|
-//	                     10 str.  40 str.   median    p90    worst
-//	random-digit          17.7x    24.4x     0.093  0.126    0.161
-//	nested affine         53.2x    49.9x     0.090  0.195    0.373
-//	full permutations     44.0x        -     0.084      -    0.117
+// The affine row's cost is that construction's digit loop timed on its own,
+// since it is no longer reachable through AtInto; the two harnesses agree to
+// within half a percent on the row that both can measure.
 //
-// The integration column is what nesting is for and it delivers: the RMS error
-// is a third to a half of the random-digit figure, on both stream counts, and
-// the ordering does not depend on which seeds are drawn.
+// The correlation tail is gone: 0.141 worst against affine's 0.373, now under
+// random-digit's own 0.161 rather than more than double it, and the 90th
+// percentile has come back from 0.195 to 0.123. That is the whole reason for
+// the change, and it is what the affine restriction was suspected of causing.
 //
-// The correlation column is where the affine restriction shows. Typically it
-// costs nothing — the median is if anything slightly better than random-digit
-// — but the distribution has a tail random-digit does not have. At 600 points
-// a large-base coordinate has only its first digit varying, and on that digit
-// the map is x -> a*x+b mod p: a ramp of a different slope, not a scattering.
-// Two dimensions whose slopes happen to be commensurate then ramp together
-// much as the unscrambled ones did, and one seed in ten or so puts some pair
-// near 0.2, with 0.37 the worst seen in 30. Random-digit scrambling has no
-// such failure mode because an arbitrary permutation has no slope. The
-// full-permutation row is what identifies the cause: the same nesting over the
-// same tree, with the affine restriction lifted, has both the better median
-// and no tail.
+// Integration is worse than affine and better than everything else. The
+// 10-seed figures are too noisy to read — the same 10 seeds gave 44.0x for a
+// full-permutation variant that differed only in the direction of the shuffle
+// — so the 40-seed column is the one to compare: 41.1x against affine's 49.9x
+// and random-digit's 24.4x, with 80 seeds giving 41.9x against 26.2x. So about
+// a sixth of the integration advantage was paid for the tail. That is the
+// trade this change makes, and it is deliberate: the callers most likely to
+// reach for a stronger scrambling are the ones a 0.37 correlation would
+// mislead.
+//
+// The cost column is the part that is not a trade. Five times the affine
+// price, and thirty-eight times random-digit's, buys the uniformity; there is
+// no version of a full permutation that is as cheap as two hashed integers.
 //
 // Reference: Owen, A. B. (1995), "Randomly permuted (t,m,s)-nets and
 // (t,s)-sequences".
 
-// WithNestedScrambling turns on nested affine digit scrambling with the given
-// seed. Like WithScrambling it makes the generator a randomized QMC sequence:
-// still low-discrepancy, but no longer identical across seeds.
+// WithNestedScrambling turns on nested digit scrambling with the given seed.
+// Like WithScrambling it makes the generator a randomized QMC sequence: still
+// low-discrepancy, but no longer identical across seeds.
 //
 // It is not a free upgrade over WithScrambling and it is deliberately not the
 // default. Measured at 39 dimensions, against random-digit scrambling:
 //
-//   - Integration is two to three times more accurate. RMS relative error over
-//     10 seeds at n=4096 is 53x better than Monte Carlo against random-digit's
-//     18x; over 40 seeds, 50x against 24x.
-//   - Adjacent-pair correlation at small point counts is usually a shade
-//     better and occasionally much worse. Over 30 seeds at 600 points the
-//     median is 0.090 against 0.093, but the 90th percentile is 0.195 against
-//     0.126 and the worst 0.373 against 0.161. The reason is at the top of
-//     nested.go: the affine map turns the first digit into a ramp of another
-//     slope rather than scattering it.
-//   - It costs roughly eight times as much per point. AtInto at 39 dimensions
-//     measured 3968 ns/op against 477 for random-digit scrambling and 394
-//     unscrambled, in one run on one machine — the ratio is the part that
-//     travels. It is about 484 hashed tree nodes per point, of which 366 are
-//     the leading-zero tails of the small bases.
+//   - Integration is roughly twice as accurate. RMS relative error at n=4096
+//     is 41x better than Monte Carlo over 40 seeds against random-digit's 24x,
+//     and 42x against 26x over 80. Over 10 seeds the measurement is too noisy
+//     to quote — it read 32x against 18x, and a variant differing only in the
+//     direction of a shuffle read 44x on the same seeds.
+//   - Adjacent-pair correlation at small point counts is a shade better rather
+//     than worse. Over 30 seeds at 600 points the median is 0.089 against
+//     0.093, the 90th percentile 0.123 against 0.126, and the worst 0.141
+//     against 0.161.
+//   - It costs about forty times as much per point. AtInto at 39 dimensions
+//     measured 20881 ns/op against 548 for random-digit scrambling and 467
+//     unscrambled, medians of seven runs on one machine — the ratio is the
+//     part that travels. It is about 484 tree nodes per point, of which 366
+//     are the leading-zero tails of the small bases, and each one now costs a
+//     draw from a uniform permutation rather than a table lookup.
 //
 // So: reach for it when the budget is spent on an integral or an expectation,
-// where the extra digit-level uniformity is what is being paid for. Keep
-// WithScrambling when the points are consumed as a design — a parameter sweep,
-// a set of trial configurations — where two coordinates ramping together is
-// the failure that matters, and where eight times the cost per point buys a
-// worse worst case.
+// where the extra digit-level uniformity is what is being paid for, and when
+// the integrand rather than the point count is what the wall clock is going
+// on. Keep WithScrambling when the points are cheap to consume — a parameter
+// sweep, a set of trial configurations — where forty times the cost per point
+// buys an improvement in a statistic that was already acceptable.
+//
+// Before this version this option drew its per-node permutations from the
+// affine family x -> a*x+b mod p rather than from all p!. It integrated
+// somewhat better and had a much heavier correlation tail; the points it
+// produces have changed. See the top of nested.go for both measurements.
 func WithNestedScrambling(seed uint64) Option {
 	return func(s *settings) {
 		s.randomize = randomizeNested
@@ -162,36 +174,89 @@ func nestedChild(node uint64, digit uint64) uint64 {
 	return rng.next()
 }
 
-// nestedAffine returns the (a, b) of the map x -> (a*x + b) mod base at node,
-// with a in [1, base) so that the map is a bijection.
+// nestedPermutation writes the node's uniform permutation of
+// {0..len(perm)-1} into perm.
 //
-// uniformBelow is the package's existing rejection sampler, reused rather than
-// cut down to one masked draw: a and b are what the permutation *is*, so a
-// modulo bias in them is a bias in the point set, not in a diagnostic.
+// This is newPermutation's Fisher-Yates over newPermutation's rejection
+// sampler — uniformBelow, unchanged, because a modulo bias here is a bias in
+// the point set rather than in a diagnostic — with two deliberate differences.
+// It is seeded from a node hash rather than from (seed, dim), and it writes
+// into a caller-supplied buffer rather than allocating, because it runs once
+// per digit rather than once per dimension.
 //
-// b is drawn before a because the leading-zero tail needs only b — see
-// nestedShift — and drawing it first lets that path stop after one value.
-func nestedAffine(node uint64, base int) (uint64, uint64) {
-	rng := splitMix64(node)
-	b := uniformBelow(&rng, uint64(base))
-	a := 1 + uniformBelow(&rng, uint64(base-1))
+// The third difference is the load-bearing one: the swap loop runs upwards,
+// i = 0, 1, ... n-1 with j drawn uniformly from [i, n), where newPermutation
+// runs downwards. Both orders give a uniform permutation. Only the upward one
+// finishes position i at step i and never touches it again, which is what lets
+// nestedDigit evaluate a single entry without running the rest — see there.
+// The two functions must agree entry for entry, and
+// TestNestedLazyDigitMatchesTheFullShuffle is what holds them together.
+func nestedPermutation(node uint64, perm []int32) {
+	for i := range perm {
+		perm[i] = int32(i)
+	}
 
-	return a, b
+	rng := splitMix64(node)
+	for i := 0; i < len(perm); i++ {
+		j := i + int(uniformBelow(&rng, uint64(len(perm)-i)))
+		perm[i], perm[j] = perm[j], perm[i]
+	}
 }
 
-// nestedShift returns just the b of nestedAffine, which is the image of the
-// digit 0 under any (a, b). Every digit of the leading-zero tail is 0, so the
-// tail never needs a, and three quarters of the nodes visited per point are in
-// a tail. Not drawing a there took the 39-dimensional digit loop from 6587 to
-// 4753 ns/op.
-func nestedShift(node uint64, base int) uint64 {
+// nestedDigit returns the image of digit under the node's permutation, without
+// building the rest of it.
+//
+// The permutation is defined by the whole shuffle; this evaluates it lazily.
+// Because the upward Fisher-Yates in nestedPermutation settles position i at
+// step i and every later step draws from [i+1, n), the entry at position digit
+// is final once step digit has run, and the steps after it cannot move it. So
+// the answer is the same one nestedPermutation would write, from the same
+// prefix of the same stream — this is not an approximation of the permutation,
+// it is the permutation, read at one point.
+//
+// That matters for cost, not for tidiness. Measured at 39 dimensions, 366 of
+// the 484 nodes a point visits are in the leading-zero tails, and every one of
+// those asks for digit 0. Digit 0 is settled by the very first draw, out of an
+// identity array, so it needs no array at all and no shuffle: one uniformBelow
+// and done. Over the same 39-dimensional digit loop, medians of seven runs,
+// evaluating the full permutation at every node costs 129740 ns against this
+// version's 20790. The difference is almost entirely the 64-bit division
+// uniformBelow does per draw: the full shuffle pays it base-1 times per node,
+// digit 0 pays it once, and a digit d pays it d+1 times.
+//
+// scratch must have room for base entries; only positions 0..digit and the
+// swap partners drawn above them are touched, but the identity fill is over
+// the whole of it because a swap partner can be anywhere.
+func nestedDigit(node uint64, base int, digit int, scratch []int32) int32 {
 	rng := splitMix64(node)
 
-	return uniformBelow(&rng, uint64(base))
+	if digit == 0 {
+		return int32(uniformBelow(&rng, uint64(base)))
+	}
+
+	perm := scratch[:base]
+	for i := range perm {
+		perm[i] = int32(i)
+	}
+
+	for i := 0; i <= digit; i++ {
+		j := i + int(uniformBelow(&rng, uint64(base-i)))
+		perm[i], perm[j] = perm[j], perm[i]
+	}
+
+	return perm[digit]
 }
 
-// nestedRadicalInverse applies the nested affine scramble to every digit of
-// the base-b radical inverse of index, including the infinitely many leading
+// nestedPermStack is the size of the on-stack scratch array the digit loop
+// shuffles into. 512 covers every base a 97-dimensional generator uses (the
+// 97th prime is 509), which is comfortably past the dimension counts this
+// package is built for, at 2 KiB of frame. Above it the buffer is allocated
+// once per coordinate — never once per node, which is the allocation that
+// would actually hurt.
+const nestedPermStack = 512
+
+// nestedRadicalInverse applies the nested scramble to every digit of the
+// base-b radical inverse of index, including the infinitely many leading
 // zeros.
 //
 // Those zeros are the part that is easy to get wrong, and this scheme cannot
@@ -200,12 +265,12 @@ func nestedShift(node uint64, base int) uint64 {
 // every position, so every zero digit contributes the same perm[0] and the
 // series is geometric. Here the permutation changes with depth: writing the
 // explicit digits as d_0..d_(m-1), the digits at positions k >= m are all 0
-// but each is rewritten by the map hanging off a different node — the chain
-// keeps descending through digit 0 — so the tail is
+// but each is rewritten by a different node's permutation — the chain keeps
+// descending through digit 0 — so the tail is
 //
-//	sum_(j>=0) b_(m+j) * p^-(m+j+1)
+//	sum_(j>=0) s_(m+j) * p^-(m+j+1)
 //
-// with the b's varying. That is not a geometric series and has no closed form.
+// with the s's varying. That is not a geometric series and has no closed form.
 // It is another base-p number with pseudorandom digits, scaled by p^-m, and it
 // is summed rather than solved.
 //
@@ -223,7 +288,7 @@ func nestedShift(node uint64, base int) uint64 {
 //
 // Stopping earlier would not be a rounding matter. Dropping the tail entirely
 // biases every coordinate low by its mean — measured over the 600 indices of
-// the correlation test, 0.0013 in base 2 and 0.0005 in base 167 — and, far
+// the correlation test, 0.0014 in base 2 and 0.0005 in base 167 — and, far
 // worse, puts short indices back on the coarse lattice that scrambling exists
 // to break: without the tail an index with m digits lands exactly on a
 // multiple of p^-m, so every one-digit index in base 167 would sit exactly on
@@ -239,18 +304,44 @@ func nestedShift(node uint64, base int) uint64 {
 // The result is clamped strictly below 1 for the same reason as the other two
 // inverses: callers are promised [0,1), and a tail of near-maximal digits
 // rounds up.
+//
+// # There is no permutation cache, and the reason is measured
+//
+// The natural way to amortise a shuffle per digit is a cache of permutations
+// keyed by node: the shallow nodes are shared by many indices, so the O(p)
+// work would be paid once per node instead of once per visit. The premise
+// people reach for is that the tree depth is bounded by the digit count, so
+// the cache stays small. The depth is indeed bounded. The node count is not,
+// and it is the node count that a cache holds.
+//
+// Counted on the 39-dimension, 4096-point workload the benchmarks use, the
+// walk touches 1,982,974 nodes of which 1,544,674 are distinct: a reuse factor
+// of 1.28, and 382 MB of permutation arrays to hold them. The leading-zero
+// tail is why. It is 366 of the 484 nodes a point visits, every
+// one of those tails hangs below a different index's explicit digits, and no
+// node in one is ever reached twice. The distinct-node count therefore grows
+// with the number of points drawn, not with the number of digits.
+// BenchmarkNestedNodeCache measures both numbers so the claim stays checked.
+//
+// A 28% ceiling does not pay for 382 MB, and it does not pay for the other
+// cost either. Halton.At is documented as safe to call from any number of
+// goroutines at once — it is how this package tells callers to drive one
+// sequence from a worker pool — and a map populated on first visit would end
+// that, whether it were fixed afterwards with a mutex, a sync.Map, or a race
+// nobody noticed. Keeping the scramble stateless keeps that promise exactly as
+// written. The O(p) shuffle is instead avoided by not running it: see
+// nestedDigit.
 func nestedRadicalInverse(index int, base int, root uint64) float64 {
 	if base < 2 || index < 0 {
 		return 0
 	}
 
-	// The digit map is evaluated in uint64 throughout. a and the digit are
-	// both below base, and base is bounded only by the dimension count, so
-	// a*x passes 2^31 from base 46341 upwards. A 39-dimensional generator
-	// stays far below that, but primesUpTo has no ceiling and int is 32 bits
-	// on the 386 build this package tests on, where the product would wrap
-	// into a different digit and the sequence would depend on GOARCH.
-	wide := uint64(base)
+	var stack [nestedPermStack]int32
+
+	scratch := stack[:]
+	if base > len(stack) {
+		scratch = make([]int32, base)
+	}
 
 	invBase := 1 / float64(base)
 	place := invBase
@@ -258,16 +349,15 @@ func nestedRadicalInverse(index int, base int, root uint64) float64 {
 	result := 0.0
 
 	for i := index; i > 0; i /= base {
-		digit := uint64(i % base)
+		digit := i % base
 
-		a, b := nestedAffine(node, base)
-		result += float64((a*digit+b)%wide) * place
-		node = nestedChild(node, digit)
+		result += float64(nestedDigit(node, base, digit, scratch)) * place
+		node = nestedChild(node, uint64(digit))
 		place *= invBase
 	}
 
 	for place > 0 && result+float64(base)*place != result {
-		result += float64(nestedShift(node, base)) * place
+		result += float64(nestedDigit(node, base, 0, scratch)) * place
 		node = nestedChild(node, 0)
 		place *= invBase
 	}

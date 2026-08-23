@@ -7,9 +7,9 @@ import (
 	"testing"
 )
 
-// These tests are white-box because most of what nested affine scrambling has
-// to get right is a property of one digit at a time — of nestedRadicalInverse
-// and of the affine map — rather than of a point. That choice costs one
+// These tests are white-box because most of what nested scrambling has to get
+// right is a property of one digit at a time — of nestedRadicalInverse and of
+// the per-node permutation — rather than of a point. That choice costs one
 // duplication: the integration harness in integration_test.go is in package
 // qmc_test and cannot be reached from here, so nestedIntegrand below repeats
 // productIntegrand verbatim. Whether the copy is still faithful is not left to
@@ -18,51 +18,151 @@ import (
 
 // nestedTestBases is every base a 64-dimensional generator uses: 2 through
 // 311. Nothing here is base-2 folklore, and the properties that hold for base
-// 2 are the ones most likely to hold by accident — for p = 2 the affine family
-// is all 2! permutations, so a base-2-only test would not notice the
-// restriction this scheme is built on at all.
+// 2 are the ones most likely to hold by accident — base 2 has only two
+// permutations, so a base-2-only test cannot tell a uniform draw from almost
+// any other construction. The large bases are where a permutation scheme is
+// actually distinguishable from a cheap stand-in.
 func nestedTestBases() []int { return primesUpTo(64) }
 
-// TestNestedAffineMapIsABijection is the property the whole construction rests
-// on: a digit map that is not a bijection is not a scramble. It maps two
+// TestNestedPermutationIsABijection is the property the whole construction
+// rests on: a digit map that is not a bijection is not a scramble. It maps two
 // digits onto one, so it maps two elementary intervals onto one, and the point
 // set stops covering the box — silently, because the points still look like
 // plausible points.
 //
-// The bijection here is free rather than constructed: p is prime and a is
-// drawn from [1,p), so x -> a*x+b mod p is invertible for arithmetic reasons.
-// That is exactly why it is worth testing. There is no shuffle to inspect and
-// no permutation array to validate, so a wrong bound on a — a in [0,p), the
-// obvious off-by-one — would produce the constant map for a = 0 and nothing in
-// the construction would object.
-func TestNestedAffineMapIsABijection(t *testing.T) {
+// Fisher-Yates gives the bijection by construction, so what this really pins
+// is the loop bounds and the buffer handling: a shuffle that stops at i > 1
+// instead of i > 0, or a scratch slice reused across bases without being
+// resliced, both leave something that is still nearly a permutation.
+func TestNestedPermutationIsABijection(t *testing.T) {
 	for _, base := range nestedTestBases() {
 		// Nodes are taken from real walks rather than from a counter: the
-		// values a and b are drawn from are node hashes, and testing hashes of
-		// 0, 1, 2, ... would exercise a part of the input space the sampler
-		// never visits.
+		// permutation is derived from a node hash, and hashing 0, 1, 2, ...
+		// would exercise a part of the input space the sampler never visits.
 		node := nestedRoot(4242, base%37)
+		perm := make([]int32, base)
 
 		for step := 0; step < 8; step++ {
-			a, b := nestedAffine(node, base)
-			if a < 1 || a >= uint64(base) {
-				t.Fatalf("base %d: multiplier %d is outside [1,%d); a = 0 collapses the digit map to a constant",
-					base, a, base)
-			}
-
-			if b >= uint64(base) {
-				t.Fatalf("base %d: shift %d is outside [0,%d), so it is not a digit", base, b, base)
-			}
+			nestedPermutation(node, perm)
 
 			seen := make([]bool, base)
-			for x := 0; x < base; x++ {
-				y := (a*uint64(x) + b) % uint64(base)
+
+			for x, y := range perm {
+				if y < 0 || int(y) >= base {
+					t.Fatalf("base %d: digit %d maps to %d, which is not a digit", base, x, y)
+				}
+
 				if seen[y] {
-					t.Fatalf("base %d with a=%d b=%d: digit %d is hit twice, so the map is not a bijection "+
-						"and the scramble folds two elementary intervals onto one", base, a, b, y)
+					t.Fatalf("base %d: digit %d is hit twice, so the map is not a bijection "+
+						"and the scramble folds two elementary intervals onto one", base, y)
 				}
 
 				seen[y] = true
+			}
+
+			node = nestedChild(node, uint64(step%base))
+		}
+	}
+}
+
+// TestNestedPermutationIsUniform is the reason this scheme replaced the affine
+// one, so it is worth a direct check rather than trusting Fisher-Yates by
+// reputation.
+//
+// The affine family x -> a*x+b mod p has p(p-1) members against p! — 20 of 120
+// at base 5 — and the correlation tail it produced was traced to exactly that
+// thinness. A chi-square over all 120 permutations of base 5, drawn from 60000
+// real walk nodes, would have to be blind for a family that thin to slip past:
+// a construction covering only 20 of the 120 would score around 240000 against
+// the 5% critical value of 145.5 for 119 degrees of freedom.
+func TestNestedPermutationIsUniform(t *testing.T) {
+	const (
+		base     = 5
+		draws    = 60000
+		critical = 145.5 // chi-square, 119 d.o.f., alpha = 0.05
+	)
+
+	factorial := 120
+
+	index := func(perm []int32) int {
+		// Lehmer code: a bijection from permutations to 0..base!-1.
+		code, radix := 0, 1
+
+		for i := base - 1; i >= 0; i-- {
+			smaller := 0
+
+			for j := i + 1; j < base; j++ {
+				if perm[j] < perm[i] {
+					smaller++
+				}
+			}
+
+			code += smaller * radix
+			radix *= base - i
+		}
+
+		return code
+	}
+
+	counts := make([]int, factorial)
+	perm := make([]int32, base)
+	node := nestedRoot(20240823, 2)
+
+	for i := 0; i < draws; i++ {
+		nestedPermutation(node, perm)
+		counts[index(perm)]++
+		node = nestedChild(node, uint64(i%base))
+	}
+
+	expected := float64(draws) / float64(factorial)
+
+	chi := 0.0
+
+	for _, c := range counts {
+		d := float64(c) - expected
+		chi += d * d / expected
+	}
+
+	if chi > critical {
+		t.Fatalf("chi-square over the %d permutations of base %d from %d nodes = %.1f, want <= %.1f; "+
+			"the per-node permutation is not uniform, which is the one thing this construction "+
+			"pays an O(base) shuffle for", factorial, base, draws, chi, critical)
+	}
+
+	t.Logf("base %d: chi-square over %d permutations from %d nodes = %.1f (critical %.1f)",
+		base, factorial, draws, chi, critical)
+}
+
+// TestNestedLazyDigitMatchesTheFullShuffle is the seam this construction is
+// most likely to come apart at.
+//
+// nestedRadicalInverse never builds a permutation. It calls nestedDigit, which
+// runs the upward Fisher-Yates only as far as the position being asked for and
+// stops, on the argument that a later step cannot move an entry it has already
+// passed. If that argument is wrong — or if someone flips nestedPermutation
+// back to the downward loop, where it is wrong — the two stop agreeing, and
+// nothing else here would notice: the lazy answers would still be a bijection
+// per node, still nested, still in [0,1). They would simply be a different and
+// unexamined map.
+//
+// Digit 0 is checked along with the rest rather than trusted, because it is
+// the case that skips the array entirely and so shares no code with the others.
+func TestNestedLazyDigitMatchesTheFullShuffle(t *testing.T) {
+	for _, base := range nestedTestBases() {
+		perm := make([]int32, base)
+		scratch := make([]int32, base)
+		node := nestedRoot(20240823, base%29)
+
+		for step := 0; step < 6; step++ {
+			nestedPermutation(node, perm)
+
+			for digit := 0; digit < base; digit++ {
+				if got := nestedDigit(node, base, digit, scratch); got != perm[digit] {
+					t.Fatalf("base %d step %d: nestedDigit(%d) = %d but the full shuffle puts %d there; "+
+						"the lazy evaluation is no longer reading the same permutation, so the shipped "+
+						"scramble is not the one any other test in this file inspects",
+						base, step, digit, got, perm[digit])
+				}
 			}
 
 			node = nestedChild(node, uint64(step%base))
@@ -198,12 +298,13 @@ func nestedInverseWithoutTail(index, base int, root uint64) float64 {
 	node := root
 	result := 0.0
 
-	for i := index; i > 0; i /= base {
-		digit := uint64(i % base)
+	scratch := make([]int32, base)
 
-		a, b := nestedAffine(node, base)
-		result += float64((a*digit+b)%uint64(base)) * place
-		node = nestedChild(node, digit)
+	for i := index; i > 0; i /= base {
+		digit := i % base
+
+		result += float64(nestedDigit(node, base, digit, scratch)) * place
+		node = nestedChild(node, uint64(digit))
 		place *= invBase
 	}
 
@@ -326,10 +427,10 @@ func TestNestedIsArchitectureIndependent(t *testing.T) {
 		want             float64
 	}{
 		{1, 2, 0, 0.8610418542560146},
-		{2, 3, 1, 0.5260546483795254},
+		{2, 3, 1, 0.19272131504619178},
 		{3, 5, 2, 0.1816423753094948},
-		{65, 167, 38, 0.6475077138562525},
-		{4160, 311, 63, 0.7826575407015464},
+		{65, 167, 38, 0.6175675940957736},
+		{4160, 311, 63, 0.864728652455974},
 	}
 	for _, tc := range cases {
 		got := nestedRadicalInverse(tc.index, tc.base, nestedRoot(20240823, tc.dim))
@@ -433,20 +534,33 @@ func nestedMCError(dims, n, streams int) float64 {
 }
 
 // TestNestedIntegratesAtLeastAsWellAsDigitScrambling is the gate the option
-// had to pass to be worth adding at all.
+// had to pass to be worth adding at all, and the gate the switch from affine
+// to full permutations had to pass to be worth making.
 //
-// Nested scrambling costs a hash per digit where random-digit scrambling costs
-// a table lookup, and the package already had a scrambling that integrates 18x
-// better than Monte Carlo. Anything that does not improve on that number is
-// buying nothing with the extra work. Measured at 39 dimensions and n=4096,
-// nested affine reaches 53x against random-digit's 18x over 10 seeds, and 50x
-// against 24x over 40 - the RMS error is a third to a half of it, and the
-// ordering holds on both stream counts rather than resting on one draw.
+// Nested scrambling costs a permutation draw per digit where random-digit
+// scrambling costs a table lookup, and the package already had a scrambling
+// that integrates 18x better than Monte Carlo. Anything that does not improve
+// on that number is buying nothing with the extra work.
 //
-// The assertion is the weaker claim that it is not worse, with a quarter's
-// slack: the size of the gap belongs to these seeds and this integrand, while
-// the direction belongs to the construction. A regression that merely halved
-// the advantage would still be worth knowing about, but not worth a red suite.
+// Ten streams is what this test can afford, and ten streams is not enough to
+// read the gap to a significant figure: measured at 39 dimensions and n=4096
+// it gives 32x for nested against 18x for random-digit, while a variant that
+// differed only in the direction of the Fisher-Yates loop read 44x on the same
+// ten seeds. Run out to 40 streams the same measurement settles at 41x against
+// 24x, and at 80 streams 42x against 26x. Those are the figures the doc
+// comments quote. What ten streams does establish reliably is the ordering,
+// and the ordering is what is asserted.
+//
+// The affine construction this replaced measured 53.2x over 10 streams and
+// 49.9x over 40, so about a sixth of the integration advantage was given up
+// for the correlation tail — see TestNestedCorrelationOverThirtySeeds, which
+// is the other half of that trade.
+//
+// The assertion is the weaker claim that it is not worse than random-digit,
+// with a quarter's slack: the size of the gap belongs to these seeds and this
+// integrand, while the direction belongs to the construction. A regression
+// that merely halved the advantage would still be worth knowing about, but not
+// worth a red suite.
 func TestNestedIntegratesAtLeastAsWellAsDigitScrambling(t *testing.T) {
 	const (
 		dims     = 39
@@ -466,8 +580,8 @@ func TestNestedIntegratesAtLeastAsWellAsDigitScrambling(t *testing.T) {
 	}
 
 	if nested > digit*slack {
-		t.Fatalf("at %d dims with n=%d over %d streams: nested affine RMS error %.3e against random-digit "+
-			"%.3e; nested scrambling costs about eight times as much per point and is no longer paying for it",
+		t.Fatalf("at %d dims with n=%d over %d streams: nested RMS error %.3e against random-digit "+
+			"%.3e; nested scrambling costs about forty times as much per point and is no longer paying for it",
 			dims, n, streams, nested, digit)
 	}
 
@@ -477,34 +591,44 @@ func TestNestedIntegratesAtLeastAsWellAsDigitScrambling(t *testing.T) {
 			dims, n, streams, nested, mc, ratio, wantVsMC)
 	}
 
-	t.Logf("d=%d n=%d streams=%d: MC %.3e | random-digit %.3e (%.1fx) | nested affine %.3e (%.1fx)",
+	t.Logf("d=%d n=%d streams=%d: MC %.3e | random-digit %.3e (%.1fx) | nested %.3e (%.1fx)",
 		dims, n, streams, mc, digit, mc/digit, nested, mc/nested)
 }
 
-// TestNestedCorrelationHasAHeavierTail records the side of the comparison that
-// does not favour this option, and keeps it from getting worse unnoticed.
+// TestNestedCorrelationOverThirtySeeds is the measurement that motivated the
+// switch away from the affine construction, kept as the gate that stops it
+// coming back by accident.
 //
-// The typical seed is fine - better than random-digit, if anything - so a
-// single-seed test here would report good news and mean nothing. What the
-// affine restriction actually does is add a tail to the distribution over
-// seeds. At 600 points a large-base coordinate has only its first digit
-// varying, and on that digit the map is x -> a*x+b mod p: a ramp of another
-// slope, not a scattering. When two neighbouring dimensions draw commensurate
-// slopes they ramp together much as the unscrambled ones did. Measured over 30
-// seeds: median 0.090 against random-digit's 0.093, but 90th percentile 0.195
-// against 0.126 and worst 0.373 against 0.161. Lifting the affine restriction
-// removes the tail - a full-permutation nested scramble over the same tree
-// measured 0.084 median and 0.117 worst - which is what places the blame on
-// the restriction rather than on the nesting.
+// A single-seed test here would mean nothing. The typical seed was always fine
+// under affine too — what the affine restriction did was add a tail to the
+// distribution over seeds. At 600 points a large-base coordinate has only its
+// first digit varying, and on that digit an affine map is a ramp of another
+// slope rather than a scattering; two neighbouring dimensions that drew
+// commensurate slopes ramped together much as the unscrambled ones did.
+//
+// Five seeds would not see the tail either. That is not a supposition: a
+// change to this scrambling that was a pure re-instantiation, not a change of
+// scheme, once moved a five-seed worst case from 0.40 to 0.12. Thirty is the
+// smallest count at which the statistic has been stable here.
+//
+// Measured over 30 seeds at 39 dimensions and 600 points after skipping 64:
+//
+//	                     median    p90    worst
+//	random-digit          0.093  0.126    0.161
+//	nested affine (was)   0.090  0.195    0.373
+//	nested full (is)      0.089  0.123    0.141
 //
 // So the median is asserted against random-digit, where nested has no excuse,
-// and the worst case is held under a ceiling the measured 0.373 has room under
-// but the unscrambled defect (0.81) does not.
-func TestNestedCorrelationHasAHeavierTail(t *testing.T) {
+// and the worst case against random-digit's worst with a little slack — which
+// is the assertion that has teeth. Under the affine construction the worst was
+// 2.3 times random-digit's and this test as written would fail on it, which is
+// the point: a ceiling loose enough to pass affine would not be a gate, it
+// would be a record.
+func TestNestedCorrelationOverThirtySeeds(t *testing.T) {
 	const (
 		seeds       = 30
 		medianSlack = 1.3
-		ceiling     = 0.5
+		worstSlack  = 1.3
 	)
 
 	measure := func(randomize func(uint64) Option) (float64, float64, int) {
@@ -534,36 +658,38 @@ func TestNestedCorrelationHasAHeavierTail(t *testing.T) {
 
 	nestedMedian, nestedWorst, at := measure(WithNestedScrambling)
 	if nestedMedian > digitMedian*medianSlack {
-		t.Fatalf("median worst adjacent-pair |corr| over %d seeds: nested affine %.4f against random-digit "+
+		t.Fatalf("median worst adjacent-pair |corr| over %d seeds: nested %.4f against random-digit "+
 			"%.4f; nested scrambling is meant to cost nothing on the typical seed, and now it does",
 			seeds, nestedMedian, digitMedian)
 	}
 
-	if nestedWorst > ceiling {
-		t.Fatalf("worst adjacent-pair |corr| over %d seeds = %.4f at dims %d/%d, want <= %.2f; the affine "+
-			"first digit is a ramp, and this is how far that is allowed to go before the option is "+
-			"actively misleading for the callers most likely to reach for a stronger scrambling",
-			seeds, nestedWorst, at, at+1, ceiling)
+	if nestedWorst > digitWorst*worstSlack {
+		t.Fatalf("worst adjacent-pair |corr| over %d seeds: nested %.4f at dims %d/%d against "+
+			"random-digit %.4f; the point of drawing a full permutation at every node instead of an "+
+			"affine map is that it has no tail random-digit does not have, and this is that tail "+
+			"coming back",
+			seeds, nestedWorst, at, at+1, digitWorst)
 	}
 
 	t.Logf("worst adjacent-pair |corr| over %d seeds: random-digit median %.4f worst %.4f | "+
-		"nested affine median %.4f worst %.4f at dims %d/%d",
+		"nested median %.4f worst %.4f at dims %d/%d",
 		seeds, digitMedian, digitWorst, nestedMedian, nestedWorst, at, at+1)
 }
 
 // BenchmarkAtIntoNested is the third leg of bench_test.go's comparison at 39
 // dimensions, kept here because the option it measures lives here. On the
-// machine and run the doc comments quote it was 3968 ns/op against 477 for
-// random-digit scrambling and 394 unscrambled — a factor of about 8, spent on
-// roughly 484 node hashes per point, of which 366 are the leading-zero tails
-// of the small bases.
+// machine and runs the doc comments quote it was 20881 ns/op against 548 for
+// random-digit scrambling and 467 unscrambled, medians of seven — a factor of
+// about 38, spent on roughly 484 tree nodes per point, of which 366 are the
+// leading-zero tails of the small bases. Under the affine construction this
+// replaced, the same digit loop on the same machine ran 4038 ns.
 func BenchmarkAtIntoNested(b *testing.B) {
-	g, err := NewHalton(39, WithSkip(64), WithNestedScrambling(1))
+	g, err := NewHalton(benchNestedDims, WithSkip(64), WithNestedScrambling(1))
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	dst := make([]float64, 39)
+	dst := make([]float64, benchNestedDims)
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -575,3 +701,110 @@ func BenchmarkAtIntoNested(b *testing.B) {
 }
 
 var sinkNested float64
+
+// benchNestedDims is the package's design point and the dimension count every
+// figure in this file's doc comments was measured at.
+const benchNestedDims = 39
+
+// BenchmarkNewHaltonNested is the construction cost, which is the one number
+// this scheme is cheap at: the constructor derives one root hash per dimension
+// and nothing else, where random-digit scrambling builds a permutation per
+// dimension and so does work proportional to the sum of the bases. Everything
+// nested scrambling costs is deferred to the point where a digit is actually
+// rewritten.
+func BenchmarkNewHaltonNested(b *testing.B) {
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		g, err := NewHalton(benchNestedDims, WithSkip(64), WithNestedScrambling(uint64(i)))
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		sinkNested += float64(g.Dims())
+	}
+}
+
+// BenchmarkNestedNodeCache measures the cache that nestedRadicalInverse
+// deliberately does not have.
+//
+// The argument for caching a permutation per node is that the tree depth is
+// bounded by the digit count, so the set of nodes a run touches is small and
+// the O(base) shuffle is paid once each rather than once per visit. The depth
+// is bounded. The node count is the thing a cache holds, and it is not: the
+// leading-zero tail hangs a fresh chain of nodes below every index's explicit
+// digits, and nothing in one is ever visited twice.
+//
+// So this benchmark counts, rather than assumes. It walks exactly the nodes
+// nestedRadicalInverse walks over the workload the other benchmarks use — 39
+// dimensions, 4096 points, skip 64 — and reports the visits, the distinct
+// nodes, the resulting reuse factor, and the memory a map[uint64][]int32
+// holding them would need for its keys, slice headers and digit arrays alone.
+// Measured at 1982974 visits against 1544674 distinct nodes: a reuse factor of
+// 1.28 and 382 MB, for a scheme whose whole appeal was being cheaper.
+// If a future change to the digit loop or the tail bound makes those numbers
+// look different, this is where it shows up.
+//
+// It is a benchmark rather than a test because the numbers are a measurement,
+// not a threshold — there is no figure here that should fail a build.
+func BenchmarkNestedNodeCache(b *testing.B) {
+	const (
+		points = 4096
+		skip   = 64
+	)
+
+	bases := primesUpTo(benchNestedDims)
+
+	var visits, distinct, bytes int
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		visits, distinct, bytes = 0, 0, 0
+
+		for d, base := range bases {
+			seen := make(map[uint64]struct{})
+			root := nestedRoot(1, d)
+
+			for i := 0; i < points; i++ {
+				index := skip + 1 + i
+				invBase := 1 / float64(base)
+				place := invBase
+				node := root
+				result := 0.0
+				scratch := make([]int32, base)
+
+				for k := index; k > 0; k /= base {
+					digit := k % base
+
+					seen[node] = struct{}{}
+					visits++
+					result += float64(nestedDigit(node, base, digit, scratch)) * place
+					node = nestedChild(node, uint64(digit))
+					place *= invBase
+				}
+
+				for place > 0 && result+float64(base)*place != result {
+					seen[node] = struct{}{}
+					visits++
+					result += float64(nestedDigit(node, base, 0, scratch)) * place
+					node = nestedChild(node, 0)
+					place *= invBase
+				}
+			}
+
+			distinct += len(seen)
+			// 8 bytes of key, 24 of slice header, 4 per digit, and nothing
+			// for the map's own buckets — an underestimate on purpose.
+			bytes += len(seen) * (8 + 24 + 4*base)
+		}
+	}
+
+	b.StopTimer()
+	b.ReportMetric(float64(visits), "visits")
+	b.ReportMetric(float64(distinct), "distinct-nodes")
+	b.ReportMetric(float64(visits)/float64(distinct), "reuse")
+	b.ReportMetric(float64(bytes)/1e6, "cache-MB")
+}

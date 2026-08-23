@@ -17,8 +17,8 @@ Kept here only until the next release, as context for the sections below.
   against Joe and Kuo's own `sobol.cc` and against scipy. Measured 29.5x better than Monte
   Carlo at 39 dimensions against scrambled Halton's 17.7x.
 - **Owen scrambling** (base-2, hash-based, Burley 2020) and **`WithDigitalShift`** randomize
-  Sobol; **`WithNestedScrambling`** — nested affine, not full Owen, and named for what it is —
-  randomizes Halton.
+  Sobol; **`WithNestedScrambling`** randomizes Halton with a uniform digit permutation at
+  every node of the scramble tree.
 - **The `Sequence` interface**, settled before the second generator landed, since adding one
   afterwards to a package with two concrete types would have been a breaking change.
 - The suite could not distinguish this library's output from pseudorandom noise. The
@@ -84,36 +84,48 @@ together is worth doing before anyone optimises against them.
   in a tight loop across tens of thousands of points. An `AtBatch(from, n, dst)` that
   amortises setup per dimension rather than per point is worth measuring.
 - Scrambled construction is expensive and undocumented as such: `NewHalton(1000,
-  WithScrambling(…))` costs ~32 ms and allocates proportionally to the sum of the first
+WithScrambling(…))` costs ~32 ms and allocates proportionally to the sum of the first
   1000 primes. Callers constructing a generator per task need to know this.
 
 ## New sequences and randomisation
 
-### Sobol — done, with these left open
+### Sobol — done
 
 - [x] Direction numbers, Gray-code `Next`, direct `At`, digital shift, Owen scrambling
-- [ ] The embedded table stops at 1024 dimensions. `WithDirectionNumbers` covers the rest,
-      but nothing in the repository generates or verifies a table beyond that, so a caller
-      who needs 5000 dimensions is on their own with a file format and a validator.
-- [ ] Balance holds only on a 2^m-aligned block of raw indices, which the tests work around
-      with `WithSkip(2^m - 1)`. Nothing in the API tells a caller that, and it is the kind of
-      thing that makes a stratification check look broken when it is the question that is.
-- [ ] Joe and Kuo's D(6) table does not make every 2-D projection a net: of the 780 pairs
-      among the first 40 dimensions, 18 are balanced at every split at m=8 and 4 at m=10.
-      Worth a note in the docs — a caller picking two dimensions to plot may land on a bad
-      pair and conclude the sequence is broken.
+- [x] The path above the embedded 1024-dimension ceiling is documented and tested. The
+      Joe-Kuo file format and every invariant the validator enforces are written down at
+      `WithDirectionNumbers`, along with what it cannot prove — that the numbers came from
+      the authors' search. A synthesised 1200-dimension table, whose polynomials are found
+      by running `isPrimitiveOverGF2` rather than asserted, drives the loader end to end.
+- [x] The 2^m-alignment of the balance property is stated on the type and on `At`, with the
+      measurement behind it: at 40 dimensions and m=8, skip 0 leaves all 40 dimensions
+      unbalanced and skip 255 leaves none.
+- [x] The projection caveat is in the README and the type doc, with a good pair and a bad
+      one named. Re-measured and confirmed: 18 of 780 pairs balanced at every split at m=8,
+      4 at m=10, and (12,23) leaves 224 of 256 cells empty where (0,1) fills every one.
 
-### Scrambling — done, with one finding worth acting on
+### Scrambling — done
 
-- [x] Owen scrambling for Sobol, nested affine scrambling for Halton, both measured
-- [ ] Nested affine scrambling integrates best of everything measured (53.2x against Monte
-      Carlo at 39 dimensions) but has the worst correlation tail (0.37 worst over thirty
-      seeds against random-digit's 0.16). A diagnostic run with full permutations instead of
-      affine ones removed the tail entirely while keeping 44x. If the O(base) shuffle can be
-      amortised — a cached permutation per visited node, bounded by the tree depth actually
-      reached — that is the strictly better construction and it is already known to work.
-- [ ] The hash-based Owen scramble is exact in its nesting but approximate in the uniformity
-      of the permutation at each node. Nothing measures how much that approximation costs.
+- [x] Owen scrambling for Sobol, nested scrambling for Halton, both measured
+- [x] The affine construction was replaced by a uniform permutation per node. The tail is
+      gone — worst adjacent-pair |r| over thirty seeds 0.14 against affine's 0.37, now
+      below random-digit's own 0.16 — at the cost of about a sixth of the integration
+      advantage (41.1x against 49.9x over forty streams) and about five times the price per
+      point. **The cache this plan assumed does not exist and cannot**: a 39-dimensional
+      point at 4096 points visits 1,982,974 nodes of which 1,544,674 are distinct, because
+      the leading-zero tail hangs a fresh chain below every index and nothing in one is
+      revisited. Distinct nodes grow with the point count, not with the digit count, so
+      caching would buy 1.28x reuse for 382 MB — and would cost `At` its documented
+      freedom from locks. The O(p) shuffle is avoided instead by evaluating only the digit
+      asked for, which is exact because a Fisher-Yates run upward settles position i at
+      step i and never revisits it.
+- [x] The hash-based Owen scramble's approximation is measured. Per node it is
+      indistinguishable from fair coins (worst node 3.85 sigma over 40000 seeds and 8191
+      nodes, where the largest of 8191 fair coins is expected near 3.9) and pairwise
+      independent. Jointly across a level it is not: flip-count variance runs 0.09 to 3.06
+      of the binomial value the exact construction reproduces to within 4%. Costs at most a
+      tenth of the RMS integration error, so the constants stand — but this is the first
+      instrument in the package with the resolution to evaluate changing them.
 
 ### Leaping
 
@@ -145,10 +157,23 @@ being informative.
   across all 1024 dimensions at m=4, 8 and 12, along with the bijectivity, per-node
   injectivity and `Next`/`At` agreement tests — only the dedicated nesting test fails. Any
   future scrambling scheme needs a test that pins the conditional structure directly.
+- **The nesting test has a sensitivity floor.** Following on from the point above: hashing
+  the node down to `node & 0xFF`, so roughly one node in 256 shares a permutation with
+  another, leaves the nesting test passing. It was caught instead by a chi-square over all
+  120 permutations of base 5 and by the golden-value test. A test that detects total loss of
+  conditioning does not detect partial loss of it.
 - **Five seeds is not enough for the correlation statistic.** A change that was a pure
   re-instantiation of the nested scrambling, not a change of scheme, moved a five-seed worst
   case from 0.40 to 0.12. `correlation_test.go` still uses five and should quote a median and
   a tail over thirty, as the README now does.
+- **Ten streams is not enough for the integration statistic either, and the suite still uses
+  ten.** Two full-permutation variants differing only in the direction of a Fisher-Yates
+  loop — statistically identical constructions — read 44.0x and 31.9x on the same ten
+  seeds. The forty- and eighty-stream figures separate the schemes consistently; the
+  ten-stream figure does not, and the README table is a ten-stream table. The gates assert
+  an ordering and a factor of five rather than any measured constant, which is what keeps
+  this from being a flaky-test problem, but no ten-stream number should be quoted as a
+  comparison between two good schemes.
 - The demo module has no tests at all, and it duplicates library logic (see below), so
   nothing catches the two halves drifting apart.
 - Coverage sits at 93.2%, and the uncovered statements are precisely the defensive guards.

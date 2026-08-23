@@ -23,7 +23,7 @@ type Halton struct {
 	dims  int
 	bases []int
 	perms [][]int32        // nil unless random-digit scrambling is on
-	nest  *nestedScrambler // nil unless nested affine scrambling is on
+	nest  *nestedScrambler // nil unless nested scrambling is on
 	skip  int
 
 	cursor int // index of the next point Next will return
@@ -113,11 +113,12 @@ func (h *Halton) Bases() []int {
 // digit that digit i is rewritten to, so it has exactly Bases()[dim] entries
 // and each of 0..base-1 appears once.
 //
-// Nested affine scrambling (WithNestedScrambling) also returns nil, and not
-// because it is unscrambled: it has no permutation table to hand out. Its
-// permutations depend on the digits above the one being rewritten, so there is
-// one per node of a tree with p^k nodes at depth k, derived on the fly and
-// never stored.
+// Nested scrambling (WithNestedScrambling) also returns nil, and not because
+// it is unscrambled: it has no permutation table to hand out. Its permutations
+// depend on the digits above the one being rewritten, so there is one per node
+// of a tree with p^k nodes at depth k, derived on the fly and never stored —
+// and, since nestedDigit evaluates only the entry it is asked for, most of
+// them are never materialised in full even momentarily.
 //
 // A dim outside [0, Dims()) returns nil rather than panicking, because the
 // callers are display code walking a dimension list that may be out of step
