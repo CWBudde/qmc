@@ -78,9 +78,9 @@ None of these has been measured against the benchmarks yet.
   per dimension rather than per point is worth measuring.
 - The Halton and Sobol benchmarks were taken on different machines and are not comparable to
   each other. Re-measure them together before optimising against either.
-- Scrambled construction cost is not documented at the call site. `NewHalton(1000,
-WithScrambling(…))` costs ~32 ms, and a caller constructing a generator per task needs to
-  know that before it shows up as a profile.
+- Scrambled construction cost is not documented at the call site. A thousand-dimensional
+  scrambled Halton generator costs ~32 ms to build, and a caller constructing one per task
+  needs to know that before it shows up as a profile.
 
 Already done: `fill` no longer re-tests `h.perms == nil` on every coordinate of every point —
 the branch is hoisted and the dispatch is three-way. `Sobol.NextInto` does the same for its
