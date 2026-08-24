@@ -99,7 +99,10 @@ func digitSumReference(index, base int, perm []int32) float64 {
 // clamp, and the only symptom would be coordinates landing a few ulps short of
 // the boundary the package documents.
 func TestOneMinusEpsilonIsNextafterOne(t *testing.T) {
-	const wantBits = 0x3FEFFFFFFFFFFFFF
+	// Typed uint64, not an untyped constant: %#016x below passes it through
+	// an interface{}, where an untyped constant defaults to int and overflows
+	// the build on a 32-bit GOARCH.
+	const wantBits uint64 = 0x3FEFFFFFFFFFFFFF
 
 	if got := math.Float64bits(oneMinusEpsilon); got != wantBits {
 		t.Fatalf("math.Float64bits(oneMinusEpsilon) = %#016x, want %#016x", got, wantBits)
