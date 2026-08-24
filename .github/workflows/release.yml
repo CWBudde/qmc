@@ -63,8 +63,11 @@ jobs:
       - name: Run tests
         run: go test -timeout 20m ./...
 
+      # The version is mirrored in justfile (setup-deps),
+      # .github/workflows/test.yml and .trunk/trunk.yaml; change it in all four
+      # or not at all.
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.12.2
-          args: --config ./.golangci.yml --timeout 5m
+          version: v2.13.1
+          args: --config ./.golangci.yml --timeout 5m ./...

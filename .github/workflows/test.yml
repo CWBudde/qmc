@@ -52,11 +52,15 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # The version is mirrored in justfile (setup-deps),
+      # .github/workflows/release.yml and .trunk/trunk.yaml; change it in all
+      # four or not at all. The args match the ones `just lint` uses, so a
+      # local run and this job are the same check.
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.12.2
-          args: --timeout 5m ./...
+          version: v2.13.1
+          args: --config ./.golangci.yml --timeout 5m ./...
 
   test:
     name: Test (go ${{ matrix.go-version }}, ${{ matrix.arch }})

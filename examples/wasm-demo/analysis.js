@@ -779,7 +779,7 @@
       "ready",
     );
     announce(
-      `Correlation recomputed. Worst adjacent pair ${result.worstAdjacent.toFixed(3)}.`,
+      `Correlation recomputed. Worst adjacent pair ${coefficient(result.worstAdjacent)}.`,
     );
   }
 
@@ -797,12 +797,17 @@
   }
 
   function updateVerdict(result) {
-    const worst = Math.abs(result.worstAdjacent);
+    // Math.abs(null) is 0, so reading the coefficient without testing it first
+    // would not throw here — it would do something worse and print a confident
+    // 0.000, the best possible verdict, for a measurement that does not exist.
+    const worst = finite(result.worstAdjacent)
+      ? Math.abs(result.worstAdjacent)
+      : null;
     const pair = result.worstPair || [];
 
-    worstAdjacent.textContent = worst.toFixed(3);
+    worstAdjacent.textContent = coefficient(worst);
     worstAdjacent.dataset.tone =
-      worst < 0.3 ? "good" : worst > 0.6 ? "bad" : "";
+      worst === null ? "" : worst < 0.3 ? "good" : worst > 0.6 ? "bad" : "";
     worstPairLabel.textContent =
       pair.length === 2
         ? `dimensions ${pair[0]} and ${pair[1]}${pairBases(result, pair)}`
@@ -823,7 +828,7 @@
       result.leap === DOCUMENTED.leap;
 
     docReference.innerHTML = sameSetup
-      ? `At this exact configuration the README quotes <b>${target.toFixed(2)}</b> ${scrambled ? "(worst of five seeds)" : ""}. You are seeing <b>${worst.toFixed(3)}</b> at seed ${result.seed}.`
+      ? `At this exact configuration the README quotes <b>${target.toFixed(2)}</b> ${scrambled ? "(worst of five seeds)" : ""}. You are seeing <b>${coefficient(worst)}</b> at seed ${result.seed}.`
       : `The README's figures — <b>0.81</b> unscrambled, <b>0.14</b> scrambled — are measured on Halton at 39 dimensions, 600 points, burn-in 64, no leap. This is ${result.source} with randomization ${result.randomization}, ${result.dims} dimensions, ${result.count.toLocaleString("en-US")} points, burn-in ${result.skip}, leap ${result.leap}, so the numbers are not directly comparable.`;
   }
 
@@ -1194,6 +1199,24 @@
     }
 
     return `${value.toFixed(2)}×`;
+  }
+
+  // finite is the test times() makes, pulled out so the correlation panel can
+  // make the same one. jsNumber in bridge.go turns NaN and ±Inf into null on
+  // the way out, so every number the Go side sends — worstAdjacent included —
+  // arrives nullable whether or not today's arithmetic can produce one.
+  function finite(value) {
+    return value !== null && value !== undefined && isFinite(value);
+  }
+
+  // coefficient formats a correlation coefficient, or an em-dash when there is
+  // no number to format. Calling toFixed on the null directly is a TypeError,
+  // and in refreshCorrelation it would escape uncaught from the announce()
+  // call at the very end of a successful refresh — the heatmap already drawn,
+  // the status line already saying "ready", and the panel dead for every
+  // subsequent control change.
+  function coefficient(value) {
+    return finite(value) ? value.toFixed(3) : "—";
   }
 
   function currentMetric() {

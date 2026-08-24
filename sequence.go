@@ -94,7 +94,10 @@ type Sequence interface {
 // interface. This is the assertion that keeps Sequence honest: a method
 // renamed on one generator and not the other stops the build here rather than
 // at some caller's type switch. Every new generator adds a line here.
-var _ Sequence = (*Halton)(nil)
+var (
+	_ Sequence = (*Halton)(nil)
+	_ Sequence = (*Sobol)(nil)
+)
 
 // Draw returns the first n points of seq as an n-by-Dims() matrix.
 //

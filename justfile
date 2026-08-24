@@ -45,7 +45,13 @@ setup-deps:
     command -v treefmt >/dev/null 2>&1 || { echo "Installing treefmt..."; curl -fsSL https://github.com/numtide/treefmt/releases/download/v2.5.0/treefmt_2.5.0_linux_amd64.tar.gz | sudo tar -C /usr/local/bin -xz treefmt; }
 
     # golangci-lint v2 (linter + formatter runner)
-    command -v golangci-lint >/dev/null 2>&1 || { echo "Installing golangci-lint..."; go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest; }
+    #
+    # Pinned, not @latest: an unpinned install makes a local `just lint` a
+    # different check from CI's on any day upstream releases, and the
+    # difference shows up as a lint failure nobody can reproduce. This version
+    # is mirrored in .github/workflows/test.yml, .github/workflows/release.yml
+    # and .trunk/trunk.yaml; change it in all four or not at all.
+    command -v golangci-lint >/dev/null 2>&1 || { echo "Installing golangci-lint..."; go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1; }
 
     # Go formatters
     command -v gofumpt >/dev/null 2>&1 || { echo "Installing gofumpt..."; go install mvdan.cc/gofumpt@latest; }

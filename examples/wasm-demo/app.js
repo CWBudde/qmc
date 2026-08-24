@@ -816,10 +816,20 @@
     }
 
     dBase.textContent = String(d.base);
+
+    // The whole point of this readout is to explain where the raw index came
+    // from, so the arithmetic on screen has to add up to the number beside it.
+    // The mapping in the library is rawIndex = skip + 1 + index × leap — the
+    // +1 because raw index 0 is the degenerate all-zeros origin that At never
+    // returns — and the burn-in is recovered from the response rather than
+    // read off the skip control, so the label can never describe a
+    // configuration the digits were not computed at.
+    const dSkip = d.rawIndex - 1 - d.index * d.leap;
+
     dRawIndex.textContent =
       d.leap > 1
-        ? `${d.rawIndex} (skip + 1 + index ${d.index} × leap ${d.leap})`
-        : `${d.rawIndex} (index ${d.index} + skip)`;
+        ? `${d.rawIndex} (index ${d.index} × leap ${d.leap} + skip ${dSkip} + 1)`
+        : `${d.rawIndex} (index ${d.index} + skip ${dSkip} + 1)`;
     dValue.textContent = formatCoordinate(d.value);
     dPlainValue.textContent = formatCoordinate(d.unscrambledValue);
 

@@ -93,6 +93,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   verbatim. It decides by building a generator and reading the error rather than
   by re-deriving coprimality in the demo.
 
+- `small_sample_test.go` and `docs/small-sample-regime.md` measure the regime a
+  seeded population actually uses — 40 points in up to 30 dimensions — which the
+  rest of the suite never touches, since `integration_test.go` works at n=4096.
+  Over 200 randomization streams per cell, every scheme still beats Monte Carlo
+  everywhere measured: worst cell 3.40x (random-digit Halton at 30 dimensions and
+  n=40), best 61.5x (Owen Sobol at 2 dimensions and n=160). What does not survive
+  is the ordering's first place. At 30 dimensions and n=40, nested Halton reads
+  1.10e-02 and Owen Sobol 1.12e-02 — 1.4% apart against a 5% standard error, so a
+  tie, where the n=4096 table separates them. The bottom two hold their places.
+  `CenteredL2Discrepancy` cannot see any of it: at 30 dimensions all four schemes
+  land within 2-3% of the pseudorandom baseline over point sets whose integration
+  errors differ by 5x, which is the saturation caveat reappearing at small n
+  rather than a fact about the points.
+
+- Fuzz targets `FuzzRadicalInverse` and `FuzzScrambledRadicalInverse`, comparing
+  both against the slow reference form already in `robustness_test.go`. Inputs
+  are folded onto valid bases and onto indices below the deliberate overflow
+  panic, so no draw is wasted rejecting itself.
+
+- `.editorconfig` (the settings `treefmt.toml` already enforces, in the form an
+  editor reads) and `.github/dependabot.yml` for the `github-actions` ecosystem
+  only — the workflows pin floating majors. No `gomod` updater: the module has no
+  dependencies, by design.
+
+### Changed
+
+- The documentation was split. `README.md` is now an overview, a quickstart and
+  an API tour; the measurement narrative moved to `docs/`, one file per topic,
+  indexed at `docs/README.md`. `PLAN.md` keeps only what is still open — every
+  block recording finished work moved into the matching `docs/` page rather than
+  being deleted, so no measurement was lost.
+
+- `oneMinusEpsilon` is a `const` (the hex float literal `0x1.fffffffffffffp-1`)
+  rather than a package-level mutable `var`. A test pins its bit pattern against
+  `math.Nextafter(1, 0)` so the literal cannot drift.
+
+- golangci-lint is pinned to v2.13.1 in all four places that named a version, and
+  all three call sites now pass `--config ./.golangci.yml --timeout 5m ./...`.
+  `just lint` and CI lint previously differed by construction.
+
+- `.gitignore` covers `*.test`, `*.prof`, profile output, `.trunk/` and editor
+  state; `coverage.out` and `coverage.html` are no longer anchored to the root,
+  so a copy written elsewhere is ignored too.
+
+### Fixed
+
+- `Sequence` had a compile-time assertion for `*Halton` and a comment saying every
+  generator adds a line, but none for `*Sobol`. Added.
+
+- The demo's analysis page called `.toFixed(3)` on the worst-adjacent correlation,
+  which `bridge.go`'s `jsNumber` is allowed to return as `null`. One call site
+  threw a TypeError at the end of an otherwise successful refresh; two others read
+  it through `Math.abs(null)` and printed a confident `0.000` — the best possible
+  verdict — for a measurement that does not exist. All three now render an
+  em-dash.
+
+- The digit inspector's label read `<raw> (index N + skip)`, which does not add up
+  against the `skip + 1 + index*leap` mapping it exists to explain. It now shows
+  the full arithmetic, with the skip recovered from the response rather than from
+  the control, so the label cannot describe a configuration the digits were not
+  computed at.
+
 ## [0.2.0] - 2026-08-23
 
 ### Added

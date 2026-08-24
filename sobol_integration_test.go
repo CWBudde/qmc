@@ -122,7 +122,7 @@ func TestSobolAgainstHaltonAt39Dims(t *testing.T) {
 	)
 
 	sobolErr := sobolRMSError(t, qmc.WithDigitalShift, dims, n, streams)
-	haltonErr := qmcRMSError(t, dims, n, streams)
+	haltonErr := qmcRMSError(t, qmc.WithScrambling, dims, n, streams)
 
 	ratio := haltonErr / sobolErr
 

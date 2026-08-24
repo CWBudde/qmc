@@ -90,3 +90,26 @@ func digitSumReference(index, base int, perm []int32) float64 {
 
 	return sum
 }
+
+// TestOneMinusEpsilonIsNextafterOne pins the hex float literal in halton.go
+// against the call it replaced. The literal has to be written out because
+// math.Nextafter is not a constant expression, and a hand-written bit pattern
+// is exactly the kind of thing that survives an edit with one f too few: it
+// would still be a plausible number just below 1, every clamp would still
+// clamp, and the only symptom would be coordinates landing a few ulps short of
+// the boundary the package documents.
+func TestOneMinusEpsilonIsNextafterOne(t *testing.T) {
+	const wantBits = 0x3FEFFFFFFFFFFFFF
+
+	if got := math.Float64bits(oneMinusEpsilon); got != wantBits {
+		t.Fatalf("math.Float64bits(oneMinusEpsilon) = %#016x, want %#016x", got, wantBits)
+	}
+
+	if want := math.Nextafter(1, 0); oneMinusEpsilon != want {
+		t.Fatalf("oneMinusEpsilon = %v, want math.Nextafter(1, 0) = %v", oneMinusEpsilon, want)
+	}
+
+	if oneMinusEpsilon >= 1 {
+		t.Fatalf("oneMinusEpsilon = %v must be strictly below 1", oneMinusEpsilon)
+	}
+}

@@ -1,0 +1,58 @@
+# EditorConfig for github.com/cwbudde/qmc — https://editorconfig.org
+#
+# This file does not decide anything. treefmt.toml is where the formatting is
+# actually enforced (`just fmt`, and `just check-formatted` in CI); this only
+# teaches an editor to type what those formatters would have written, so a
+# freshly opened file does not need a round trip through treefmt to stop
+# showing up as a diff. Every value below is copied from treefmt.toml's
+# formatter configuration — gofumpt for Go, prettier for the web and markup
+# files, shfmt -i 2 for shell. Change one there and change it here too.
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# gofumpt (and gofmt before it) indents with tabs and does not wrap, so no
+# indent_size is given: it only tells an editor how wide to render a tab, and
+# the file is byte-identical whichever width a reader prefers.
+[*.go]
+indent_style = tab
+
+# go.mod and go.sum are written by the go tool, which uses tabs. treefmt
+# excludes them from every formatter for the same reason.
+[{go.mod,go.sum}]
+indent_style = tab
+
+# prettier's defaults, which is what treefmt runs these through with no
+# configuration file to override them.
+[*.{js,css,html,json,yaml,yml,md}]
+indent_style = space
+indent_size = 2
+
+# shfmt -i 2, from treefmt.toml's [formatter.shfmt] options.
+[*.sh]
+indent_style = space
+indent_size = 2
+
+# Trailing whitespace is significant in markdown: two spaces at end of line is
+# a hard line break, and prettier — which has no configuration file here, so it
+# runs on its defaults — preserves them. Nothing in the repository uses one
+# today, so this is here to keep an editor from silently rewriting a document
+# if one ever does.
+[*.md]
+trim_trailing_whitespace = false
+
+# Makefiles and the justfile are recipe files whose bodies must be indented
+# consistently; just uses spaces and make requires tabs.
+[Makefile]
+indent_style = tab
+
+[justfile]
+indent_style = space
+indent_size = 4

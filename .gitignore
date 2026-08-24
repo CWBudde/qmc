@@ -1,6 +1,22 @@
 # Test and coverage output
-/coverage.out
-/coverage.html
+#
+# Unanchored on purpose: `go test -coverprofile=coverage.out ./...` run from a
+# subdirectory writes the file there, and a leading slash would have matched
+# only a copy at the repository root while every other one showed up as an
+# untracked file.
+coverage.out
+coverage.html
+
+# Compiled test binaries and profiles. `go test -c` and the -cpuprofile /
+# -memprofile flags drop these next to the package under test, so these are
+# unanchored too.
+*.test
+*.prof
+cpu.out
+mem.out
+block.out
+mutex.out
+trace.out
 
 # Build output
 /dist/
@@ -14,3 +30,17 @@ node_modules/
 
 # Agent worktrees
 .claude/
+
+# Trunk's configuration, local cache and generated state. Nothing under it is
+# tracked — the CLI set this repository up in single-player mode — and it was
+# hidden only by .git/info/exclude, which lives in one clone and is never
+# pushed, so everyone else saw the whole tree as untracked.
+.trunk/
+
+# Editor and IDE state. Per-developer, never part of the build.
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store

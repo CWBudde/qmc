@@ -250,7 +250,8 @@ func TestStarDiscrepancyAgreesWithBruteForceEnumeration(t *testing.T) {
 		sets = append(sets, set{name: "random", points: pts})
 	}
 
-	sets = append(sets,
+	sets = append(
+		sets,
 		set{name: "all identical", points: repeated([]float64{0.3, 0.7, 0.1}, 9)},
 		set{name: "all zero", points: repeated([]float64{0, 0, 0}, 7)},
 		set{name: "all one", points: repeated([]float64{1, 1, 1}, 7)},

@@ -55,14 +55,21 @@ func productIntegrand(x []float64) float64 {
 // is one draw from a distribution; the RMS over seeds is the quantity the
 // theory bounds, and it is what keeps this test from turning on whether one
 // lucky seed happened to land well.
-func qmcRMSError(t *testing.T, dims, n, streams int) float64 {
+//
+// The randomize parameter builds the option under test from a stream seed,
+// exactly as sobolRMSError does in sobol_integration_test.go. Passing it in
+// rather than hardcoding WithScrambling keeps every Halton randomization
+// measured on the same integrand, budget and stream seeds, which is what makes
+// the comparison between random-digit and nested scrambling in
+// small_sample_test.go worth anything.
+func qmcRMSError(t *testing.T, randomize func(uint64) qmc.Option, dims, n, streams int) float64 {
 	t.Helper()
 
 	sumSq := 0.0
 	point := make([]float64, dims)
 
 	for seed := 1; seed <= streams; seed++ {
-		g, err := qmc.NewHalton(dims, qmc.WithSkip(64), qmc.WithScrambling(uint64(seed)))
+		g, err := qmc.NewHalton(dims, qmc.WithSkip(64), randomize(uint64(seed)))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -131,7 +138,7 @@ func TestScrambledQMCBeatsMonteCarloAt39Dims(t *testing.T) {
 		wantSpeedup = 5.0
 	)
 
-	qmcErr := qmcRMSError(t, dims, n, streams)
+	qmcErr := qmcRMSError(t, qmc.WithScrambling, dims, n, streams)
 	mcErr := mcRMSError(dims, n, streams)
 
 	if qmcErr <= 0 {
@@ -168,7 +175,7 @@ func TestScrambledQMCBeatsMonteCarloAtLowDims(t *testing.T) {
 		wantSpeedup = 5.0
 	)
 
-	qmcErr := qmcRMSError(t, dims, n, streams)
+	qmcErr := qmcRMSError(t, qmc.WithScrambling, dims, n, streams)
 	mcErr := mcRMSError(dims, n, streams)
 
 	ratio := mcErr / qmcErr

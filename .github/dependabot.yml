@@ -1,0 +1,29 @@
+# Dependabot configuration — https://docs.github.com/code-security/dependabot
+version: 2
+
+updates:
+  # GitHub Actions only.
+  #
+  # Every `uses:` in .github/workflows pins a floating major — actions/
+  # checkout@v4, actions/setup-go@v5, actions/cache@v4,
+  # actions/upload-artifact@v4, golangci/golangci-lint-action@v8,
+  # extractions/setup-just@v2 — so the workflows already drift within a major
+  # without anyone deciding to. What they never do on their own is cross a
+  # major boundary, and that is exactly the change that breaks a run: this
+  # keeps it arriving as a reviewable pull request instead of as a red build
+  # after some unrelated push.
+  #
+  # There is deliberately no gomod updater. The module has no dependencies at
+  # all — that is a design property of this library, not an accident, and
+  # `go.mod` names nothing but the module path and the Go version. A gomod
+  # entry would have nothing to update, and its presence would suggest to a
+  # future reader that adding a dependency here is routine.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    labels:
+      - dependencies
+      - github-actions

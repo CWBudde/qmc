@@ -9,7 +9,14 @@ import (
 // clamped to it so callers can rely on the half-open range [0,1) without
 // defending against a rounded-up 1.0 that would index one past the end of a
 // bucket table or push a knob past its upper bound.
-var oneMinusEpsilon = math.Nextafter(1, 0)
+//
+// It is spelled as a hex float literal rather than math.Nextafter(1, 0)
+// because that call is not a constant expression, and a package-level var is
+// writable: any file in the package could assign to it and every clamp in the
+// package would silently move. The literal is exactly bit pattern
+// 0x3FEFFFFFFFFFFFFF, and TestOneMinusEpsilonIsNextafterOne pins that against
+// math.Nextafter so the two can never drift apart unnoticed.
+const oneMinusEpsilon = 0x1.fffffffffffffp-1
 
 // Halton generates points of the Halton sequence in a fixed number of
 // dimensions.
