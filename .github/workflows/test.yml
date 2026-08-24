@@ -28,7 +28,7 @@ jobs:
           cache: true
 
       - name: Set up just
-        uses: extractions/setup-just@v2
+        uses: extractions/setup-just@v4
 
       - name: Install formatters
         run: just setup-deps
@@ -150,7 +150,7 @@ jobs:
           cache: true
 
       - name: Set up just
-        uses: extractions/setup-just@v2
+        uses: extractions/setup-just@v4
 
       - name: Check the WebAssembly demo builds
         run: just check-wasm-demo
