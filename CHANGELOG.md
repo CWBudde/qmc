@@ -121,9 +121,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The documentation was split. `README.md` is now an overview, a quickstart and
   an API tour; the measurement narrative moved to `docs/`, one file per topic,
-  indexed at `docs/README.md`. `PLAN.md` keeps only what is still open — every
-  block recording finished work moved into the matching `docs/` page rather than
-  being deleted, so no measurement was lost.
+  indexed at `docs/README.md`. `PLAN.md` is gone: the measurements it recorded
+  moved into the matching topic page, and the work still open moved to a "still
+  open" section at the end of the page whose background explains it. Nothing was
+  deleted, and a gap now sits next to the reasoning it belongs to rather than in
+  a separate file that only gets read when someone remembers it exists.
 
 - `oneMinusEpsilon` is a `const` (the hex float literal `0x1.fffffffffffffp-1`)
   rather than a package-level mutable `var`. A test pins its bit pattern against

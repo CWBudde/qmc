@@ -87,3 +87,21 @@ and more obviously correct rather than against a hand-computed expectation:
 Coverage sits around 93%, and the uncovered statements are precisely the defensive guards.
 That is the normal shape of coverage, not a target to chase — but the index-overflow bug lived
 in exactly that region, so the guards deserve tests rather than a higher percentage.
+
+## Known gaps
+
+The reasoning above is settled; the suite does not yet act on all of it.
+
+- **`correlation_test.go` still uses five seeds.** Five is demonstrably not enough, by this
+  page's own measurement. It should quote a median and a tail over thirty, as the
+  documentation does.
+- **The integration tests still use ten streams.** The gates assert an ordering rather than a
+  constant, so this is not a flaky-test problem — but the suite still _produces_ ten-stream
+  numbers, and a number that exists gets quoted.
+- **No test pins conditional structure directly.** Until one exists, any new scrambling scheme
+  is guarded only by tests that a non-nested scramble can pass.
+- **The demo module has no tests at all**, and it duplicates library logic, so nothing catches
+  the two halves drifting apart. See [the WebAssembly demo](wasm-demo.md).
+- **The defensive guards deserve tests.** The uncovered statements are precisely those guards.
+  That is the normal shape of coverage, not a target to chase — but the index-overflow bug
+  lived in exactly that region.

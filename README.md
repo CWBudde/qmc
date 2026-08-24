@@ -184,7 +184,8 @@ fmt.Printf("dimension 38 uses base %d\n", g.Bases()[38])
 The [`docs/`](docs) directory carries the long form: the measurements behind every figure
 above, the caveats that only matter once you are relying on a number, and the reasoning
 behind choices that are not obvious from the code. [`docs/README.md`](docs/README.md) is the
-index. [`PLAN.md`](PLAN.md) is the open backlog.
+index. Open work is recorded at the end of the page it belongs to, so a gap sits next to the
+reasoning that explains it.
 
 ## License
 

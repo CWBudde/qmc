@@ -56,7 +56,7 @@ Three things this says.
 **The advantage survives all the way down.** The worst cell in the grid is
 random-digit Halton at s=30, n=40, and even there randomized QMC integrates
 3.40x more accurately than independent sampling. Nothing measured is worse than
-Monte Carlo. The open question in `PLAN.md` — whether the scrambling constants
+Monte Carlo. The open question — whether the scrambling constants
 are right at n=40 — is answered: they are not merely harmless there. At n=40
 they still pay between 3.40x (random-digit Halton at s=30) and 11.97x (Owen
 Sobol at s=2).
@@ -199,6 +199,28 @@ about.
 against Monte Carlo at 39 dimensions and n=4096. At n=40 the honest figure is
 about 5x. Both are real; they are measurements of different regimes, and this
 document exists so that nobody has to guess which one applies.
+
+## What this says about the downstream result
+
+`mayfly.WithQMCInitialPopulation` landed against v0.2.0 and was measured rather than
+asserted: Standard MA, 30 runs, 500 iterations, over mayfly's 16-problem benchmark suite.
+Owen-scrambled Sobol came out significantly better on two problems (Rastrigin at 30
+dimensions, mean 14.09 → 9.66 at p<0.001; Ackley at 10 dimensions, 0.851 → 0.303 at p=0.007)
+and significantly worse on none; nested-scrambled Halton reached p<0.05 nowhere. Two hits in
+thirty-two tests is close to what 0.05 produces by chance, so mayfly kept uniform draws as its
+default. The write-up is in `mayfly/docs/qmc-initialization.md`.
+
+The measurements on this page say that reading was fair, and locate the cause. The point set
+_is_ better at 40 points in 30 dimensions — about 5x on integration error — so the initial
+population genuinely starts better distributed. What the numbers here also show is that the
+margin between the two best schemes vanishes at that size, which is consistent with a
+benchmark that separates them nowhere. And a mayfly run is 500 iterations long: whatever
+advantage the seed carries has 500 chances to be washed out by the optimiser's own dynamics.
+That is a question about the optimiser, not about the sequence, and this package cannot answer
+it.
+
+One thing worth knowing before anyone measures this again: four of the sixteen problems are
+solved to machine precision by every strategy and say nothing at all.
 
 ## Re-running
 

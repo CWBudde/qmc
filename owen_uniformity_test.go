@@ -730,9 +730,10 @@ func median(v []float64) float64 {
 // TestOwenApproximationCostsNothingOnCorrelation is measurement four, second
 // instrument.
 //
-// Thirty seeds, not five. PLAN.md records a five-seed worst case moving from
-// 0.40 to 0.12 on a pure re-instantiation of a scrambling scheme, so a
-// five-seed comparison between two scrambles would be measuring the seeds.
+// Thirty seeds, not five. docs/testing-methodology.md records a five-seed worst
+// case moving from 0.40 to 0.12 on a pure re-instantiation of a scrambling
+// scheme, so a five-seed comparison between two scrambles would be measuring
+// the seeds.
 func TestOwenApproximationCostsNothingOnCorrelation(t *testing.T) {
 	const (
 		seeds     = 30
