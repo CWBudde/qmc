@@ -2,7 +2,8 @@
 
 Every other measurement in this package is taken where quasi-Monte Carlo is
 supposed to win. `integration_test.go` integrates at n=4096, `discrepancy_test.go`
-at n=1024, and both report the 1/n-versus-1/sqrt(n) gap in the tens.
+at n=1024, and both report large empirical gains on their smooth product integrand. These are not
+universal convergence rates.
 
 The caller that actually shipped against this library does none of that.
 `mayfly.WithQMCInitialPopulation` seeds a population of 40 individuals in up to
@@ -67,7 +68,7 @@ at fixed s=30 takes it from 9.84x to 5.13x. Both hurt; neither is fatal.
 
 **The rate is still visible at these sizes.** At s=2 every scheme's advantage
 grows when the budget goes from 40 to 160 points (3.96 -> 10.83, 9.05 -> 24.10,
-11.97 -> 61.47, 5.25 -> 8.89). That growth is the 1/n-versus-1/sqrt(n) gap
+11.97 -> 61.47, 5.25 -> 8.89). That growth is an empirical gain on the measured integrand
 appearing directly, and it is one of the two things the test asserts.
 
 ### Gates

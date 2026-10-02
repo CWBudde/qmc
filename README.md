@@ -50,13 +50,14 @@ not apply is that you are holding the wrong type, not a zero value.
 
 ## Which sequence
 
-**Sobol unless you have a reason.** Base 2 in every dimension, no degradation as dimensions
-are added, capped at the 1024 dimensions the embedded Joe & Kuo direction numbers cover
+**Sobol is a useful default.** Base 2 in every dimension avoids Halton’s growing prime
+bases, but projection quality and effective dimension still matter. It is capped at the
+1024 dimensions the embedded Joe & Kuo direction numbers cover
 (`WithDirectionNumbers` takes your own table for more).
 
 **Halton** has no dimension ceiling — primes are sieved on demand, so `NewHalton(5000)`
 works — and its construction is simple enough to reproduce by hand. Above roughly twenty
-dimensions it must be randomized to be usable at all.
+dimensions its early points can have strong correlations; scrambling often helps.
 
 Measured on a smooth 39-dimensional product integrand at n=4096, against plain Monte Carlo
 on the same budget: Sobol with Owen scrambling **32x**, Halton with nested scrambling
@@ -73,17 +74,20 @@ two best schemes closes to a tie. See [the small-sample regime](docs/small-sampl
 
 Each option applies to one generator and is refused by name by the other. They are mutually
 exclusive: a generator has one randomization or none. All four keep the low-discrepancy
-structure intact and make the generator an RQMC sequence, so averaging over seeds yields an
-error estimate; fix the seed and a run is reproducible.
+structure intact to the supported digit depth. They do not all give uniform point
+marginals: fixed digit scrambling can have bias with zero seed variance. Digital shifting
+and nested schemes use finite precision and seeded pseudorandomness. Seed spread measures
+variability, not discretization or randomization bias. Fix the seed and a run is reproducible;
+[Randomization](docs/randomization.md) specifies the assumptions and limitations.
 
-| option                 | generator | what it does                                                              |
-| ---------------------- | --------- | ------------------------------------------------------------------------- |
-| `WithScrambling`       | Halton    | One digit permutation per dimension (Braaten & Weller 1979)               |
-| `WithNestedScrambling` | Halton    | Uniform digit permutation per node, conditioned on the digits above it    |
-| `WithDigitalShift`     | Sobol     | One random word per dimension, XORed into every point                     |
-| `WithOwenScrambling`   | Sobol     | Hash-based Owen scrambling: an independent flip at every node of the tree |
+| option                 | generator | what it does                                                          |
+| ---------------------- | --------- | --------------------------------------------------------------------- |
+| `WithScrambling`       | Halton    | One digit permutation per dimension (Braaten & Weller 1979)           |
+| `WithNestedScrambling` | Halton    | Seeded digit permutation per node, conditioned on the digits above it |
+| `WithDigitalShift`     | Sobol     | One random word per dimension, XORed into every point                 |
+| `WithOwenScrambling`   | Sobol     | Hash-based nested bit flips; node flips need not be independent       |
 
-**Above ~20 Halton dimensions, scrambling is not optional.** The _d_-th coordinate is the
+**For small budgets above ~20 Halton dimensions, consider scrambling.** The _d_-th coordinate is the
 radical inverse in base _p_d_, and for a large base the first _p_d_ points of it are a ramp
 rather than a sample — two adjacent high-dimensional coordinates ramp together, measuring a
 worst adjacent-pair correlation of 0.81 at 39 dimensions and 600 points. Either scrambling
@@ -93,17 +97,19 @@ scheme takes that to 0.14–0.16 over thirty seeds.
 point, why nested scrambling moved from affine to uniform permutations, and how far the
 hash-based Owen scramble is from an exact one.
 
-## Use a burn-in
+## Choosing a starting window
 
 The first Halton point is `(1/2, 1/3, 1/5, 1/7, …)`, which sits near a corner of the box in
 every coordinate with a large base. `WithSkip(64)` discards the first 64 points. It is
-cheap and it is the standard remedy.
+cheap, but does not guarantee better accuracy or eliminate high-base ramps. For Sobol,
+align a power-of-two block when its balance properties matter.
 
 ## Leaping
 
 `WithLeap(n)` takes every _n_-th point instead of every point: point _i_ becomes raw index
-`skip + 1 + i*n`. It is the only deterministic remedy for the Halton defect — no seed, so a
-leaped run is plain QMC — and it is the most accurate option in the package for integration:
+`skip + 1 + i*n`. It changes Halton’s early high-base
+patterns without a seed. On the measured smooth product integrand it was the most accurate
+option at this budget:
 **54.3x** Monte Carlo at 39 dimensions and 4096 points, against nested scrambling's 41.1x.
 
 **A leap must be coprime to every base in use**, and both constructors refuse one that is

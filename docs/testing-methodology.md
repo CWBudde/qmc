@@ -6,11 +6,11 @@ and the shape has a few rules that are not obvious until a test has already lied
 ## Gates assert ratios and orderings, never constants
 
 `TestScrambledQMCBeatsMonteCarloAt39Dims` measures 19–28x depending on n, and asserts **5x**.
-A factor of five cannot be reached by any generator producing independent samples — the gap
-between 1/n and 1/sqrt(n) convergence is structural — while leaving room for an unlucky seed,
-a different Go version's `rand`, and future changes to the scrambling scheme that shift the
-constant without giving up the rate. A test pinned at 19x would fail on noise; one at 5x fails
-only if the package has stopped being a QMC package.
+The 5x threshold is an empirical regression margin on that smooth product and those
+budgets. It is not a universal QMC convergence guarantee, and independent samples can
+occasionally beat it by chance. A gate pinned to the observed 19x would have less room
+for seed variability or a different Go version’s `rand`. Use additional integrands and
+negative controls when assessing broader quality.
 
 The measured figures go into `t.Logf` rather than into an assertion, so a run still reports
 them and a regression is visible before it is fatal.

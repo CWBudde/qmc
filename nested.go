@@ -12,12 +12,13 @@ package qmc
 // that agree in their first k digits are therefore rewritten by the same k
 // permutations and stay together in the same elementary interval of width
 // p^-k, which is what keeps the point set low-discrepancy; points that diverge
-// earlier are rewritten independently from the divergence downwards, which is
-// what removes the correlation one permutation per dimension leaves behind.
+// earlier use different node seeds below the divergence. Ideal independent
+// node permutations would give uniform point marginals; this implementation
+// derives permutations from finite seeded hashes and truncates the digit tail.
 //
-// The permutation at each node is a genuine uniform draw from all p! of them,
-// by the same Fisher-Yates over the same rejection sampler random-digit
-// scrambling uses. There are p^k nodes at depth k so none of them can be
+// Each node uses Fisher-Yates with rejection sampling, avoiding modulo bias
+// under the pseudorandom-word model used by random-digit
+// scrambling. There are p^k nodes at depth k so none of them can be
 // precomputed, and materialising one costs O(p); nestedDigit explains how that
 // is avoided without giving up the uniformity, and nestedRadicalInverse
 // explains why the obvious cache is not the way to avoid it.
@@ -58,7 +59,8 @@ package qmc
 // percentile has come back from 0.195 to 0.123. That is the whole reason for
 // the change, and it is what the affine restriction was suspected of causing.
 //
-// Integration is worse than affine and better than everything else. The
+// On this integrand, integration error exceeds affine's and is below
+// random-digit's over forty seeds. The
 // 10-seed figures are too noisy to read — the same 10 seeds gave 44.0x for a
 // full-permutation variant that differed only in the direction of the shuffle
 // — so the 40-seed column is the one to compare: 41.1x against affine's 49.9x
@@ -76,8 +78,13 @@ package qmc
 // (t,s)-sequences".
 
 // WithNestedScrambling turns on nested digit scrambling with the given seed.
-// Like WithScrambling it makes the generator a randomized QMC sequence: still
-// low-discrepancy, but no longer identical across seeds.
+// Each node's permutation depends on the digits above it. The ideal scheme
+// with independent uniform permutations and an infinite digit tail gives
+// uniform point marginals; this implementation uses finite seeded hashes and
+// stops the tail when further digits cannot affect float64 precision. It
+// preserves elementary-interval structure, but makes no exact continuous
+// unbiasedness guarantee. Independent randomly selected seeds measure seed
+// variability, which does not include truncation or PRNG bias.
 //
 // It is not a free upgrade over WithScrambling and it is deliberately not the
 // default. Measured at 39 dimensions, against random-digit scrambling:

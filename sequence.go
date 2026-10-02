@@ -15,29 +15,33 @@
 //		...
 //	}
 //
-// Which one to reach for. Sobol works in base 2 in every dimension and does
-// not degrade as dimensions are added, which makes it the better default above
+// Which one to reach for. Sobol works in base 2 in every dimension and avoids
+// Halton's growing prime bases, which makes it a useful default above
 // a handful of dimensions; it is limited to the 1024 dimensions the embedded
 // Joe-Kuo direction numbers cover, unless a caller supplies their own table.
 // Halton has no dimension ceiling at all and is the one to keep if you need a
 // sequence whose construction is simple enough to reproduce by hand, but above
-// roughly twenty dimensions it must be randomized to be usable — its later
-// coordinates degenerate into ramps that correlate with each other. See
+// roughly twenty dimensions its early points can have strongly correlated
+// coordinates. Scrambling often helps at small sample budgets. See
 // WithScrambling.
 //
 // Every generator here is deterministic given its configuration, and that
 // includes the randomizations: they are seeded, not sampled, so a run is
 // reproducible across machines, architectures and Go versions. Randomizing is
-// what makes these randomized quasi-Monte Carlo (RQMC) sequences — the
-// estimator becomes unbiased and averaging over seeds gives an error estimate
-// that plain QMC cannot offer.
+// a way to compare runs, but seed variation alone does not establish
+// unbiasedness. WithScrambling reuses a digit permutation and is not a
+// uniform-marginal randomization: its first base-2 point is 0.5 for every
+// seed. Digital shifting and nested scrambling approximate ideal randomized
+// constructions using finite precision and seeded pseudorandomness. Their
+// seed spread measures variability, not discretization or randomization bias.
+// See docs/randomization.md for assumptions and limitations.
 //
 // The measured reason to use any of this, on a smooth 39-dimensional product
 // integrand at 4096 points over ten streams: plain Monte Carlo reaches an RMS
 // relative error of 4.3e-03, scrambled Halton 2.4e-04, Sobol with a digital
-// shift 1.5e-04. The gap is structural — 1/n against 1/sqrt(n) convergence —
-// and integration_test.go and sobol_integration_test.go hold it to at least a
-// factor of five so that it stays true.
+// shift 1.5e-04. These are measurements of one integrand and budget, not a
+// universal convergence rate. Accuracy depends on smoothness, effective
+// dimension, direction numbers, and the sample block selected.
 package qmc
 
 import (

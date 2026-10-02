@@ -5,9 +5,9 @@ import "math/bits"
 // This file implements Owen scrambling for the Sobol sequence, in base 2.
 //
 // The digital shift in sobol.go XORs one random word per dimension into every
-// point. That is enough to make the sequence randomized — the estimator
-// becomes unbiased and averaging over shifts gives an error estimate — but it
-// is a rigid motion. Every point moves the same way, so a shift cannot repair
+// point. With ideal independent words this makes points uniform on the
+// finite 32-bit grid, not on the continuous cube; see WithDigitalShift. It
+// preserves dyadic counts. Every point moves the same way, so a shift cannot repair
 // a projection that is badly distributed to begin with, and the sequence keeps
 // whatever structure it had.
 //
@@ -18,8 +18,8 @@ import "math/bits"
 // path taken through depths 0..k-1. Because the flip at each node maps the
 // node's two children onto each other, every elementary interval maps onto
 // another elementary interval of the same size: the point set is still the
-// same (t,m,s)-net, so the low-discrepancy structure survives intact while the
-// correlations between coordinates do not.
+// same (t,m,s)-net. This preserves its t value rather than repairing a poor
+// direction-number table. Empirical correlations can change.
 //
 // The obvious implementation stores the tree, which is not affordable: 2^32
 // nodes per dimension. Burley's construction replaces the stored random bits
@@ -53,9 +53,12 @@ import "math/bits"
 // Prefer this to WithDigitalShift unless the cost matters. Both make the
 // generator a randomized QMC sequence and both leave the (t,m,s)-net structure
 // intact, but a digital shift translates the whole point set rigidly, so a
-// poorly distributed projection stays poorly distributed under every shift it
-// could be given. Owen scrambling actually redistributes, which is why it is
-// the construction the theory's better convergence rates are stated for.
+// poorly distributed projection retains its dyadic occupancy under every
+// shift. Nested scrambling changes positions while also preserving t; it
+// cannot improve the table's t value. The stronger theoretical variance rates
+// require ideal independent uniform node permutations and suitable integrands,
+// and are not a guarantee for this seeded hash approximation. Coordinates
+// remain on a finite 32-bit grid; seed spread cannot measure its bias.
 //
 // It subsumes the digital shift: the flip at the root of the tree is a random
 // bit flip of the whole coordinate, which is what a one-bit digital shift is.
@@ -65,9 +68,8 @@ import "math/bits"
 // What it buys and what it costs, both measured at 39 dimensions. On the
 // integrand in sobol_integration_test.go it is 1.08x more accurate than a
 // digital shift over ten streams — a real but small margin, and small is the
-// honest word for it on an integrand this smooth; the gap widens on functions
-// whose projections are where the difficulty lives, which is the case Owen
-// scrambling is for.
+// honest word for it on that integrand. This measurement does not establish
+// a gain for other integrands or sample counts.
 //
 // The cost is lopsided, and which entry point you use decides it. On AtInto it
 // is nearly free: 369.6 ns/op against 359.9 for a digital shift, because that

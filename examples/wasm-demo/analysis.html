@@ -249,12 +249,11 @@
           <span class="corner-label">Convergence</span>
           <p class="panel-note">
             Absolute integration error against <i>N</i>, both axes logarithmic —
-            the only pair of axes on which "QMC beats Monte Carlo" is something
-            you can check rather than take on faith. A power law is a straight
-            line here, so the two dotted references matter: plain Monte Carlo
-            error falls as <b>1/√N</b>, and a well-behaved quasi-Monte Carlo
-            rule approaches <b>1/N</b>. Read which line each series runs
-            parallel to.
+            a power law is a straight line here. The dotted <b>1/√N</b> and
+            <b>1/N</b> slopes are references, not guarantees for a single run.
+            Monte Carlo RMS error scales as 1/√N for finite-variance integrands;
+            QMC behavior depends on the function, dimensions and sampled block.
+            Compare several seeds and budgets.
           </p>
 
           <div class="controls" style="margin-top: 0">

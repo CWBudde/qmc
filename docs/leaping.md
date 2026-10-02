@@ -6,7 +6,8 @@ Halton defect, after a burn-in and the two scrambling schemes, and the only dete
 one — no seed, so a leaped run is plain QMC and reproducible without recording anything.
 
 That is also its limitation: with no seed there is no averaging over seeds, so a leaped run
-gives no error estimate the way an RQMC run does.
+has no seed variability to measure. Randomized runs also need the assumptions in
+[Randomization](randomization.md); their variability is not a bound on bias.
 
 ## A leap must be coprime to every base in use
 
@@ -37,7 +38,7 @@ Dimension 1 is the only such dimension in the first eight of the embedded table 
 direction numbers, against dimension 0's 1 of 32). An even leap pins it to one half of
 `[0,1)` at every skip tried, taking integration from 2.6e-04 to 1.2e-01.
 
-## Measured: it is the most accurate option for integration
+## Measured: lowest error on the smooth product at this budget
 
 39 dimensions, 4096 points, over forty admissible leaps against forty scrambling seeds — one
 run, so these are a comparison rather than four sittings:

@@ -78,10 +78,11 @@ type settings struct {
 
 // WithSkip discards the first n points of the underlying sequence (a burn-in).
 //
-// The first few Halton points are badly placed almost by construction: point 1
-// sits at (1/2, 1/3, 1/5, ...), which is a corner of the box in every
-// coordinate that has a large base. Skipping a few dozen points is the
-// standard remedy and costs nothing.
+// The first few Halton points can be poorly placed: raw point 1 sits at
+// (1/2, 1/3, 1/5, ...), near a corner in large-base coordinates. A skip changes
+// the sampled window; it does not guarantee better integration or remove
+// high-base correlations. For Sobol, choose skip to align a power-of-two
+// block when balance matters.
 //
 // Negative values are treated as zero.
 func WithSkip(n int) Option {
@@ -96,13 +97,13 @@ func WithSkip(n int) Option {
 
 // WithScrambling turns on random-digit scrambling with the given seed.
 //
-// This makes the generator a randomized quasi-Monte Carlo (RQMC) sequence:
-// still low-discrepancy, but no longer identical across seeds. That trade is
-// deliberate. In more than roughly twenty dimensions an unscrambled Halton
-// sequence does not fill the box at practical sample counts — its last
-// coordinates degenerate into linear ramps that correlate with each other —
-// and reproducibility of a sequence that is not actually filling the box is
-// not worth much. Fix the seed and the run is reproducible again.
+// One seeded digit permutation per dimension is reused at every digit
+// position. This preserves elementary-interval structure and often reduces
+// Halton's high-base correlations at small sample counts. It does not make
+// each indexed point uniform and does not guarantee an unbiased integral
+// estimate. In base 2, At(0) is 0.5 for every seed; for f(x)=x*x this gives
+// 0.25 instead of the integral 1/3, with zero seed variance. Fixing the seed
+// reproduces the same outputs. See docs/randomization.md.
 func WithScrambling(seed uint64) Option {
 	return func(s *settings) {
 		s.randomize = randomizeDigitPermutation

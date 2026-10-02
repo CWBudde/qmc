@@ -108,25 +108,25 @@ var randomizations = map[string]randomizationSpec{
 	"scramble": {
 		key:         "scramble",
 		label:       "Random-digit scrambling",
-		description: "One uniform permutation of the digit alphabet per dimension, reused at every digit position. Still low-discrepancy, no longer identical across seeds.",
+		description: "One seeded permutation per dimension, reused at every digit position. Preserves interval structure, but does not give uniform point marginals or guarantee unbiased estimates; seed spread can miss bias.",
 		option:      qmc.WithScrambling,
 	},
 	"nested": {
 		key:         "nested",
 		label:       "Nested scrambling",
-		description: "A fresh uniform digit permutation per node of the scramble tree, conditioned on the digits above the digit being rewritten. At 39 dimensions it integrates about twice as accurately as random-digit scrambling — 41x against Monte Carlo over 40 seeds, against 24x — and its worst adjacent-pair |r| over 30 seeds is 0.141 against 0.161. It costs roughly forty times as much per point, which is what the uniform draw buys.",
+		description: "A seeded Fisher–Yates permutation per node, conditioned on the digits above it. Finite hashes and truncated tails approximate ideal nested randomization; seed spread does not measure its bias. At 39 dimensions it integrates about twice as accurately as random-digit scrambling — 41x against Monte Carlo over 40 seeds, against 24x — and its worst adjacent-pair |r| over 30 seeds is 0.141 against 0.161. It costs roughly forty times as much per point, which is what the uniform draw buys.",
 		option:      qmc.WithNestedScrambling,
 	},
 	"shift": {
 		key:         "shift",
 		label:       "Digital shift",
-		description: "One uniform 32-bit word per dimension, XORed into every point: the cheapest randomization a digital net admits. It translates the whole net rigidly, so a projection that is poorly distributed stays poorly distributed under every shift.",
+		description: "One seeded pseudorandom 32-bit word per dimension, XORed into every point. Ideal independent words make points uniform on the finite grid, not the continuous cube. It translates the whole net rigidly, so a projection that is poorly distributed stays poorly distributed under every shift.",
 		option:      qmc.WithDigitalShift,
 	},
 	"owen": {
 		key:         "owen",
 		label:       "Owen scrambling",
-		description: "An independent bit flip at every node of each coordinate's binary tree, hashed rather than stored. It redistributes rather than translating, and measured 1.08x more accurate than a digital shift on the package's 39-dimensional integrand. Nearly free on At, three times the cost on Next.",
+		description: "Hash-based nested bit flips on a 32-bit grid. Node flips need not be independent; the scramble preserves dyadic occupancy and cannot repair a poor table. It changes positions within that constraint, and measured 1.08x more accurate than a digital shift on the package's 39-dimensional integrand. Nearly free on At, three times the cost on Next.",
 		option:      qmc.WithOwenScrambling,
 	},
 }

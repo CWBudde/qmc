@@ -128,7 +128,7 @@ func (h *Halton) Bases() []int {
 // Permutation returns the digit permutation applied to dimension dim, or nil
 // when the generator is unscrambled.
 //
-// With WithScrambling in effect, each dimension carries an independent uniform
+// With WithScrambling in effect, each dimension carries a seeded
 // permutation of the digit alphabet {0..base-1} for its base, and every digit
 // of the radical inverse — including the infinitely many leading zeros — is
 // mapped through it. The returned slice is that permutation: entry i is the

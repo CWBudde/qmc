@@ -1,14 +1,14 @@
 # Choosing a sequence
 
-**Sobol unless you have a reason.** It is base 2 in every dimension and does not degrade as
-dimensions are added, which is exactly where Halton struggles. It is capped at the 1024
+**Sobol is a useful default.** Its base 2 in every dimension avoids Halton’s growing
+prime bases. Accuracy still depends on effective dimension and projection quality. It is capped at the 1024
 dimensions the embedded direction numbers cover, unless you supply your own table with
 `WithDirectionNumbers`.
 
 **Halton** has no dimension ceiling — primes are sieved on demand, so `NewHalton(5000)`
 works — and its construction is simple enough to reproduce by hand, which matters if you are
 migrating off an existing implementation. Above roughly twenty dimensions it has to be
-randomized to be usable at all; see [Randomization](randomization.md).
+considered for scrambling at small budgets; see [Randomization](randomization.md).
 
 ## The measured comparison
 
@@ -39,13 +39,15 @@ At 40 points rather than 4096 the picture is different again; see
 
 Each one makes a correct sequence look broken, so both are worth knowing before you test it.
 
-**The (t,m,s)-net property is 2^m-aligned.** The first 2^m points landing one apiece in every
-elementary interval holds on a 2^m-_aligned_ block of raw indices, so a stratification check
+**The (t,m,s)-net property is 2^m-aligned.** An elementary interval of volume `2^(t-m)`
+contains `2^t` points, with one-point occupancy only for `t=0`. This holds on a
+2^m-_aligned_ block of raw indices, so a stratification check
 wants `WithSkip(2^m - 1)`. With the default skip of 0, all 40 of the first 40 dimensions come
 out unbalanced at m=8; at skip 255, none of them do. The alignment is stated on the type and
 on `At`.
 
-**Not every projection is a net.** The D(6) direction numbers optimise two-dimensional
+**Not every projection is a t=0 net.** Projections inherit the full-dimensional t
+guarantee and can improve it. The D(6) direction numbers optimise two-dimensional
 projections without making them all nets. Of the 780 pairs among the first 40 dimensions, 18
 are balanced at every split at m=8 and 4 at m=10. Plot dimensions 0 and 1 and you get one
 point per cell at every aspect ratio; plot 12 and 23 over the same 256 points and 224 of the

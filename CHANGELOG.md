@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Scientific contract corrections
+
+- Fixed digit scrambling does not guarantee uniform marginals or unbiased
+  integration; its first base-2 point is 0.5 for every seed. Added a public-API
+  regression showing zero seed variance despite bias when integrating `x²`.
+- Documented finite-grid, truncated-tail, and seeded-hash limitations of the
+  other randomizations. Corrected net occupancy/projection guarantees and
+  scoped convergence claims to their assumptions and measured workloads.
+  Existing seeded outputs are unchanged.
+
 ### Added
 
 - `StarDiscrepancy(points)`, the exact `D*_N` — a supremum over origin-anchored

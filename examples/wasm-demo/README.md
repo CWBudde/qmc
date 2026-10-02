@@ -281,3 +281,13 @@ and both progress bars would crawl. Sharing the id makes "start the other panel"
 mean "cancel this one", which is what the machine was going to do anyway — the
 difference is that the cancelled panel's transport is restored rather than left
 disabled.
+
+## Randomization interpretation
+
+The seed selects reproducible outputs. Fixed digit scrambling does not give uniform
+point marginals: its first base-2 point is 0.5 for every seed, so a one-point
+estimate of the integral of `x²` is 0.25 rather than 1/3 with zero seed variance.
+Digital shifting and nested schemes use finite grids, truncated tails, and seeded
+pseudorandomness. Replicate variability cannot bound those sources of bias.
+The reference slopes on the convergence chart are guides for comparison, not
+universal accuracy guarantees. See [the randomization contract](../../docs/randomization.md).

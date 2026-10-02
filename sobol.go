@@ -41,7 +41,7 @@ const twoPowMinus32 = 1.0 / 4294967296.0
 // [0, 2^m), so the first 2^m points are the same point set either way and the
 // (t,m,s)-net balance property — the thing the sequence is for — is untouched.
 //
-// WithLeap does forfeit that property, unconditionally and at any leap: a
+// WithLeap above one forfeits the general aligned-block guarantee: a
 // leaped run visits a strided subset of the raw indices, which is not a block
 // of 2^m of them however it is aligned. It also costs Next the recurrence
 // above. Both are written out at WithLeap, along with why an even leap is
@@ -49,9 +49,9 @@ const twoPowMinus32 = 1.0 / 4294967296.0
 //
 // # Balance holds on aligned blocks, not on any window
 //
-// The (t,m,s)-net property — the first 2^m points falling one apiece into
-// every elementary interval — is a statement about a block of 2^m *raw*
-// indices that begins on a multiple of 2^m. It is not a statement about any
+// A base-2 (t,m,s)-net places 2^t points in each elementary interval of
+// volume 2^(t-m); one-point occupancy requires t=0. This property concerns
+// a block of 2^m raw indices that begins on a multiple of 2^m. It is not a statement about any
 // 2^m consecutive points, and this is the single most likely reason for a
 // caller to conclude the sequence is broken when it is not.
 //
@@ -71,7 +71,7 @@ const twoPowMinus32 = 1.0 / 4294967296.0
 // chooses which aligned block you get. There is no option that makes an
 // unaligned window a net, because no such option could exist.
 //
-// # Not every two-dimensional projection is a net
+// # Not every two-dimensional projection is a t=0 net
 //
 // Joe and Kuo's D(6) criterion optimises two-dimensional projections; it does
 // not make them all t=0, and nothing about a correct table promises that it
@@ -85,8 +85,8 @@ const twoPowMinus32 = 1.0 / 4294967296.0
 // 256 cells of the 16x16 grid empty and pile 8 points into one cell. Both are
 // correct output from the correct table. A caller who plots two dimensions to
 // eyeball the sequence and happens to pick a pair like (12, 23) is looking at
-// a real property of Sobol sequences — t grows with s, and a projection
-// inherits no guarantee from the full-dimensional net — not at a defect.
+// a real property of Sobol sequences. A projection inherits the full net's
+// t guarantee (and can have a better t), but need not be a t=0 net.
 // Picking a different pair is the cheap answer. A digital shift is not: it
 // translates the whole net, so every shift of a poor projection is equally
 // poor, which is the point WithDigitalShift's own doc comment makes.
@@ -241,8 +241,8 @@ func WithDirectionNumbers(r io.Reader) Option {
 	}
 }
 
-// WithDigitalShift turns on digital shifting with the given seed: one uniform
-// 32-bit word per dimension, XORed into every point's accumulator.
+// WithDigitalShift turns on digital shifting with the given seed: one seeded
+// pseudorandom 32-bit word per dimension, XORed into every point's accumulator.
 //
 // This is the cheapest randomization a digital net admits. It costs one XOR
 // per coordinate against a word drawn at construction, which measures as 20%
@@ -251,20 +251,19 @@ func WithDirectionNumbers(r io.Reader) Option {
 // Halton's digit scrambling, which has to look up a permutation for every
 // digit of every coordinate, costs 27% on the same machine.
 //
-// It buys two things. The first is an error estimate: a single QMC run gives
-// one number with no way to say how far off it is, whereas several independent
-// shifts give a spread that can be turned into a confidence interval. The
-// second is the reason to use it even for a single run — a digital shift is a
-// measure-preserving map of the unit cube onto itself that sends elementary
-// intervals to elementary intervals, so the shifted point set is still the
-// same (t,m,s)-net, and shifting removes the origin's special status without
-// costing any of the structure.
+// With independent uniform shift words, each point would be uniform on the
+// 32-bit grid, so estimates would be unbiased for that grid average, not
+// necessarily for the continuous integral. Here words come from one finite
+// seed. Independent randomly selected seeds permit an empirical estimate of
+// seed variability; that does not include grid or PRNG bias. The XOR maps
+// dyadic intervals onto intervals of the same size and preserves the t value
+// of an aligned net to the supported bit depth.
 //
 // What it does not do is repair a bad projection. A digital shift translates
 // the whole net; if two dimensions' direction numbers give a poor
-// two-dimensional projection, every shift of it is equally poor. That is what
-// Owen scrambling is for, and why this is not the only randomization Sobol
-// will offer.
+// two-dimensional projection, every shift of it has the same dyadic counts.
+// Nested Owen scrambling also preserves dyadic occupancy quality; it changes
+// positions within that constraint, rather than repairing the table.
 func WithDigitalShift(seed uint64) Option {
 	return func(s *settings) {
 		s.randomize = randomizeDigitalShift
@@ -507,7 +506,7 @@ func (s *Sobol) Reset() {
 //
 // The mapping from i to a raw index is what decides whether a range of points
 // is balanced, so it is worth being explicit about here rather than only in
-// the type doc. A leap forfeits the balance outright, at any value; the rest of
+// the type doc. A leap above one forfeits the general block guarantee; the rest of
 // this paragraph is about an unleaped generator. The (t,m,s)-net property holds over 2^m raw indices starting
 // on a multiple of 2^m; At(0)..At(2^m-1) is that block only when skip+1 is a
 // multiple of 2^m — which is what WithSkip(2^m - 1) arranges, and what the
