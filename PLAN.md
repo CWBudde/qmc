@@ -137,20 +137,28 @@ only the subsequent draw panics. Compatibility is recorded in the changelog.
 
 ### CORE-02 — Repair prime generation growth and overflow handling (P1)
 
-- [ ] Replace the signed `(^int(0)>>1)/2` bound with a correct positive bound.
-- [ ] Check `15*n` before multiplication and ensure growth cannot wrap or enter
+- [x] Replace the signed `(^int(0)>>1)/2` bound with a correct positive bound.
+- [x] Check `15*n` before multiplication and ensure growth cannot wrap or enter
       a zero-limit loop. Return a constructor error for impossible dimension inputs.
-- [ ] Exercise sieve expansion directly with a deliberately small initial bound,
+- [x] Exercise sieve expansion directly with a deliberately small initial bound,
       or an equivalent bounded test; the existing 64/1000-dimension cases do not
       exercise that branch.
-- [ ] Cover the 637235-dimension reproduction, where the initial sieve is eight
+- [x] Cover the 637235-dimension reproduction, where the initial sieve is eight
       below the required prime, using an appropriately scoped regression or slow test.
-- [ ] Replace the misleading test comment claiming the growth path is exercised.
+- [x] Replace the misleading test comment claiming the growth path is exercised.
 
 Evidence: [primes.go](primes.go), [Halton tests](halton_test.go).
 
 Acceptance: expansion finds the required primes; impossible inputs fail promptly;
 growth and initial-limit arithmetic are covered on 32-bit and 64-bit targets.
+
+Verification (2026-10-03): the 637235-dimension constructor regression reproduced
+the false growth panic before the fix. Bounded expansion, initial multiplication,
+growth ceilings, the full large reproduction, and architecture-independent sieve
+checks pass on amd64 and executable 386 (`go test -count=1 -run
+'Test(PrimesUpTo|PrimeSieve|HaltonRejectsOverflowingPrimeLimit|HaltonPrimeSieveExpands|SieveIsArchitectureIndependent)' ./...`). SymPy 1.14.0 independently confirms
+`prime(637235) = 9558533`. The large allocation test skips in short mode while
+bounded arithmetic and growth regressions remain. Root lint passes.
 
 ### CORE-03 — Make reusable options immutable (P1)
 

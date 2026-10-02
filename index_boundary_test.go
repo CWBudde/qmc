@@ -11,11 +11,13 @@ import (
 
 func expectIndexPanic(t *testing.T, call func()) {
 	t.Helper()
+
 	defer func() {
 		if recover() == nil {
 			t.Error("access beyond the raw-index range must panic")
 		}
 	}()
+
 	call()
 }
 
@@ -26,6 +28,7 @@ func TestConstructorsRejectUnrepresentableFirstIndex(t *testing.T) {
 			if _, err := qmc.NewHalton(1, opts...); err == nil {
 				t.Error("Halton accepted skip=MaxInt")
 			}
+
 			if _, err := qmc.NewSobol(1, opts...); err == nil {
 				t.Error("Sobol accepted skip=MaxInt")
 			}
@@ -53,23 +56,28 @@ func TestLastRawIndexAgreesAcrossAccessMethods(t *testing.T) {
 				// Three points ending exactly on the last admissible raw index.
 				skip := int(tc.max) - 1 - 2*leap
 				opts := append([]qmc.Option{qmc.WithSkip(skip), qmc.WithLeap(leap)}, tc.opts...)
+
 				g, err := tc.new(opts...)
 				if err != nil {
 					t.Fatal(err)
 				}
+
 				for i := range 3 {
 					want := g.At(i)
 					into := make([]float64, g.Dims())
 					g.AtInto(i, into)
+
 					if got := g.Next(); !reflect.DeepEqual(got, want) || !reflect.DeepEqual(into, want) {
 						t.Fatalf("point %d: Next=%v, AtInto=%v, At=%v", i, got, into, want)
 					}
 				}
+
 				expectIndexPanic(t, func() { g.At(3) })
 				expectIndexPanic(t, func() { g.AtInto(3, make([]float64, g.Dims())) })
 				expectIndexPanic(t, func() { g.Next() })
 				expectIndexPanic(t, func() { g.NextInto(make([]float64, g.Dims())) })
 				g.Reset()
+
 				if got, want := g.Next(), g.At(0); !reflect.DeepEqual(got, want) {
 					t.Fatalf("reset: Next=%v, At(0)=%v", got, want)
 				}

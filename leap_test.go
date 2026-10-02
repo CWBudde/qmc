@@ -26,7 +26,7 @@ import (
 // deterministic, so the analogue of thirty streams is thirty admissible leaps.
 func leapPrimesAbove(largest, n int) []int {
 	out := make([]int, 0, n)
-	for _, p := range primesUpTo(n * 8) {
+	for _, p := range mustPrimes(n * 8) {
 		if p > largest {
 			out = append(out, p)
 			if len(out) == n {
@@ -596,7 +596,7 @@ func TestLeapingBreaksHighDimensionalCorrelation(t *testing.T) {
 		tolerance = 0.35
 	)
 
-	bases := primesUpTo(corrDims)
+	bases := mustPrimes(corrDims)
 
 	worsts := make([]float64, 0, leaps)
 
@@ -648,7 +648,7 @@ func TestLeapingIntegratesBetterThanAnUnleapedSequence(t *testing.T) {
 		streams = 40
 	)
 
-	bases := primesUpTo(dims)
+	bases := mustPrimes(dims)
 	leaps := leapPrimesAbove(bases[dims-1], streams)
 
 	point := make([]float64, dims)

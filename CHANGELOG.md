@@ -23,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   This fixes Halton's negative-numerator leap check and Sobol's inconsistent
   indexed/stateful access on 386. Sobol now returns its final admissible point
   normally, then panics on the next draw. Earlier valid-point outputs are unchanged.
+- Prime sieve expansion now uses a positive integer bound and checks the initial
+  dimension multiplier before allocation. Impossible bounds return constructor
+  errors; the previously failing 637235-dimension Halton construction succeeds.
 
 ### Added
 

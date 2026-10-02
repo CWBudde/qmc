@@ -51,6 +51,7 @@ func NewHalton(dims int, opts ...Option) (*Halton, error) {
 	for _, opt := range opts {
 		opt(&cfg)
 	}
+
 	if cfg.skip == math.MaxInt {
 		return nil, fmt.Errorf("qmc: skip %d puts point 0 beyond the raw Halton index range", cfg.skip)
 	}
@@ -69,7 +70,10 @@ func NewHalton(dims int, opts ...Option) (*Halton, error) {
 		return nil, fmt.Errorf("qmc: %s does not apply to a Halton generator", cfg.randomize)
 	}
 
-	bases := primesUpTo(dims)
+	bases, err := primesUpTo(dims)
+	if err != nil {
+		return nil, err
+	}
 
 	// The leap is checked here, against the bases this generator will actually
 	// use, rather than being clamped or accepted with a warning. A leap sharing

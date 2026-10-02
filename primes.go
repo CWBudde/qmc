@@ -1,6 +1,9 @@
 package qmc
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+)
 
 // primesUpTo returns the first n prime numbers.
 //
@@ -14,31 +17,48 @@ import "fmt"
 // small constant floor for the first few primes. Overshooting the sieve costs
 // a few kilobytes; undershooting would cost correctness, so the loop below
 // also grows the limit until it has found enough.
-func primesUpTo(n int) []int {
+func primesUpTo(n int) ([]int, error) {
 	if n < 1 {
-		return nil
+		return nil, nil
 	}
 
 	limit := 16
+
 	if n >= 6 {
-		// ln is avoided so this stays dependency- and rounding-free: for the
-		// sizes involved, 15*n is comfortably above n*(ln n + ln ln n) until
-		// n is in the millions, and the loop below covers the rest anyway.
+		// This initial estimate can undershoot. Growth below is checked too.
+		if n > math.MaxInt/15 {
+			return nil, fmt.Errorf("qmc: %d dimensions overflow the initial prime sieve bound", n)
+		}
+
 		limit = 15 * n
 	}
 
+	return primesFromLimit(n, limit)
+}
+
+// primesFromLimit lets bounded tests force expansion without large allocations.
+func primesFromLimit(n, limit int) ([]int, error) {
 	for {
 		got := sieve(limit)
 		if len(got) >= n {
-			return got[:n]
+			return got[:n], nil
 		}
 
-		if limit > (^int(0)>>1)/2 {
-			panic(fmt.Sprintf("qmc: %d primes do not fit in memory on this platform", n))
+		next, err := growPrimeLimit(limit)
+		if err != nil {
+			return nil, err
 		}
 
-		limit *= 2
+		limit = next
 	}
+}
+
+func growPrimeLimit(limit int) (int, error) {
+	if limit < 1 || limit > math.MaxInt/2 {
+		return 0, fmt.Errorf("qmc: prime sieve bound %d cannot be doubled on this platform", limit)
+	}
+
+	return limit * 2, nil
 }
 
 // sieve returns every prime strictly below limit, by sieve of Eratosthenes.
@@ -66,8 +86,13 @@ func sieve(limit int) []int {
 			continue
 		}
 
-		for j := i * i; j < limit; j += i {
+		for j := i * i; j < limit; {
 			composite[j] = true
+			if j > limit-1-i {
+				break
+			}
+
+			j += i
 		}
 	}
 

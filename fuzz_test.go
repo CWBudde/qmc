@@ -19,7 +19,7 @@ import (
 // generator itself uses, so a fuzz input can never name a base no Halton
 // dimension would ever see. 64 is the dimension ceiling the WebAssembly demo
 // clamps to and is far past the point where the failure modes differ.
-var fuzzBases = primesUpTo(64)
+var fuzzBases = mustPrimes(64)
 
 // baseFor maps an arbitrary fuzz int onto a valid base rather than rejecting
 // it. Rejecting would throw away almost every input the fuzzer generates and

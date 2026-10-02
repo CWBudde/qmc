@@ -453,6 +453,7 @@ func (s *Sobol) NextInto(dst []float64) {
 
 		return
 	}
+
 	if s.exhausted || uint64(s.counter) > maxSobolRawIndex {
 		panic(fmt.Sprintf("qmc: the Sobol sequence is exhausted at raw index %d", maxSobolRawIndex))
 	}

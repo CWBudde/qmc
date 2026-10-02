@@ -22,7 +22,7 @@ import (
 // permutations, so a base-2-only test cannot tell a uniform draw from almost
 // any other construction. The large bases are where a permutation scheme is
 // actually distinguishable from a cheap stand-in.
-func nestedTestBases() []int { return primesUpTo(64) }
+func nestedTestBases() []int { return mustPrimes(64) }
 
 // TestNestedPermutationIsABijection is the property the whole construction
 // rests on: a digit map that is not a bijection is not a scramble. It maps two
@@ -754,7 +754,7 @@ func BenchmarkNestedNodeCache(b *testing.B) {
 		skip   = 64
 	)
 
-	bases := primesUpTo(benchNestedDims)
+	bases := mustPrimes(benchNestedDims)
 
 	var visits, distinct, bytes int
 
