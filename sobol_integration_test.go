@@ -49,7 +49,12 @@ func sobolRMSError(t *testing.T, randomize func(uint64) qmc.Option, dims, n, str
 		sumSq += e * e
 	}
 
-	return math.Sqrt(sumSq / float64(streams))
+	result := math.Sqrt(sumSq / float64(streams))
+	if !finiteMeasurement(result) {
+		t.Fatalf("nonfinite RMS integration measurement: %g", result)
+	}
+
+	return result
 }
 
 // TestShiftedSobolBeatsMonteCarloAt39Dims is Sobol's version of the gate in
@@ -77,14 +82,14 @@ func TestShiftedSobolBeatsMonteCarloAt39Dims(t *testing.T) {
 	)
 
 	sobolErr := sobolRMSError(t, qmc.WithDigitalShift, dims, n, streams)
-	mcErr := mcRMSError(dims, n, streams)
+	mcErr := mcRMSError(t, dims, n, streams)
 
 	if sobolErr <= 0 {
 		t.Fatalf("Sobol RMS error is %g; an exactly-zero error means the integrand or the estimator collapsed, not that QMC is perfect", sobolErr)
 	}
 
 	ratio := mcErr / sobolErr
-	if ratio < wantSpeedup {
+	if !finiteMeasurement(ratio) || ratio < wantSpeedup {
 		t.Fatalf("at %d dims with n=%d over %d streams: Sobol RMS error %.3e vs MC %.3e = %.1fx, want >= %.0fx; "+
 			"the generator is no longer integrating better than independent sampling",
 			dims, n, streams, sobolErr, mcErr, ratio, wantSpeedup)
@@ -127,7 +132,7 @@ func TestSobolAgainstHaltonAt39Dims(t *testing.T) {
 	t.Logf("d=%d n=%d streams=%d: Sobol RMS %.3e vs scrambled Halton %.3e (Sobol %.2fx better)",
 		dims, n, streams, sobolErr, haltonErr, ratio)
 
-	if ratio < 0.5 {
+	if !finiteMeasurement(ratio) || ratio < 0.5 {
 		t.Fatalf("Sobol RMS error %.3e is more than twice scrambled Halton's %.3e; "+
 			"the two should be within a small factor of each other on a smooth integrand, "+
 			"so a gap this size means the Sobol construction is damaged rather than merely different",
@@ -151,10 +156,10 @@ func TestSobolBeatsMonteCarloAtLowDims(t *testing.T) {
 	)
 
 	sobolErr := sobolRMSError(t, qmc.WithDigitalShift, dims, n, streams)
-	mcErr := mcRMSError(dims, n, streams)
+	mcErr := mcRMSError(t, dims, n, streams)
 
 	ratio := mcErr / sobolErr
-	if ratio < wantSpeedup {
+	if !finiteMeasurement(ratio) || ratio < wantSpeedup {
 		t.Fatalf("at %d dims with n=%d over %d streams: Sobol RMS error %.3e vs MC %.3e = %.1fx, want >= %.0fx",
 			dims, n, streams, sobolErr, mcErr, ratio, wantSpeedup)
 	}

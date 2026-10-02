@@ -137,7 +137,7 @@ func TestCoordinatesStayInTheUnitInterval(t *testing.T) {
 
 		for i := 0; i < 2000; i++ {
 			for d, v := range g.At(i) {
-				if v < 0 || v >= 1 {
+				if !(v >= 0 && v < 1) {
 					t.Fatalf("scramble=%v point %d dim %d = %v, want [0,1)", scramble, i, d, v)
 				}
 			}

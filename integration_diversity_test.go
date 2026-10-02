@@ -112,7 +112,12 @@ func TestIntegrationAcrossReferenceFunctionsAndBudgets(t *testing.T) {
 						t.Errorf("%s / %s: smooth low-order moments lost their measured 2x margin against MC", scheme.name, fn.name)
 					}
 
-					t.Logf("N=%d streams=%d %s / %s: absolute RMS %.4g (estimated SE %.2g), MC %.4g (SE %.2g), MC/QMC %.2f", n, streams, scheme.name, fn.name, rms, uncertainty, mc, mcUncertainty, mc/rms)
+					ratio := mc / rms
+					if !finiteMeasurement(ratio) {
+						t.Fatalf("nonfinite MC/QMC ratio: %s / %s", scheme.name, fn.name)
+					}
+
+					t.Logf("N=%d streams=%d %s / %s: absolute RMS %.4g (estimated SE %.2g), MC %.4g (SE %.2g), MC/QMC %.2f", n, streams, scheme.name, fn.name, rms, uncertainty, mc, mcUncertainty, ratio)
 				}
 			}
 		})

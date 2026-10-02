@@ -691,7 +691,7 @@ func TestLeapingIntegratesBetterThanAnUnleapedSequence(t *testing.T) {
 
 	scrambledErr := nestedRMSError(t, dims, n, streams, WithScrambling)
 	nestedErr := nestedRMSError(t, dims, n, streams, WithNestedScrambling)
-	mcErr := nestedMCError(dims, n, streams)
+	mcErr := nestedMCError(t, dims, n, streams)
 
 	// All four measured in one run, so the README table they feed is a
 	// comparison rather than four numbers from four sittings.

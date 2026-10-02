@@ -338,12 +338,12 @@ this is a milestone result, not the final repository verification. Root lint pas
 
 ### TEST-02 — Replace brittle rankings and strengthen failure detection (P1)
 
-- [ ] Replace the exact-winner assertion in `TestSmallSampleRankingMatchesLargeSample`
+- [x] Replace the exact-winner assertion in `TestSmallSampleRankingMatchesLargeSample`
       with a justified margin or tie-aware comparison.
-- [ ] Reject NaN/Inf explicitly in statistical ratios and range assertions.
-- [ ] Retain direct conditional-structure tests for both nested scramblers and
+- [x] Reject NaN/Inf explicitly in statistical ratios and range assertions.
+- [x] Retain direct conditional-structure tests for both nested scramblers and
       clarify their sensitivity to partial loss of conditioning.
-- [ ] Cover defensive guards and rare branches with focused inputs. Fuzz mappings
+- [x] Cover defensive guards and rare branches with focused inputs. Fuzz mappings
       that intentionally exclude panic boundaries need separate boundary tests.
 
 Evidence: [small_sample_test.go](small_sample_test.go), [fuzz_test.go](fuzz_test.go),
@@ -353,6 +353,18 @@ Evidence: [small_sample_test.go](small_sample_test.go), [fuzz_test.go](fuzz_test
 Acceptance: near ties do not fail solely because a different scheme wins;
 nonfinite measurements cannot pass through false comparisons; identified guard
 and conditional-structure regressions fail the intended tests.
+
+Verification (2026-10-03): the 200-stream ranking comparison passes with the
+20% near-tie margin (42.492 seconds). Nonfinite correlation inputs are explicitly
+rejected; RMS helpers and statistical ratios/range predicates cannot silently
+accept NaN/Inf. Defensive-base/index and reversal-overflow boundary tests pass,
+including executable 386 where the int64-only reversal case skips explicitly.
+Isolated mutations prove direct Owen/nested structure checks reject total loss
+of conditioning; the eight-bit child-input mutation demonstrates the direct
+test's sensitivity floor and is caught by the seeded reference. Forty-stream
+nested/hash/reference integration, thirty-seed correlations, broad integration,
+and the new guards pass together (22.490 seconds). Root lint passes; local lint
+used its documented parallel-runner flag to avoid a shared temporary lock conflict.
 
 ### TEST-03 — Establish complete, affordable verification jobs (P1)
 
@@ -720,7 +732,7 @@ behavior remain stable unless an intentional change is documented.
 
 ## Completion checklist
 
-- [ ] SCI-01 and CORE-01 through CORE-08 are resolved with regressions and accurate contracts.
+- [x] SCI-01 and CORE-01 through CORE-08 are resolved with regressions and accurate contracts.
 - [ ] TEST-01 through TEST-03 establish meaningful, bounded verification for supported targets.
 - [ ] DEMO-01 through DEMO-09 are verified in browser, accessibility, and failure-state checks.
 - [ ] TOOL-01 through TOOL-04 run reproducibly in a clean environment for both modules.

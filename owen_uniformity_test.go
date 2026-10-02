@@ -639,13 +639,20 @@ func owenRMSError(t *testing.T, build func(int, uint64) coordScrambler, dims, n,
 		sumSq += e * e
 	}
 
-	return math.Sqrt(sumSq / float64(streams))
+	result := math.Sqrt(sumSq / float64(streams))
+	if !finiteDiscrepancyTerm(result) {
+		t.Fatalf("nonfinite RMS integration measurement: %g", result)
+	}
+
+	return result
 }
 
 // owenMCRMSError is mcRMSError from integration_test.go, repeated for the same
 // reason and with the same source seed and the same draw order, so that the
 // ratios logged here can be read against the ones that file logs.
-func owenMCRMSError(dims, n, streams int) float64 {
+func owenMCRMSError(t *testing.T, dims, n, streams int) float64 {
+	t.Helper()
+
 	rng := rand.New(rand.NewSource(20240823)) //nolint:gosec // statistical baseline, not cryptography
 
 	sumSq := 0.0
@@ -666,7 +673,12 @@ func owenMCRMSError(dims, n, streams int) float64 {
 		sumSq += e * e
 	}
 
-	return math.Sqrt(sumSq / float64(streams))
+	result := math.Sqrt(sumSq / float64(streams))
+	if !finiteDiscrepancyTerm(result) {
+		t.Fatalf("nonfinite RMS integration measurement: %g", result)
+	}
+
+	return result
 }
 
 // TestOwenApproximationCostsNothingOnIntegration is measurement four, first
@@ -675,7 +687,7 @@ func TestOwenApproximationCostsNothingOnIntegration(t *testing.T) {
 	const (
 		dims    = 39
 		n       = 4096
-		streams = 10
+		streams = 40
 
 		// The two scrambles are different randomizations, not two runs of one,
 		// so their RMS over ten streams differs by stream noise even if the
@@ -691,7 +703,7 @@ func TestOwenApproximationCostsNothingOnIntegration(t *testing.T) {
 	var (
 		hashErr  = owenRMSError(t, hashOwenScrambler, dims, n, streams)
 		exactErr = owenRMSError(t, exactOwenScrambler, dims, n, streams)
-		mcErr    = owenMCRMSError(dims, n, streams)
+		mcErr    = owenMCRMSError(t, dims, n, streams)
 	)
 
 	t.Logf("d=%d n=%d streams=%d: hash Owen RMS %.3e (%.1fx MC), exact Owen RMS %.3e (%.1fx MC), hash/exact = %.3f",
@@ -714,7 +726,11 @@ func owenWorstCorrelations(t *testing.T, build func(int, uint64) coordScrambler,
 	out := make([]float64, seeds)
 	for i := range out {
 		pts := owenSobolPoints(t, corrDims, corrPoints, corrSkip, build(corrDims, uint64(i+1)))
+
 		out[i], _ = worstAdjacentCorrelation(pts)
+		if !finiteDiscrepancyTerm(out[i]) {
+			t.Fatalf("seed %d produced nonfinite correlation %g", i+1, out[i])
+		}
 	}
 
 	return out

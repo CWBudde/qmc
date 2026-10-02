@@ -63,7 +63,7 @@ func TestUnscrambledStillShowsTheDefect(t *testing.T) {
 	}
 
 	worst, pair := worstAdjacentCorrelation(Draw(g, corrPoints))
-	if worst < 0.5 {
+	if math.IsNaN(worst) || math.IsInf(worst, 0) || worst < 0.5 {
 		t.Fatalf("unscrambled worst adjacent-pair |corr| = %.4f at dims %d/%d; "+
 			"expected the known defect (~0.81), so the scrambled comparison no longer means anything",
 			worst, pair, pair+1)
@@ -84,6 +84,10 @@ func worstAdjacentCorrelation(pts [][]float64) (float64, int) {
 
 	for d := 0; d+1 < dims; d++ {
 		r := math.Abs(pearson(column(pts, d), column(pts, d+1)))
+		if math.IsNaN(r) || math.IsInf(r, 0) {
+			return r, d
+		}
+
 		if r > worst {
 			worst, at = r, d
 		}

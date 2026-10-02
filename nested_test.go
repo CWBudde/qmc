@@ -506,10 +506,17 @@ func nestedRMSError(t *testing.T, dims, n, streams int, randomize func(uint64) O
 		sumSq += e * e
 	}
 
-	return math.Sqrt(sumSq / float64(streams))
+	result := math.Sqrt(sumSq / float64(streams))
+	if !finiteDiscrepancyTerm(result) {
+		t.Fatalf("nonfinite RMS integration measurement: %g", result)
+	}
+
+	return result
 }
 
-func nestedMCError(dims, n, streams int) float64 {
+func nestedMCError(t *testing.T, dims, n, streams int) float64 {
+	t.Helper()
+
 	rng := rand.New(rand.NewSource(20240823)) //nolint:gosec // statistical baseline, not cryptography
 
 	sumSq := 0.0
@@ -530,7 +537,12 @@ func nestedMCError(dims, n, streams int) float64 {
 		sumSq += e * e
 	}
 
-	return math.Sqrt(sumSq / float64(streams))
+	result := math.Sqrt(sumSq / float64(streams))
+	if !finiteDiscrepancyTerm(result) {
+		t.Fatalf("nonfinite RMS integration measurement: %g", result)
+	}
+
+	return result
 }
 
 // TestNestedIntegratesAtLeastAsWellAsDigitScrambling is the gate the option
@@ -565,12 +577,12 @@ func TestNestedIntegratesAtLeastAsWellAsDigitScrambling(t *testing.T) {
 	const (
 		dims     = 39
 		n        = 4096
-		streams  = 10
+		streams  = 40
 		slack    = 1.25
 		wantVsMC = 5.0
 	)
 
-	mc := nestedMCError(dims, n, streams)
+	mc := nestedMCError(t, dims, n, streams)
 	digit := nestedRMSError(t, dims, n, streams, WithScrambling)
 	nested := nestedRMSError(t, dims, n, streams, WithNestedScrambling)
 
@@ -585,7 +597,7 @@ func TestNestedIntegratesAtLeastAsWellAsDigitScrambling(t *testing.T) {
 			dims, n, streams, nested, digit)
 	}
 
-	if ratio := mc / nested; ratio < wantVsMC {
+	if ratio := mc / nested; !finiteDiscrepancyTerm(ratio) || ratio < wantVsMC {
 		t.Fatalf("at %d dims with n=%d over %d streams: nested RMS error %.3e vs MC %.3e = %.1fx, want >= %.0fx; "+
 			"the generator is no longer integrating better than independent sampling",
 			dims, n, streams, nested, mc, ratio, wantVsMC)
@@ -642,6 +654,10 @@ func TestNestedCorrelationOverThirtySeeds(t *testing.T) {
 			}
 
 			w, pair := worstAdjacentCorrelation(Draw(g, corrPoints))
+			if !finiteDiscrepancyTerm(w) {
+				t.Fatalf("seed %d produced nonfinite correlation %g", seed, w)
+			}
+
 			if w > worst {
 				worst, at = w, pair
 			}

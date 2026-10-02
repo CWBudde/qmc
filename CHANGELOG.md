@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Statistical verification
 
+- Relaxed the large-budget exact-winner assertion to a documented near-tie
+  margin. RMS, ratio, range, and correlation checks now reject nonfinite values;
+  added defensive-base/index and digit-reversal boundary regressions.
+
 - Broadened integration validation to seven independent references and three
   budgets with forty streams, aligned Sobol blocks, seeded Monte Carlo, and
   a plain-Halton negative control. Logs include estimated RMS-summary uncertainty.

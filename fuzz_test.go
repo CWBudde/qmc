@@ -117,7 +117,7 @@ func FuzzRadicalInverse(f *testing.F) {
 
 		got := radicalInverse(index, base)
 
-		if got < 0 || got >= 1 {
+		if !(got >= 0 && got < 1) {
 			t.Fatalf("radicalInverse(%d, %d) = %v, outside [0,1)", index, base, got)
 		}
 
@@ -154,7 +154,7 @@ func FuzzScrambledRadicalInverse(f *testing.F) {
 
 		got := scrambledRadicalInverse(index, base, perm)
 
-		if got < 0 || got >= 1 {
+		if !(got >= 0 && got < 1) {
 			t.Fatalf("scrambledRadicalInverse(%d, %d) = %v, outside [0,1)", index, base, got)
 		}
 

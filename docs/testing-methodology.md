@@ -110,10 +110,30 @@ in exactly that region, so the guards deserve tests rather than a higher percent
 
 The reasoning above is settled; the suite does not yet act on all of it.
 
-- **No test pins conditional structure directly.** Until one exists, any new scrambling scheme
-  is guarded only by tests that a non-nested scramble can pass.
 - **The demo module has no tests at all**, and it duplicates library logic, so nothing catches
   the two halves drifting apart. See [the WebAssembly demo](wasm-demo.md).
 - **The defensive guards deserve tests.** The uncovered statements are precisely those guards.
   That is the normal shape of coverage, not a target to chase — but the index-overflow bug
   lived in exactly that region.
+
+## Ranking and nonfinite safeguards
+
+The large-budget small-sample comparison permits Owen within 20% of the measured
+leader instead of forcing an exact winner. The historical top-two gap was well
+within replicate uncertainty. This margin is an empirical regression policy,
+not a statement that Owen must be optimal for arbitrary integrands.
+
+RMS helpers, statistical ratios, and positive range predicates reject NaN/Inf.
+Adjacent-correlation aggregation propagates a nonfinite value to its caller
+instead of dropping it through a false max comparison. Reversal overflow beyond
+the fuzz mapping is tested separately with a valid reverse permutation in base
+167; that raw index fits int64 but not int32, where the test explicitly skips.
+
+Conditional structure tests exist for both scramblers. Mutation checks on
+isolated copies confirmed that removing Owen’s bit reversals fails
+`TestOwenScrambleIsNested`, and removing nested child conditioning fails
+`TestNestedPermutationsDependOnThePrefix`. Masking child-node inputs to eight bits
+still passes the latter: it has a sensitivity floor. The seeded reference test
+`TestNestedIsArchitectureIndependent` detects that partial mutation. Preserve
+both direct structure tests and reproducibility/distribution references; none
+alone proves ideal joint independence.

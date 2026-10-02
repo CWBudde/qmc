@@ -973,7 +973,7 @@ func TestSobolRefusesIndicesBeyondItsDirectionNumbers(t *testing.T) {
 	last := uint64(math.MaxUint32)
 
 	// One below the limit still works: raw index 2^32-1 is the last point.
-	if p := g.At(int(last - 1)); p[0] < 0 || p[0] >= 1 {
+	if p := g.At(int(last - 1)); !(p[0] >= 0 && p[0] < 1) {
 		t.Fatalf("the last representable point must still be produced, got %v", p[0])
 	}
 
@@ -1156,7 +1156,7 @@ func TestDirectionTableBeyondTheEmbeddedCeiling(t *testing.T) {
 		g.AtInto(i, point)
 
 		for d, v := range point {
-			if v < 0 || v >= 1 {
+			if !(v >= 0 && v < 1) {
 				t.Fatalf("point %d dimension %d is %v, which is outside [0,1)", i, d, v)
 			}
 

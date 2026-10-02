@@ -326,7 +326,7 @@ func TestCenteredL2MatchesItsDefiningIntegral(t *testing.T) {
 	}
 
 	want := integrateCenteredDiscrepancy(oneDim, 200000, 2000)
-	if rel := math.Abs(got-want) / want; rel > 1e-3 {
+	if rel := math.Abs(got-want) / want; !finiteMeasurement(rel) || rel > 1e-3 {
 		t.Fatalf("1-D: CD2 = %v, numeric integral says %v (%.2e relative)", got, want, rel)
 	}
 
@@ -340,7 +340,7 @@ func TestCenteredL2MatchesItsDefiningIntegral(t *testing.T) {
 	}
 
 	want = integrateCenteredDiscrepancy(twoDim, 200000, 2000)
-	if rel := math.Abs(got-want) / want; rel > 1e-3 {
+	if rel := math.Abs(got-want) / want; !finiteMeasurement(rel) || rel > 1e-3 {
 		t.Fatalf("2-D: CD2 = %v, numeric integral says %v (%.2e relative)", got, want, rel)
 	}
 
@@ -490,7 +490,7 @@ func TestDiscrepancyDoesNotDependOnPointOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if rel := math.Abs(gotCD2-cd2) / cd2; rel > 1e-12 {
+	if rel := math.Abs(gotCD2-cd2) / cd2; !finiteMeasurement(rel) || rel > 1e-12 {
 		t.Fatalf("shuffled: CD2 = %v, want %v (%.2e relative)", gotCD2, cd2, rel)
 	}
 }
@@ -525,7 +525,7 @@ func TestCenteredL2IsUnchangedByReflectingACoordinate(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if rel := math.Abs(got-want) / want; rel > 1e-12 {
+		if rel := math.Abs(got-want) / want; !finiteMeasurement(rel) || rel > 1e-12 {
 			t.Fatalf("reflecting dimension %d: CD2 = %v, want %v (%.2e relative)", k, got, want, rel)
 		}
 	}
@@ -565,7 +565,7 @@ func TestDiscrepancyIsReproducible(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if rel := math.Abs(cd2-goldenCD2) / goldenCD2; rel > 1e-12 {
+	if rel := math.Abs(cd2-goldenCD2) / goldenCD2; !finiteMeasurement(rel) || rel > 1e-12 {
 		t.Fatalf("CD2 = %v, want %v (%.2e relative)", cd2, goldenCD2, rel)
 	}
 }
@@ -635,7 +635,7 @@ func TestQMCBeatsPseudorandomOnStarDiscrepancy(t *testing.T) {
 	qmcMean, mcMean := qmcSum/streams, mcSum/streams
 
 	ratio := mcMean / qmcMean
-	if ratio < wantRatio {
+	if !finiteMeasurement(ratio) || ratio < wantRatio {
 		t.Fatalf("at %d dims with n=%d over %d streams: scrambled Halton D* = %.5f, random D* = %.5f "+
 			"(%.2fx), want >= %.1fx; the statistic no longer sees the low-discrepancy structure",
 			dims, n, streams, qmcMean, mcMean, ratio, wantRatio)
@@ -684,7 +684,7 @@ func TestCenteredL2SeparatesQMCFromRandomAtLowDimensions(t *testing.T) {
 		qmcMean, mcMean := qmcSum/streams, mcSum/streams
 
 		ratio := mcMean / qmcMean
-		if ratio < wantRatio {
+		if !finiteMeasurement(ratio) || ratio < wantRatio {
 			t.Fatalf("at %d dims with n=%d: CD2 scrambled Halton %.6f vs random %.6f (%.2fx), want >= %.1fx",
 				dims, n, qmcMean, mcMean, ratio, wantRatio)
 		}
@@ -752,13 +752,13 @@ func TestCenteredL2SaturatesAtThirtyNineDimensions(t *testing.T) {
 	qmcMean, mcMean := qmcCD2/streams, mcCD2/streams
 	analytic := math.Sqrt((math.Pow(1.25, dims) - math.Pow(13.0/12.0, dims)) / n)
 
-	if rel := math.Abs(mcMean-analytic) / analytic; rel > 0.02 {
+	if rel := math.Abs(mcMean-analytic) / analytic; !finiteMeasurement(rel) || rel > 0.02 {
 		t.Fatalf("random CD2 = %.5f but sqrt(((5/4)^%d - (13/12)^%d)/%d) = %.5f (%.2f%% off); "+
 			"either the formula or the decision to return the square root is wrong",
 			mcMean, dims, dims, n, analytic, 100*rel)
 	}
 
-	if gap := math.Abs(qmcMean-mcMean) / mcMean; gap >= 0.10 {
+	if gap := math.Abs(qmcMean-mcMean) / mcMean; !finiteMeasurement(gap) || gap >= 0.10 {
 		t.Fatalf("CD2 separates scrambled Halton (%.5f) from random (%.5f) by %.1f%% at %d dims; "+
 			"the saturation caveat in CenteredL2Discrepancy's doc comment is no longer true and must be rewritten",
 			qmcMean, mcMean, 100*gap, dims)
@@ -767,7 +767,7 @@ func TestCenteredL2SaturatesAtThirtyNineDimensions(t *testing.T) {
 	qmcRMS := math.Sqrt(qmcSqErr / streams)
 	mcRMS := math.Sqrt(mcSqErr / streams)
 
-	if ratio := mcRMS / qmcRMS; ratio < 5 {
+	if ratio := mcRMS / qmcRMS; !finiteMeasurement(ratio) || ratio < 5 {
 		t.Fatalf("over the same point sets the integration error ratio is only %.1fx; "+
 			"the two point sets are no longer distinguishable at all, so this test proves nothing about CD2",
 			ratio)
@@ -811,7 +811,7 @@ func TestCenteredL2MatchesTheRandomExpectation(t *testing.T) {
 		got := sum / float64(c.reps)
 		want := (math.Pow(1.25, float64(c.s)) - math.Pow(13.0/12.0, float64(c.s))) / float64(c.n)
 
-		if rel := math.Abs(got-want) / want; rel > 0.10 {
+		if rel := math.Abs(got-want) / want; !finiteMeasurement(rel) || rel > 0.10 {
 			t.Fatalf("s=%d N=%d over %d draws: mean CD2^2 = %.6g, closed form says %.6g (%.1f%% off)",
 				c.s, c.n, c.reps, got, want, 100*rel)
 		}

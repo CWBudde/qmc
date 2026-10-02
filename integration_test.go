@@ -69,7 +69,12 @@ func qmcRMSError(t *testing.T, randomize func(uint64) qmc.Option, dims, n, strea
 		sumSq += e * e
 	}
 
-	return math.Sqrt(sumSq / float64(streams))
+	result := math.Sqrt(sumSq / float64(streams))
+	if !finiteMeasurement(result) {
+		t.Fatalf("nonfinite RMS integration measurement: %g", result)
+	}
+
+	return result
 }
 
 // mcRMSError is the same measurement driven by math/rand.
@@ -79,7 +84,9 @@ func qmcRMSError(t *testing.T, randomize func(uint64) qmc.Option, dims, n, strea
 // streams are consecutive draws from one source rather than separately seeded
 // generators: separately seeded ones can correlate, which would flatter the
 // baseline this test is trying to beat honestly.
-func mcRMSError(dims, n, streams int) float64 {
+func mcRMSError(t *testing.T, dims, n, streams int) float64 {
+	t.Helper()
+
 	rng := rand.New(rand.NewSource(20240823)) //nolint:gosec // statistical baseline, not cryptography
 
 	sumSq := 0.0
@@ -100,7 +107,12 @@ func mcRMSError(dims, n, streams int) float64 {
 		sumSq += e * e
 	}
 
-	return math.Sqrt(sumSq / float64(streams))
+	result := math.Sqrt(sumSq / float64(streams))
+	if !finiteMeasurement(result) {
+		t.Fatalf("nonfinite RMS integration measurement: %g", result)
+	}
+
+	return result
 }
 
 // TestScrambledQMCBeatsMonteCarloAt39Dims is the package's design point: 39
@@ -119,14 +131,14 @@ func TestScrambledQMCBeatsMonteCarloAt39Dims(t *testing.T) {
 	)
 
 	qmcErr := qmcRMSError(t, qmc.WithScrambling, dims, n, streams)
-	mcErr := mcRMSError(dims, n, streams)
+	mcErr := mcRMSError(t, dims, n, streams)
 
 	if qmcErr <= 0 {
 		t.Fatalf("QMC RMS error is %g; an exactly-zero error means the integrand or the estimator collapsed, not that QMC is perfect", qmcErr)
 	}
 
 	ratio := mcErr / qmcErr
-	if ratio < wantSpeedup {
+	if !finiteMeasurement(ratio) || ratio < wantSpeedup {
 		t.Fatalf("at %d dims with n=%d over %d streams: QMC RMS error %.3e vs MC %.3e = %.1fx, want >= %.0fx; "+
 			"the generator is no longer integrating better than independent sampling",
 			dims, n, streams, qmcErr, mcErr, ratio, wantSpeedup)
@@ -156,10 +168,10 @@ func TestScrambledQMCBeatsMonteCarloAtLowDims(t *testing.T) {
 	)
 
 	qmcErr := qmcRMSError(t, qmc.WithScrambling, dims, n, streams)
-	mcErr := mcRMSError(dims, n, streams)
+	mcErr := mcRMSError(t, dims, n, streams)
 
 	ratio := mcErr / qmcErr
-	if ratio < wantSpeedup {
+	if !finiteMeasurement(ratio) || ratio < wantSpeedup {
 		t.Fatalf("at %d dims with n=%d over %d streams: QMC RMS error %.3e vs MC %.3e = %.1fx, want >= %.0fx",
 			dims, n, streams, qmcErr, mcErr, ratio, wantSpeedup)
 	}
