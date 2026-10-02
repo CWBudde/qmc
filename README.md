@@ -143,11 +143,13 @@ fmt.Printf("D*_512 = %.6f\n", d)
 ```
 
 `StarDiscrepancy` is the exact `D*_N` — a supremum, not a sample and not a lower bound.
-Computing it is NP-hard in the dimension, so it **refuses** above 6 dimensions or above a
-calibrated budget of 3e7 search-tree leaves (about 0.8 seconds) and returns an error rather
+One-point and one-dimensional sets use cheap closed forms. Generic computation is
+NP-hard in the dimension, so it **refuses** above 6 dimensions or above a calibrated
+budget of 3e7 search-tree leaves (about 0.8 seconds on the reference machine) and returns an error rather
 than a partial answer or a hang.
 
-`CenteredL2Discrepancy` is Hickernell's CD2 in closed form, O(N²s) in any dimension. It is
+`CenteredL2Discrepancy` is Hickernell’s CD2 in closed form: O(N log N) in one dimension,
+otherwise O(N²s) when intermediate terms fit float64. It is
 cheap everywhere and **stops meaning anything in high dimensions**: at 39 dimensions a good
 point set and a random one differ by 1.02x over the very same points whose integration error
 differs by 16.4x. The self-check: compare your number against

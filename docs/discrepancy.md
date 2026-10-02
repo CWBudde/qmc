@@ -158,3 +158,31 @@ There is no lower-bound or randomized estimator for the star discrepancy above 6
 which is the only way that quantity is reachable at the dimension counts this package is aimed
 at. It would be an approximation with its own error to characterise, and nothing in the package
 needs it yet.
+
+## Precision and cheap cases
+
+Star discrepancy uses its closed forms before the generic work/dimension gate:
+a single point costs O(s), and a one-dimensional set costs O(N log N) for a
+sorted copy. Higher-dimensional multipoint sets retain the enumeration limits.
+The leaf budget is a work limit calibrated on a 12th-generation mobile i7; it
+is not a wall-clock guarantee on another host, especially under WebAssembly.
+
+One-dimensional CD2 is also evaluated from sorted coordinates, using the
+empirical-CDF identity `CD2² = 1/(12N²) + mean((x_(i)-(i-1/2)/N)²)`.
+The terms are nonnegative. Midpoint grids up to N=16384 pass a relative tolerance
+of `8e-15` against `1/(sqrt(12)*N)`; the old formula's relative error at that
+budget was approximately `1.19e-7`. Measurement does not reorder caller data.
+
+General CD2 compensates single, diagonal, and both levels of pair accumulation.
+It still subtracts near-equal terms. Product rounding and final cancellation
+can dominate when a well-distributed set's squared discrepancy is O(N^-2);
+a random-set O(N^-1) model understates that loss. There is no unconditional
+nine-digit precision guarantee. A tiny negative squared value is clamped to
+zero, so zero is also a possible numerical floor. Exact rational tensor-grid
+references and the independent integral tests check supported examples.
+
+Compensation was retained for reduced accumulation error. On Go 1.26.1,
+linux/amd64, an i7-1255U, three single-iteration runs of
+`go test -run '^$' -bench '^BenchmarkCenteredL2Discrepancy$' -benchtime=1x -count=3 -benchmem ./...`
+showed unchanged scratch allocations (1; 319488 bytes at N=1024 and 1277952
+at N=4096). Timings varied substantially, so they support no speed claim.

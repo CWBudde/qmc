@@ -230,15 +230,15 @@ float64 terms define the supported range, even when a norm could fit after scali
 
 ### CORE-06 — Improve discrepancy precision and cheap special cases (P1)
 
-- [ ] Replace the unsupported nine-significant-digit guarantee with an accurate
+- [x] Replace the unsupported nine-significant-digit guarantee with an accurate
       account of cancellation for well-distributed point sets.
-- [ ] Add midpoint-grid references using `CD2 = 1/(sqrt(12)*N)`, including
+- [x] Add midpoint-grid references using `CD2 = 1/(sqrt(12)*N)`, including
       `N = 16384`, where the review measured about `1.19e-7` relative error.
-- [ ] Implement or evaluate a stable one-dimensional formula. Assess compensated
+- [x] Implement or evaluate a stable one-dimensional formula. Assess compensated
       accumulation for general dimensions without assuming it removes final cancellation.
-- [ ] Evaluate closed-form star-discrepancy paths for one point and one dimension
+- [x] Evaluate closed-form star-discrepancy paths for one point and one dimension
       before applying the generic dimension/work gate. Document any intentional refusal.
-- [ ] Treat the leaf budget as a work bound calibrated on a stated machine,
+- [x] Treat the leaf budget as a work bound calibrated on a stated machine,
       rather than a universal wall-clock guarantee.
 
 Evidence: [discrepancy.go](discrepancy.go), [discrepancy documentation](docs/discrepancy.md).
@@ -246,6 +246,17 @@ Evidence: [discrepancy.go](discrepancy.go), [discrepancy documentation](docs/dis
 Acceptance: numerical tolerances follow independent references and stated precision
 limits; cheap supported cases avoid unnecessary generic enumeration; special-case
 decisions and work-budget limitations are documented.
+
+Verification (2026-10-03): midpoint references at N=1/3/16/4096/16384 and the
+100-dimensional one-point star case failed before the fix and now pass. Exact
+rational tensor-grid references, the defining-integral checks, existing closed
+forms, strict/inclusive brute-force enumeration, malformed-input checks, and
+numerical-range regressions pass on amd64; precision and brute-force checks also
+pass on executable 386. The direct-count 1D star formula retains agreement with
+the independent reference. Root lint passes. Three before/after 39-dimensional
+CD2 benchmark repetitions showed the same allocation counts and variable timings;
+compensation is retained for accuracy, with no speed claim. Remaining cancellation
+limits and the machine-dependent meaning of the leaf budget are documented.
 
 ### CORE-07 — Make allocation guarantees accurate (P1)
 

@@ -36,6 +36,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Numerical corrections
 
+- One-dimensional CD2 now uses a stable empirical-CDF formula, avoiding
+  cancellation on midpoint grids and reducing work to O(N log N). General CD2
+  uses compensated accumulation; final cancellation still limits accuracy.
+  Results may change by rounding amounts. Star discrepancy uses closed forms
+  for one-point and one-dimensional sets before generic enumeration limits.
+
 - Centered L2 discrepancy now rejects nonfinite intermediate or final arithmetic
   with an error and validates scratch entry/byte counts before allocation. Valid
   sets at extreme dimensions no longer succeed with `Inf` or `NaN`; a finite

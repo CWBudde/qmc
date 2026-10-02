@@ -3,6 +3,7 @@ package qmc
 import (
 	"fmt"
 	"math"
+	"sort"
 )
 
 // Discrepancy: how far a point set is from filling the cube evenly.
@@ -15,13 +16,10 @@ import (
 // dimensionCount would move the code away from the source it is checked
 // against, not closer to it.
 
-// maxStarDims is the dimension ceiling on the exact star discrepancy.
-//
-// Computing the exact star discrepancy is NP-hard in the dimension (Gnewuch,
-// Srivastav & Winker, "Finding optimal volume subintervals with k points and
-// calculating the star discrepancy are NP-hard problems", Journal of
-// Complexity 25(2), 2009). The ceiling is therefore a statement about the
-// problem, not about this implementation: no amount of tuning moves it far.
+// maxStarDims is the ceiling for generic exact star enumeration. The
+// worst-case problem is NP-hard in dimension (Gnewuch, Srivastav & Winker,
+// Journal of Complexity 25(2), 2009). Closed-form one-point and 1D cases
+// bypass this implementation's enumeration policy.
 const maxStarDims = 6
 
 // starBoxBudget caps the number of boxes the pruned enumeration is allowed to
@@ -91,7 +89,8 @@ const starBoxBudget = 3e7
 // Cost, and the refusal. Restricting each dimension's candidates to the
 // surviving points' own coordinates plus 1 is exact and turns the naive
 // (N+1)^s grid into C(N+s,s) leaves, but C(N+s,s) is still about N^s/s!.
-// StarDiscrepancy therefore refuses above maxStarDims dimensions or above
+// The one-point O(s) and one-dimensional O(N log N) closed forms bypass
+// enumeration. Other sets are refused above maxStarDims dimensions or above
 // starBoxBudget leaves, and returns (0, error) rather than a partial answer.
 // At the current budget the affordable point counts are 7744 at 2 dimensions,
 // 562 at 3, 161 at 4, 78 at 5 and 49 at 6. Above that, use
@@ -108,6 +107,28 @@ func StarDiscrepancy(points [][]float64) (float64, error) {
 	n, s, err := validatePoints(points, "StarDiscrepancy")
 	if err != nil {
 		return 0, err
+	}
+
+	if n == 1 {
+		product, largest := 1.0, 0.0
+		for _, x := range points[0] {
+			product *= x
+			largest = math.Max(largest, x)
+		}
+
+		return math.Max(largest, 1-product), nil
+	}
+
+	if s == 1 {
+		x := sortedFirstCoordinates(points)
+
+		nf, largest := float64(n), 0.0
+		for i, xi := range x {
+			largest = math.Max(largest, xi-float64(i)/nf)
+			largest = math.Max(largest, float64(i+1)/nf-xi)
+		}
+
+		return largest, nil
 	}
 
 	boxes := starLeafCount(n, s)
@@ -219,12 +240,19 @@ func StarDiscrepancy(points [][]float64) (float64, error) {
 //
 // # Precision
 //
-// The three terms are near-equal and cancel, losing roughly
-// log10(N*(13/15)^s) digits. That is worst at *low* s with large N, not high:
-// s=1 with N=1e6 loses about 6 of 16 digits, while s=39 with N=1024 loses
-// 0.6. There is therefore no high-dimensional precision limit to document, and
-// at every size this package can compute in reasonable time at least 9
-// significant digits survive.
+// In one dimension a sorted empirical-CDF identity computes the square as
+// 1/(12*N^2) + mean_i (x_(i) - (i-1/2)/N)^2. All terms are nonnegative;
+// midpoint grids agree with 1/(sqrt(12)*N) at near float64 precision and cost
+// O(N log N), rather than the general O(N^2*s) path.
+//
+// In several dimensions the near-equal terms still cancel. Compensated sums
+// reduce accumulation error, but cannot undo rounding in products or in the
+// final subtraction. For well-spaced low-dimensional sets CD2^2 can scale as
+// N^-2, so cancellation is worse than an N^-1 random-set model predicts.
+// There is no universal nine-significant-digit guarantee. Relative precision
+// deteriorates as the squared result approaches the rounding error of its
+// terms, and a tiny negative square is clamped to zero. Use an independent
+// reference or a stable special case when small discrepancies need precision.
 //
 // Unlike StarDiscrepancy this has genuine multiply-add shapes in its inner
 // product, so a Go compiler may fuse them on arm64. The result is reproducible
@@ -237,6 +265,23 @@ func CenteredL2Discrepancy(points [][]float64) (float64, error) {
 	n, s, err := validatePoints(points, "CenteredL2Discrepancy")
 	if err != nil {
 		return 0, err
+	}
+
+	if s == 1 {
+		// Cramer-von Mises identity for the integrated squared empirical CDF.
+		// Computing deviations from the midpoint grid avoids subtracting three
+		// nearly equal O(1) terms to recover an O(N^-2) squared discrepancy.
+		x := sortedFirstCoordinates(points)
+		nf := float64(n)
+
+		var deviations compensatedSum
+
+		for i, xi := range x {
+			delta := xi - (float64(i)+0.5)/nf
+			deviations.add(delta * delta)
+		}
+
+		return math.Sqrt(1/(12*nf*nf) + deviations.value/nf), nil
 	}
 
 	scratchLen, err := discrepancyScratchLen(n, s)
@@ -255,7 +300,8 @@ func CenteredL2Discrepancy(points [][]float64) (float64, error) {
 	// O(Ns) pass. u is flat and row-aliased for the same cache reason Draw
 	// gives: the double sum below reads it N^2/2 times.
 	u := make([]float64, scratchLen)
-	single := 0.0
+
+	var single compensatedSum
 
 	for i, p := range points {
 		row := u[i*s : (i+1)*s : (i+1)*s]
@@ -267,8 +313,9 @@ func CenteredL2Discrepancy(points [][]float64) (float64, error) {
 			prod *= 1 + uk/2 - uk*uk/2
 		}
 
-		single += prod
-		if !finiteDiscrepancyTerm(single) {
+		single.add(prod)
+
+		if !finiteDiscrepancyTerm(single.value) {
 			return 0, errCenteredL2Range("single product or sum")
 		}
 	}
@@ -276,7 +323,7 @@ func CenteredL2Discrepancy(points [][]float64) (float64, error) {
 	// The double sum is symmetric and its diagonal is exact in closed form:
 	// b(t,t) = 1 + u, so sum_i sum_j = 2*sum_{i<j} + sum_i prod_k (1 + u_ik).
 	// Halving it is not an optimisation of the formula, it is the formula.
-	diagonal := 0.0
+	var diagonal compensatedSum
 
 	for i := 0; i < n; i++ {
 		prod := 1.0
@@ -284,20 +331,21 @@ func CenteredL2Discrepancy(points [][]float64) (float64, error) {
 			prod *= 1 + uk
 		}
 
-		diagonal += prod
-		if !finiteDiscrepancyTerm(diagonal) {
+		diagonal.add(prod)
+
+		if !finiteDiscrepancyTerm(diagonal.value) {
 			return 0, errCenteredL2Range("diagonal product or sum")
 		}
 	}
 
-	// Two-level accumulation: an inner float64 per i folded into the outer
-	// total. Given this loop shape it costs nothing and turns O(N^2)*eps
-	// rounding growth into O(N)*eps.
-	upper := 0.0
+	// Compensate both levels of the pair sum. This reduces accumulation error;
+	// it cannot recover precision lost in products or final cancellation.
+	var upper compensatedSum
 
 	for i := 0; i < n; i++ {
 		ui, pi := u[i*s:(i+1)*s], points[i]
-		inner := 0.0
+
+		var inner compensatedSum
 
 		for j := i + 1; j < n; j++ {
 			uj, pj := u[j*s:(j+1)*s], points[j]
@@ -307,19 +355,26 @@ func CenteredL2Discrepancy(points [][]float64) (float64, error) {
 				prod *= 1 + ui[k]/2 + uj[k]/2 - math.Abs(pi[k]-pj[k])/2
 			}
 
-			inner += prod
-			if !finiteDiscrepancyTerm(inner) {
+			inner.add(prod)
+
+			if !finiteDiscrepancyTerm(inner.value) {
 				return 0, errCenteredL2Range("pair product or sum")
 			}
 		}
 
-		upper += inner
-		if !finiteDiscrepancyTerm(upper) {
+		upper.add(inner.value)
+
+		if !finiteDiscrepancyTerm(upper.value) {
 			return 0, errCenteredL2Range("pair sum")
 		}
 	}
 
-	square := constant - 2*single/nf + (2*upper+diagonal)/(nf*nf)
+	var total compensatedSum
+	total.add(constant)
+	total.add(-2 * single.value / nf)
+	total.add((2*upper.value + diagonal.value) / (nf * nf))
+
+	square := total.value
 	if !finiteDiscrepancyTerm(square) {
 		return 0, errCenteredL2Range("final squared discrepancy")
 	}
@@ -332,6 +387,29 @@ func CenteredL2Discrepancy(points [][]float64) (float64, error) {
 }
 
 func finiteDiscrepancyTerm(x float64) bool { return !math.IsNaN(x) && !math.IsInf(x, 0) }
+
+type compensatedSum struct {
+	value, correction float64
+}
+
+func (s *compensatedSum) add(x float64) {
+	y := x - s.correction
+	next := s.value + y
+	s.correction = (next - s.value) - y
+	s.value = next
+}
+
+// Sorting a copy keeps discrepancy measurement from changing caller data.
+func sortedFirstCoordinates(points [][]float64) []float64 {
+	x := make([]float64, len(points))
+	for i, p := range points {
+		x[i] = p[0]
+	}
+
+	sort.Float64s(x)
+
+	return x
+}
 
 func errCenteredL2Range(stage string) error {
 	return fmt.Errorf("qmc: CenteredL2Discrepancy: %s exceeds float64 arithmetic range", stage)
