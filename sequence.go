@@ -83,7 +83,8 @@ type Sequence interface {
 	// Next returns the next point in a freshly allocated slice.
 	Next() []float64
 
-	// NextInto writes the next point into dst, allocating nothing.
+	// NextInto writes the next point into dst without allocating a point slice.
+	// Implementations may allocate scratch; see the concrete generator's contract.
 	NextInto(dst []float64)
 
 	// Reset rewinds the cursor so the next call to Next returns point 0.
@@ -92,7 +93,8 @@ type Sequence interface {
 	// At returns point i, counting from 0, without touching the cursor.
 	At(i int) []float64
 
-	// AtInto is At without the allocation.
+	// AtInto is At without allocating a point slice. Scratch allocation follows
+	// the concrete generator's contract, as for NextInto.
 	AtInto(i int, dst []float64)
 }
 

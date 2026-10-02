@@ -260,11 +260,11 @@ limits and the machine-dependent meaning of the leaf budget are documented.
 
 ### CORE-07 — Make allocation guarantees accurate (P1)
 
-- [ ] Add allocation regressions for nested Halton at 97, 98, and 100 dimensions.
+- [x] Add allocation regressions for nested Halton at 97, 98, and 100 dimensions.
       The review measured 0, 1, and 3 allocations per `AtInto` call respectively.
-- [ ] Decide between explicitly documenting the per-coordinate scratch fallback
+- [x] Decide between explicitly documenting the per-coordinate scratch fallback
       and providing caller-owned workspace for large bases.
-- [ ] Apply the chosen contract consistently to `Sequence`, `Halton`, benchmarks,
+- [x] Apply the chosen contract consistently to `Sequence`, `Halton`, benchmarks,
       and performance documentation. Preserve concurrent indexed access.
 
 Evidence: [nested.go](nested.go), [sequence.go](sequence.go),
@@ -272,6 +272,14 @@ Evidence: [nested.go](nested.go), [sequence.go](sequence.go),
 
 Acceptance: public allocation claims are true for every configuration they cover;
 tests guard the threshold; any workspace API has clear ownership and concurrency rules.
+
+Verification (2026-10-03): both Into methods measure exactly 0/1/3 allocations
+at 97/98/100 nested-Halton dimensions on amd64 and executable 386
+(`go test -count=1 -run '^TestNestedHaltonScratchAllocationThreshold$' ./...`).
+The threshold benchmark confirms those counts; it is not used for speed claims.
+The chosen contract documents per-coordinate scratch fallback, preserving existing
+outputs and concurrent indexed access already tested under CORE-04. Workspace
+API evaluation remains coordinated under PERF-01/API-01. Root lint passes.
 
 ### CORE-08 — Tighten custom direction-number validation (P1)
 

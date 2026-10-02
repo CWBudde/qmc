@@ -85,3 +85,18 @@ None of these has been measured against the benchmarks yet.
 Already done: `fill` no longer re-tests `h.perms == nil` on every coordinate of every point —
 the branch is hoisted and the dispatch is three-way. `Sobol.NextInto` does the same for its
 Owen branch, which is where it matters most.
+
+## Into allocation contract
+
+`AtInto` and `NextInto` avoid the result slice allocation. Sobol and plain or
+fixed digit-scrambled Halton also allocate no per-call scratch. Nested Halton
+uses stack scratch for prime bases at most 512 and one heap scratch allocation
+per coordinate above that threshold. This means 0 allocations at 97 dimensions
+(last prime 509), 1 at 98 (521), and 3 at 100. The allocation regressions cover
+both methods; `BenchmarkNestedHaltonScratchThreshold` reports their cost.
+
+The explicit fallback is retained. Caller-owned workspace would complicate
+ownership and the minimal sequence API; shared mutable generator scratch would
+break concurrent indexed access. A future workspace/bulk API needs workload
+measurements under PERF-01 and a coordinated decision under API-01. For now,
+callers needing zero allocations can stay within the documented configurations.

@@ -178,8 +178,10 @@ func (h *Halton) Next() []float64 {
 	return out
 }
 
-// NextInto writes the next point into dst. It allocates nothing, which matters
-// in an optimizer's inner loop.
+// NextInto writes the next point into dst without allocating a point slice.
+// Plain and fixed digit-scrambled generators allocate no scratch. Nested
+// scrambling allocates once per coordinate whose prime base exceeds 512:
+// zero allocations through 97 dimensions, one at 98, and three at 100.
 //
 // dst must have room for Dims() coordinates; a shorter one panics. Absorbing
 // it instead would leave the tail coordinates holding zeros or stale values,
@@ -212,8 +214,9 @@ func (h *Halton) At(i int) []float64 {
 	return out
 }
 
-// AtInto is At without the allocation. As with NextInto, dst shorter than
-// Dims() panics rather than being silently truncated.
+// AtInto is At without allocating a point slice. Its scratch allocation is
+// the same as NextInto's. It is safe for concurrent calls with separate dst
+// buffers. dst shorter than Dims() panics rather than being silently truncated.
 func (h *Halton) AtInto(i int, dst []float64) { h.fill(i, dst) }
 
 func (h *Halton) fill(i int, dst []float64) {

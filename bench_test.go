@@ -18,7 +18,7 @@ import (
 // benchmark calls b.ReportAllocs. The package's whole reason for offering
 // NextInto and AtInto alongside Next is that an optimizer sampling a few
 // hundred thousand points cannot afford one slice allocation per point. If a
-// refactor ever made the *Into paths allocate, nothing else in the suite would
+// refactor ever made these 39-dimensional *Into paths allocate, little else would
 // notice — the values would still be correct — but the API would have lost the
 // only thing that distinguishes it from Next.
 //

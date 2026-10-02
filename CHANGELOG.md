@@ -27,6 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dimension multiplier before allocation. Impossible bounds return constructor
   errors; the previously failing 637235-dimension Halton construction succeeds.
 
+### Allocation contract corrections
+
+- Clarified that `Into` methods avoid the result slice allocation but nested
+  Halton allocates scratch above prime base 512 (starting at dimension 98).
+  Added allocation regressions and a threshold benchmark; behavior is unchanged.
+
 ### Concurrency corrections
 
 - `WithSkip` and `WithLeap` normalize arguments before creating their closures,
