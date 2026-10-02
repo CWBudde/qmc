@@ -182,6 +182,9 @@ var embeddedTable = sync.OnceValues(func() ([]directionRow, error) {
 // embedded table, so a file that is truncated, column-shifted or corrupted is
 // refused at construction rather than turned into points. See
 // validateDirectionRows for what that check does and does not prove.
+// Construction consumes r without closing it. Do not share one reader between
+// concurrent constructions or reuse it after consumption without rewinding it.
+// For reusable table bytes, create a fresh reader and option for each constructor.
 //
 // # The file format
 //

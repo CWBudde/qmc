@@ -117,11 +117,11 @@ import "fmt"
 // Reference: Kocis, L. & Whiten, W. J. (1997), "Computational Investigations of
 // Low-Discrepancy Sequences", ACM Transactions on Mathematical Software 23(2).
 func WithLeap(n int) Option {
-	return func(s *settings) {
-		if n < 1 {
-			n = 1
-		}
+	if n < 1 {
+		n = 1
+	}
 
+	return func(s *settings) {
 		s.leap = n
 	}
 }

@@ -7,6 +7,8 @@ import "io"
 // a sequence whose parameters could change mid-run would not be reproducible,
 // which is the whole point of using a quasi-random sequence in the first
 // place.
+// Value options may be reused across concurrent constructors. WithDirectionNumbers
+// instead owns a consumable reader; see that option's lifecycle documentation.
 type Option func(*settings)
 
 // randomization names the scheme that turns a deterministic sequence into a
@@ -86,11 +88,11 @@ type settings struct {
 //
 // Negative values are treated as zero.
 func WithSkip(n int) Option {
-	return func(s *settings) {
-		if n < 0 {
-			n = 0
-		}
+	if n < 0 {
+		n = 0
+	}
 
+	return func(s *settings) {
 		s.skip = n
 	}
 }

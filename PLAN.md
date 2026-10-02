@@ -162,10 +162,10 @@ bounded arithmetic and growth regressions remain. Root lint passes.
 
 ### CORE-03 — Make reusable options immutable (P1)
 
-- [ ] Clamp `WithSkip` and `WithLeap` arguments before creating their closures.
-- [ ] Add concurrent constructor regressions sharing `WithSkip(-1)` and
+- [x] Clamp `WithSkip` and `WithLeap` arguments before creating their closures.
+- [x] Add concurrent constructor regressions sharing `WithSkip(-1)` and
       `WithLeap(0)`, plus valid reusable options.
-- [ ] Document the separate lifecycle of `WithDirectionNumbers`: its reader is
+- [x] Document the separate lifecycle of `WithDirectionNumbers`: its reader is
       consumed by construction and is not an immutable reusable table by itself.
 
 Evidence: [options.go](options.go), [leap.go](leap.go),
@@ -174,6 +174,14 @@ Evidence: [options.go](options.go), [leap.go](leap.go),
 Acceptance: sharing the clamped options between concurrent constructors produces
 no race reports and the same configurations as sequential application; reader
 ownership and reuse limitations are explicit.
+
+Verification (2026-10-03): concurrent public constructors sharing negative skip,
+zero leap, and combined clamped options reproduced data races before the fix.
+The same cases plus valid reused options pass three race-detector repetitions
+(`go test -race -count=3 -timeout=2m -run
+'^TestOptionsAreReusableAcrossConcurrentConstructors$' ./...`). Reader consumption,
+close ownership, and fresh-reader reuse are documented in the option and API topic.
+Root lint passes.
 
 ### CORE-04 — Test the concurrent indexed-access contract (P1)
 

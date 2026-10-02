@@ -27,6 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dimension multiplier before allocation. Impossible bounds return constructor
   errors; the previously failing 637235-dimension Halton construction succeeds.
 
+### Concurrency corrections
+
+- `WithSkip` and `WithLeap` normalize arguments before creating their closures,
+  fixing races when clamped options are reused by concurrent constructors.
+  Clarified that direction-table readers are consumed and require separate
+  readers/options for concurrent construction. Seeded outputs are unchanged.
+
 ### Added
 
 - `StarDiscrepancy(points)`, the exact `D*_N` — a supremum over origin-anchored

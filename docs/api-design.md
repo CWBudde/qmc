@@ -81,3 +81,11 @@ raw indices through `math.MaxInt`; Sobol supports the smaller of `math.MaxInt`
 and `2^32-1`. Constructors reject skips without a first representable point.
 The final admissible point returns normally; further draws panic until reset.
 This includes 386, where the int bound is reached before Sobol's word bound.
+
+## Option reuse and table-reader ownership
+
+Value options capture normalized immutable values and can be shared by concurrent
+constructors. `WithDirectionNumbers` captures a reader instead: the constructor
+consumes it and does not close it. Give each constructor a fresh reader and option
+(for example, `WithDirectionNumbers(bytes.NewReader(tableBytes))`). Reuse after
+rewinding is sequential only; sharing one reader concurrently is unsupported.
