@@ -41,6 +41,7 @@ type Halton struct {
 //
 // dims is bounded only by how many primes fit in memory; there is no fixed
 // base table to run out of.
+// A skip that leaves no representable first raw index is an error.
 func NewHalton(dims int, opts ...Option) (*Halton, error) {
 	if dims < 1 {
 		return nil, fmt.Errorf("qmc: dims must be >= 1, got %d", dims)
@@ -49,6 +50,9 @@ func NewHalton(dims int, opts ...Option) (*Halton, error) {
 	var cfg settings
 	for _, opt := range opts {
 		opt(&cfg)
+	}
+	if cfg.skip == math.MaxInt {
+		return nil, fmt.Errorf("qmc: skip %d puts point 0 beyond the raw Halton index range", cfg.skip)
 	}
 
 	// A randomization is rejected here rather than ignored. The schemes are
@@ -194,7 +198,9 @@ func (h *Halton) Reset() { h.cursor = 0 }
 // WithLeap is in effect — so index 0, the degenerate origin that is all zeros
 // before scrambling, is never returned.
 //
-// Negative i is treated as 0.
+// Negative i is treated as 0. A raw index above math.MaxInt panics.
+// Next and NextInto return the final admissible point normally and panic on
+// subsequent draws until Reset is called.
 func (h *Halton) At(i int) []float64 {
 	out := make([]float64, h.dims)
 	h.fill(i, out)
@@ -227,7 +233,8 @@ func (h *Halton) fill(i int, dst []float64) {
 	// division floors, so i is admissible precisely when it is at or below the
 	// quotient. Doing it this way rather than multiplying first is the point —
 	// the multiplication being guarded is the one that would overflow.
-	if i > (math.MaxInt-1-h.skip)/h.leap {
+	remaining := math.MaxInt - 1 - h.skip
+	if remaining < 0 || i > remaining/h.leap {
 		panic(fmt.Sprintf(
 			"qmc: point index %d with skip %d and leap %d overflows the raw Halton index",
 			i, h.skip, h.leap,

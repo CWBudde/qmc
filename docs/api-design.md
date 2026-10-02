@@ -73,3 +73,11 @@ better than that.
   carry them, and no in-package call site can trip them: bases are always primes. They are
   cheap, but they are also the mechanism that turned the index overflow into silent zeros.
   Decide whether they are a precondition worth keeping or dead weight worth deleting.
+
+## Raw-index bounds
+
+Raw-index boundaries are shared by indexed and stateful methods. Halton supports
+raw indices through `math.MaxInt`; Sobol supports the smaller of `math.MaxInt`
+and `2^32-1`. Constructors reject skips without a first representable point.
+The final admissible point returns normally; further draws panic until reset.
+This includes 386, where the int bound is reached before Sobol's word bound.

@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scoped convergence claims to their assumptions and measured workloads.
   Existing seeded outputs are unchanged.
 
+### Boundary corrections
+
+- Halton and Sobol now reject skips with no representable first raw index.
+  This fixes Halton's negative-numerator leap check and Sobol's inconsistent
+  indexed/stateful access on 386. Sobol now returns its final admissible point
+  normally, then panics on the next draw. Earlier valid-point outputs are unchanged.
+
 ### Added
 
 - `StarDiscrepancy(points)`, the exact `D*_N` — a supremum over origin-anchored

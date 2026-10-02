@@ -112,14 +112,14 @@ integrands; this decision and the precision/randomness assumptions are documente
 
 ### CORE-01 — Make raw-index validation consistent (P1)
 
-- [ ] Reject configurations with no representable first point at construction.
+- [x] Reject configurations with no representable first point at construction.
       In particular, reject Halton's `skip = MaxInt` before dividing by a leap.
-- [ ] Fix the negative-numerator truncation case in Halton's overflow guard:
+- [x] Fix the negative-numerator truncation case in Halton's overflow guard:
       `NewHalton(1, WithSkip(math.MaxInt), WithLeap(3)).At(0)` currently returns `[0]`.
-- [ ] Use consistent checked arithmetic for Sobol construction, indexed access,
+- [x] Use consistent checked arithmetic for Sobol construction, indexed access,
       stateful advancement, and reset. On 386, `WithSkip(math.MaxInt)` currently
       permits `Next()` while `At(0)` panics.
-- [ ] Test boundary combinations of skip, leap, point index, and cursor on both
+- [x] Test boundary combinations of skip, leap, point index, and cursor on both
       int widths, including the last admissible point and its successor.
 
 Evidence: [halton.go](halton.go), [sobol.go](sobol.go),
@@ -128,6 +128,12 @@ Evidence: [halton.go](halton.go), [sobol.go](sobol.go),
 Acceptance: `Next`, `At`, and reset agree throughout each supported index range;
 invalid configurations fail predictably without wrapped coordinates or aliasing;
 amd64 and 386 regressions pass.
+
+Verification (2026-10-03): new public-API constructor and last-index regressions
+failed before the fix. Boundary, leap, cursor, reset, and indexed/stateful agreement
+checks pass on amd64 and executable 386 (`go test -count=1 -run
+'Test(ConstructorsRejectUnrepresentableFirstIndex|LastRawIndexAgreesAcrossAccessMethods|Fill|NextIntoRefuses|SobolRefuses|SkipBeyond|LeapedNext|NextMatchesAt|OwenNext)' ./...`, also with `GOARCH=386`). The final valid Sobol point now returns normally;
+only the subsequent draw panics. Compatibility is recorded in the changelog.
 
 ### CORE-02 — Repair prime generation growth and overflow handling (P1)
 

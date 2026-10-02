@@ -21,6 +21,10 @@ import (
 // would be dead code pretending to guard something.
 const twoPowMinus32 = 1.0 / 4294967296.0
 
+// Every entry point uses the same raw-index ceiling, including on 386 where
+// int cannot represent the upper half of the direction-number index range.
+const maxSobolRawIndex = min(uint64(math.MaxInt), uint64(math.MaxUint32))
+
 // Sobol generates points of the Sobol sequence in a fixed number of
 // dimensions, using the Joe-Kuo direction numbers.
 //
@@ -142,8 +146,9 @@ type Sobol struct {
 	// them through fill. The two never run at once — leap is fixed at
 	// construction — which is why one of the pair is always dead rather than
 	// the two needing to be kept in step.
-	counter uint32
-	state   []uint32
+	counter   uint32
+	state     []uint32
+	exhausted bool
 
 	// cursor is the index of the next point NextInto will return, used only
 	// when leap is above 1.
@@ -279,6 +284,7 @@ func WithDigitalShift(seed uint64) Option {
 // dimension's direction numbers would make two coordinates of every point
 // identical — a defect that a caller integrating in a few hundred dimensions
 // would have no way to see in the output.
+// A skip that leaves no representable first raw index is an error.
 func NewSobol(dims int, opts ...Option) (*Sobol, error) {
 	if dims < 1 {
 		return nil, fmt.Errorf("qmc: dims must be >= 1, got %d", dims)
@@ -318,10 +324,10 @@ func NewSobol(dims int, opts ...Option) (*Sobol, error) {
 	// bits of direction numbers. Checking the skip here rather than at the
 	// first Next means a caller finds out at construction, where the mistake
 	// is, instead of part-way through a run.
-	if uint64(cfg.skip)+1 >= 1<<sobolBits {
+	if uint64(cfg.skip)+1 > maxSobolRawIndex {
 		return nil, fmt.Errorf(
-			"qmc: skip %d puts point 0 beyond the %d-bit index the direction numbers cover",
-			cfg.skip, sobolBits,
+			"qmc: skip %d puts point 0 beyond the raw Sobol index limit %d on this platform",
+			cfg.skip, maxSobolRawIndex,
 		)
 	}
 
@@ -447,6 +453,9 @@ func (s *Sobol) NextInto(dst []float64) {
 
 		return
 	}
+	if s.exhausted || uint64(s.counter) > maxSobolRawIndex {
+		panic(fmt.Sprintf("qmc: the Sobol sequence is exhausted at raw index %d", maxSobolRawIndex))
+	}
 
 	// The branch is hoisted out of the loop rather than tested per dimension.
 	// This is the one place in the package where that matters: unrandomized,
@@ -462,16 +471,12 @@ func (s *Sobol) NextInto(dst []float64) {
 		}
 	}
 
-	// The counter is advanced after the point is written, so a generator that
-	// cannot advance has still delivered every point it could. Refusing here
-	// mirrors AtInto: at counter = 2^32-1 the direction numbers have run out,
-	// and continuing would either index one past them or wrap the counter back
-	// onto index 0 and replay the whole sequence as if it were new.
-	if s.counter == math.MaxUint32 {
-		panic(fmt.Sprintf(
-			"qmc: the Sobol sequence is exhausted after 2^%d points; index %d has no successor",
-			sobolBits, s.counter,
-		))
+	// Return the final admissible point normally. Only the subsequent draw
+	// fails, matching At and the leaped path. A separate flag avoids wrapping
+	// the counter or computing a direction number beyond its 32-bit range.
+	if uint64(s.counter) == maxSobolRawIndex {
+		s.exhausted = true
+		return
 	}
 
 	k := lowestZeroBit(s.counter)
@@ -487,6 +492,7 @@ func (s *Sobol) NextInto(dst []float64) {
 // points for the same configuration.
 func (s *Sobol) Reset() {
 	s.cursor = 0
+	s.exhausted = false
 	s.counter = uint32(s.skip + 1)
 	s.accumulate(s.counter, s.state)
 }
@@ -516,7 +522,9 @@ func (s *Sobol) Reset() {
 // short version is that an unaligned window of a Sobol sequence is not a net
 // and never was.
 //
-// Negative i is treated as 0.
+// Negative i is treated as 0. The raw index must be at most the smaller of
+// math.MaxInt and 2^32-1; exceeding this limit panics. Next and NextInto return
+// the final admissible point normally and panic on subsequent draws until Reset.
 func (s *Sobol) At(i int) []float64 {
 	out := make([]float64, s.dims)
 	s.fill(i, out)
@@ -549,7 +557,8 @@ func (s *Sobol) fill(i int, dst []float64) {
 	// multiplication is what would overflow. On a 64-bit platform the 32-bit
 	// check below fires first for every leap; on a 32-bit one this is the
 	// check that fires.
-	if i > (math.MaxInt-1-s.skip)/s.leap {
+	remaining := math.MaxInt - 1 - s.skip
+	if remaining < 0 || i > remaining/s.leap {
 		panic(fmt.Sprintf(
 			"qmc: point index %d with skip %d and leap %d overflows the raw Sobol index",
 			i, s.skip, s.leap,
