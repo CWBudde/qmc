@@ -80,6 +80,21 @@ than at the nearest corner, and summing over the full-dimensional projection rat
 2^s − 1 of them — both leave a plausible-looking number, so the test integrates the definition
 numerically rather than trusting the formula.
 
+### Arithmetic range
+
+CD2 checks scratch entry/byte counts before allocation and rejects nonfinite
+products, sums, or squared results with an error. This implementation uses
+direct float64 arithmetic. A single origin in 2000 dimensions has a finite norm
+of about `1.23e176`, but its squared diagonal product overflows; the function
+returns an error instead of `Inf, nil`. At 7000 dimensions it also refuses
+rather than returning `NaN, nil`. At 1000 dimensions that origin remains supported.
+
+Scaled products could extend this range but would need careful treatment of
+cancellation between differently scaled terms and additional reference checks.
+They are deferred: the current implementation targets directly representable
+terms, with explicit errors outside that range. This decision does not impose a
+fixed dimensional ceiling; the range also depends on the coordinates and count.
+
 ### Read this before believing a CD2 number
 
 For N independent uniform points the expectation is exactly

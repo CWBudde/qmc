@@ -207,6 +207,16 @@ func StarDiscrepancy(points [][]float64) (float64, error) {
 // that, the statistic is telling you about your marginals and nothing else,
 // and you want an integration test or StarDiscrepancy in a projection instead.
 //
+// # Arithmetic range
+//
+// Products, sums, and the final square must fit float64; otherwise this
+// returns an error, even if the square root would be representable using
+// scaled arithmetic. For example, a single origin in 2000 dimensions has a
+// finite norm but overflows this implementation's diagonal product. Scratch
+// entry and byte counts are checked before allocation. No scaled or log-domain
+// implementation is provided; normal low-dimensional use keeps the direct
+// formula and its reference checks rather than adding another numerical path.
+//
 // # Precision
 //
 // The three terms are near-equal and cancel, losing roughly
@@ -229,12 +239,22 @@ func CenteredL2Discrepancy(points [][]float64) (float64, error) {
 		return 0, err
 	}
 
+	scratchLen, err := discrepancyScratchLen(n, s)
+	if err != nil {
+		return 0, err
+	}
+
+	constant := math.Pow(13.0/12.0, float64(s))
+	if !finiteDiscrepancyTerm(constant) {
+		return 0, errCenteredL2Range("constant term")
+	}
+
 	nf := float64(n)
 
 	// u_ik = |x_ik - 1/2| and the single sum's per-point product, both in one
 	// O(Ns) pass. u is flat and row-aliased for the same cache reason Draw
 	// gives: the double sum below reads it N^2/2 times.
-	u := make([]float64, n*s)
+	u := make([]float64, scratchLen)
 	single := 0.0
 
 	for i, p := range points {
@@ -248,6 +268,9 @@ func CenteredL2Discrepancy(points [][]float64) (float64, error) {
 		}
 
 		single += prod
+		if !finiteDiscrepancyTerm(single) {
+			return 0, errCenteredL2Range("single product or sum")
+		}
 	}
 
 	// The double sum is symmetric and its diagonal is exact in closed form:
@@ -262,6 +285,9 @@ func CenteredL2Discrepancy(points [][]float64) (float64, error) {
 		}
 
 		diagonal += prod
+		if !finiteDiscrepancyTerm(diagonal) {
+			return 0, errCenteredL2Range("diagonal product or sum")
+		}
 	}
 
 	// Two-level accumulation: an inner float64 per i folded into the outer
@@ -282,17 +308,44 @@ func CenteredL2Discrepancy(points [][]float64) (float64, error) {
 			}
 
 			inner += prod
+			if !finiteDiscrepancyTerm(inner) {
+				return 0, errCenteredL2Range("pair product or sum")
+			}
 		}
 
 		upper += inner
+		if !finiteDiscrepancyTerm(upper) {
+			return 0, errCenteredL2Range("pair sum")
+		}
 	}
 
-	square := math.Pow(13.0/12.0, float64(s)) - 2*single/nf + (2*upper+diagonal)/(nf*nf)
+	square := constant - 2*single/nf + (2*upper+diagonal)/(nf*nf)
+	if !finiteDiscrepancyTerm(square) {
+		return 0, errCenteredL2Range("final squared discrepancy")
+	}
+
 	if square < 0 {
 		square = 0
 	}
 
 	return math.Sqrt(square), nil
+}
+
+func finiteDiscrepancyTerm(x float64) bool { return !math.IsNaN(x) && !math.IsInf(x, 0) }
+
+func errCenteredL2Range(stage string) error {
+	return fmt.Errorf("qmc: CenteredL2Discrepancy: %s exceeds float64 arithmetic range", stage)
+}
+
+// Check both the entry count and its float64 byte size before multiplication
+// or allocation. The helper also makes impossible sizes testable without
+// fabricating invalid slices or exhausting the process heap.
+func discrepancyScratchLen(n, s int) (int, error) {
+	if n < 1 || s < 1 || n > math.MaxInt/s || n*s > math.MaxInt/8 {
+		return 0, fmt.Errorf("qmc: CenteredL2Discrepancy: %d by %d scratch matrix exceeds the allocation range", n, s)
+	}
+
+	return n * s, nil
 }
 
 // validatePoints checks the one contract both statistics share: a non-empty,

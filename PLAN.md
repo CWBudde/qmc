@@ -205,11 +205,11 @@ threshold. Three race-detector runs passed alongside option and boundary contrac
 
 ### CORE-05 — Reject nonfinite discrepancy results (P1)
 
-- [ ] Detect nonfinite products, sums, and final values in centered L2 discrepancy.
-- [ ] Return a meaningful error when the implementation cannot represent a result.
+- [x] Detect nonfinite products, sums, and final values in centered L2 discrepancy.
+- [x] Return a meaningful error when the implementation cannot represent a result.
       Evaluate scaled arithmetic if large-dimensional support is worth its complexity.
-- [ ] Check scratch-size multiplication before allocating `n*s` entries.
-- [ ] Add valid-input regressions for a one-point origin at 2000 dimensions
+- [x] Check scratch-size multiplication before allocating `n*s` entries.
+- [x] Add valid-input regressions for a one-point origin at 2000 dimensions
       (currently `+Inf, nil` despite a finite result) and larger overflowing cases
       (currently `NaN, nil`).
 
@@ -218,6 +218,15 @@ Evidence: [discrepancy.go](discrepancy.go), [discrepancy tests](discrepancy_test
 Acceptance: valid inputs yield a finite answer within the supported range or an
 explicit error; overflow never becomes a successful nonfinite or misleading zero
 result; allocation-size overflow is rejected before allocation.
+
+Verification (2026-10-03): origin sets at 2000/6100/7000/9000 dimensions
+reproduced successful nonfinite answers before the fix and now return explicit
+range errors. A 1000-dimensional origin agrees with its independent closed form.
+Scratch-entry and byte-size overflow tests pass on amd64 and executable 386.
+Existing one-point formulas, defining-integral comparisons, reflection/order
+invariance, reproducibility, and malformed-input tests pass, as does root lint.
+Scaled arithmetic was evaluated and deferred in the discrepancy topic: direct
+float64 terms define the supported range, even when a norm could fit after scaling.
 
 ### CORE-06 — Improve discrepancy precision and cheap special cases (P1)
 

@@ -34,6 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Clarified that direction-table readers are consumed and require separate
   readers/options for concurrent construction. Seeded outputs are unchanged.
 
+### Numerical corrections
+
+- Centered L2 discrepancy now rejects nonfinite intermediate or final arithmetic
+  with an error and validates scratch entry/byte counts before allocation. Valid
+  sets at extreme dimensions no longer succeed with `Inf` or `NaN`; a finite
+  norm can still be refused if its squared terms exceed the direct float64 range.
+
 ### Added
 
 - `StarDiscrepancy(points)`, the exact `D*_N` — a supremum over origin-anchored
