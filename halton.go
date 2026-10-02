@@ -22,10 +22,10 @@ const oneMinusEpsilon = 0x1.fffffffffffffp-1
 // dimensions.
 //
 // A Halton generator is not safe for concurrent use through its stateful
-// methods (Next, NextInto, Reset). At is stateless and may be called from any
+// methods (Next, NextInto, Reset). At and AtInto are stateless and may be called from any
 // number of goroutines at once, which is the way to drive one shared sequence
 // from a worker pool: have the workers claim indices from an atomic counter
-// and call At.
+// and call AtInto with separate destination buffers.
 type Halton struct {
 	dims  int
 	bases []int

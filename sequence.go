@@ -65,6 +65,8 @@ import (
 // form (At, AtInto). The split matters more than it looks. At(i) depends only
 // on i and the generator's configuration, so it is the reproducible entry point
 // and the one safe to call concurrently; Next carries a cursor and is not.
+// Concurrent AtInto calls require separate destination buffers. Indexed calls
+// do not advance the cursor; stateful calls must be serialized by the caller.
 //
 // The contract every implementation owes:
 //

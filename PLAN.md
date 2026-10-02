@@ -185,15 +185,23 @@ Root lint passes.
 
 ### CORE-04 — Test the concurrent indexed-access contract (P1)
 
-- [ ] Share each generator configuration across goroutines and compare `At` and
+- [x] Share each generator configuration across goroutines and compare `At` and
       `AtInto` results with a sequential reference using separate destination buffers.
-- [ ] Include plain, randomized, skipped, leaped, and custom-table configurations.
-- [ ] Verify indexed calls do not consume or change the stateful cursor.
+- [x] Include plain, randomized, skipped, leaped, and custom-table configurations.
+- [x] Verify indexed calls do not consume or change the stateful cursor.
 
 Evidence: [Sequence](sequence.go), [Halton](halton.go), [Sobol](sobol.go).
 
 Acceptance: these tests run under the race detector and establish the documented
 indexed-access guarantee without concurrently invoking unsupported stateful calls.
+
+Verification (2026-10-03): eight goroutines share each of sixteen configurations,
+covering both indexed methods, separate buffers, untouched buffer tails, and
+cursor preservation after a prior stateful draw. Cases include all randomizations,
+skips, leaps, a custom direction table, and nested Halton beyond the stack-scratch
+threshold. Three race-detector runs passed alongside option and boundary contracts
+(`go test -race -count=3 -timeout=2m -run
+'^Test(ConcurrentIndexedAccessPreservesCursor|OptionsAreReusableAcrossConcurrentConstructors|LastRawIndexAgreesAcrossAccessMethods)$' ./...`). Executable 386 access checks and root lint pass.
 
 ### CORE-05 — Reject nonfinite discrepancy results (P1)
 
