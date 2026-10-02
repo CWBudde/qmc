@@ -2,6 +2,7 @@ package qmc
 
 import (
 	"math"
+	"sort"
 	"testing"
 )
 
@@ -20,14 +21,15 @@ const (
 	corrDims   = 39
 	corrPoints = 600
 	corrSkip   = 64
+	corrSeeds  = 30
 )
 
 func TestScramblingBreaksHighDimensionalCorrelation(t *testing.T) {
 	const tolerance = 0.25
 
-	worstOverall := 0.0
+	worstPerSeed := make([]float64, 0, corrSeeds)
 
-	for _, seed := range []uint64{1, 2, 3, 4, 5} {
+	for seed := uint64(1); seed <= corrSeeds; seed++ {
 		g, err := NewHalton(corrDims, WithSkip(corrSkip), WithScrambling(seed))
 		if err != nil {
 			t.Fatal(err)
@@ -36,15 +38,18 @@ func TestScramblingBreaksHighDimensionalCorrelation(t *testing.T) {
 		pts := Draw(g, corrPoints)
 
 		worst, pair := worstAdjacentCorrelation(pts)
-		if worst > tolerance {
+		if math.IsNaN(worst) || math.IsInf(worst, 0) || worst > tolerance {
 			t.Fatalf("seed %d: adjacent dims %d/%d correlate at %.4f, want <= %.2f",
 				seed, pair, pair+1, worst, tolerance)
 		}
 
-		worstOverall = math.Max(worstOverall, worst)
+		worstPerSeed = append(worstPerSeed, worst)
 	}
 
-	t.Logf("scrambled: worst adjacent-pair |corr| over 5 seeds = %.4f", worstOverall)
+	sort.Float64s(worstPerSeed)
+	median := (worstPerSeed[corrSeeds/2-1] + worstPerSeed[corrSeeds/2]) / 2
+	p90 := worstPerSeed[int(math.Ceil(0.9*corrSeeds))-1]
+	t.Logf("scrambled: per-seed worst adjacent-pair |corr| over %d seeds: median %.4f, p90 %.4f, worst %.4f", corrSeeds, median, p90, worstPerSeed[corrSeeds-1])
 }
 
 // TestUnscrambledStillShowsTheDefect pins the behaviour the scrambled path is

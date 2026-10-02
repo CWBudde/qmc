@@ -308,14 +308,14 @@ recorded in the changelog; valid table outputs remain unchanged.
 
 ### TEST-01 — Broaden the evidence for sampling quality (P1)
 
-- [ ] Add a small set of independently integrable functions covering nonlinear
+- [x] Add a small set of independently integrable functions covering nonlinear
       moments, coordinate interactions, reordered dimension weights, localized peaks,
       and a discontinuous case with explicitly limited expected QMC benefit.
-- [ ] Test several sample budgets, including small populations and aligned
+- [x] Test several sample budgets, including small populations and aligned
       power-of-two Sobol blocks, rather than inferring a general rate from one budget.
-- [ ] Keep seeded Monte Carlo baselines and negative controls; record seed counts
+- [x] Keep seeded Monte Carlo baselines and negative controls; record seed counts
       and uncertainty when publishing comparisons.
-- [ ] Use at least the documented thirty-seed distribution for correlation
+- [x] Use at least the documented thirty-seed distribution for correlation
       summaries and enough streams to support comparisons between similar schemes.
 
 Evidence: [integration tests](integration_test.go),
@@ -325,6 +325,16 @@ Evidence: [integration tests](integration_test.go),
 Acceptance: mathematical claims have corresponding evidence; statistical checks
 detect meaningful deterioration without enforcing universal superiority on every
 integrand or sample count.
+
+Verification (2026-10-03): the seven-function, three-budget, forty-stream sweep
+passes on amd64 and executable 386. Its functions include reversed weights,
+late-coordinate interactions, a localized analytic Gaussian, and a discontinuity;
+Sobol blocks are aligned, and MC/plain-Halton controls remain. All product
+comparison tests pass after increasing streams from ten to forty. Correlation
+uses thirty streams and reports per-seed-worst median/p90/max 0.0909/0.1139/0.1611.
+Commands and uncertainty limitations are documented in testing methodology.
+The full ordinary suite at the completed-core milestone passed in 162.077 seconds;
+this is a milestone result, not the final repository verification. Root lint passes.
 
 ### TEST-02 — Replace brittle rankings and strengthen failure detection (P1)
 

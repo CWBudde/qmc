@@ -37,20 +37,38 @@ correlation test passes for `math/rand` (0.124, against a 0.25 threshold — bet
 real generator's 0.141). `integration_test.go` now pins QMC integration error against Monte
 Carlo at 5x; the same substitution scores 0.9x and fails.
 
-## Five seeds is not enough for the correlation statistic
+## Replicate counts and uncertainty
 
-A change that was a pure re-instantiation of the nested scrambling, not a change of scheme,
-moved a five-seed worst case from **0.40 to 0.12**. `correlation_test.go` still uses five and
-should quote a median and a tail over thirty, as the documentation does.
+Correlation summaries now use thirty seeds and report the median, nearest-rank
+p90, and worst of each seed's worst adjacent-pair absolute correlation. The
+previous five-seed sample was too sensitive to re-instantiation of a scramble.
+The current fixed-digit test at 39 dimensions and 600 points after skip 64
+reports 0.0909 / 0.1139 / 0.1611 for those summaries.
 
-## Ten streams is not enough for the integration statistic
+The product integration tests use forty streams. Ten-stream comparisons between
+similar schemes proved too noisy to support a ranking: two full-permutation
+variants differing only in shuffle direction previously read 44.0x and 31.9x
+on the same ten seeds. These historical values describe that old experiment;
+they are not measurements of the current validation job.
 
-Two full-permutation variants differing only in the direction of a Fisher-Yates loop —
-statistically identical constructions — read **44.0x and 31.9x on the same ten seeds**. The
-forty- and eighty-stream figures separate the schemes consistently; the ten-stream figure does
-not. The gates assert an ordering and a factor of five rather than any measured constant,
-which is what keeps this from being a flaky-test problem — but **no ten-stream number should be
-quoted as a comparison between two good schemes.**
+`TestIntegrationAcrossReferenceFunctionsAndBudgets` adds seven independently
+integrable cases: nonlinear moments, early/late interactions, decaying/reversed
+weights, a localized Gaussian peak, and a discontinuous triangle. It uses forty
+streams at 64/256/1024 points in 24 dimensions, sharing samples across functions.
+Sobol cases use power-of-two blocks aligned through `WithSkip(N-1)`. MC is seeded
+and shared; plain Halton is a negative control for high-base moment bias.
+
+The sweep logs absolute RMS error and an estimated standard error of that RMS
+summary (the delta method applied to replicate squared errors). These are
+empirical summaries under an independent-replicate model, not bounds on the
+seeded family's bias. The broad 3x-MC deterioration gate does not require universal
+superiority on peaks or discontinuities. Only the two smooth low-order cases at
+N=1024 require a conservative measured 2x margin. Existing smooth-product gates
+continue to require 5x at their specified workloads.
+
+Reproduce with `go test -count=1 -v -run
+'Test(IntegrationAcrossReferenceFunctionsAndBudgets|ScramblingBreaksHighDimensionalCorrelation|ScrambledQMCBeatsMonteCarlo.*|ShiftedSobolBeatsMonteCarloAt39Dims|SobolAgainstHaltonAt39Dims|SobolBeatsMonteCarloAtLowDims|OwenBeatsDigitalShiftAt39Dims)' ./...`.
+Do not infer a universal convergence rate or general ranking from these cases.
 
 ## A stratification test cannot police nesting
 
@@ -92,12 +110,6 @@ in exactly that region, so the guards deserve tests rather than a higher percent
 
 The reasoning above is settled; the suite does not yet act on all of it.
 
-- **`correlation_test.go` still uses five seeds.** Five is demonstrably not enough, by this
-  page's own measurement. It should quote a median and a tail over thirty, as the
-  documentation does.
-- **The integration tests still use ten streams.** The gates assert an ordering rather than a
-  constant, so this is not a flaky-test problem — but the suite still _produces_ ten-stream
-  numbers, and a number that exists gets quoted.
 - **No test pins conditional structure directly.** Until one exists, any new scrambling scheme
   is guarded only by tests that a non-nested scramble can pass.
 - **The demo module has no tests at all**, and it duplicates library logic, so nothing catches

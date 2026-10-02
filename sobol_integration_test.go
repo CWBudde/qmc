@@ -17,11 +17,9 @@ import (
 // be in two packages, so the two test files are split by what each one needs
 // to reach rather than by subject.
 //
-// Read the long comment at the top of integration_test.go before changing the
-// 5x threshold here. The reasoning is the same and it is written down there:
-// no generator producing independent samples can reach 5x, because the gap
-// between 1/n and 1/sqrt(n) convergence is structural, while a bound pinned at
-// the measured value would fail on an unlucky seed.
+// The 5x threshold is an empirical regression margin on this smooth product
+// and these budgets; it is not a universal QMC rate or a theorem about all
+// independent sampling. Broader references live in integration_diversity_test.go.
 
 // randomize builds the option under test from a stream seed. Passing it in
 // rather than hardcoding one keeps the two randomizations measured on exactly
@@ -64,7 +62,7 @@ func sobolRMSError(t *testing.T, randomize func(uint64) qmc.Option, dims, n, str
 //
 // The threshold is 5x, the same figure and the same argument as the Halton
 // gate: no generator producing independent samples can reach it, because the
-// gap between 1/n and 1/sqrt(n) convergence is structural, while it leaves
+// gap on this measured smooth-product workload is reproducible, while it leaves
 // room for an unlucky seed and for a future change to the randomization that
 // shifts the constant without giving up the rate. Measured here, shifted Sobol
 // comes in at 29.5x against math/rand at these settings, so the margin is
@@ -74,7 +72,7 @@ func TestShiftedSobolBeatsMonteCarloAt39Dims(t *testing.T) {
 	const (
 		dims        = 39
 		n           = 4096
-		streams     = 10
+		streams     = 40
 		wantSpeedup = 5.0
 	)
 
@@ -118,7 +116,7 @@ func TestSobolAgainstHaltonAt39Dims(t *testing.T) {
 	const (
 		dims    = 39
 		n       = 4096
-		streams = 10
+		streams = 40
 	)
 
 	sobolErr := sobolRMSError(t, qmc.WithDigitalShift, dims, n, streams)
@@ -148,7 +146,7 @@ func TestSobolBeatsMonteCarloAtLowDims(t *testing.T) {
 	const (
 		dims        = 8
 		n           = 512
-		streams     = 10
+		streams     = 40
 		wantSpeedup = 5.0
 	)
 
@@ -185,7 +183,7 @@ func TestOwenBeatsDigitalShiftAt39Dims(t *testing.T) {
 	const (
 		dims    = 39
 		n       = 4096
-		streams = 10
+		streams = 40
 
 		// Owen may come out slightly behind on a given integrand without
 		// anything being wrong — the two are close on smooth products, which

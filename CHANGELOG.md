@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Statistical verification
+
+- Broadened integration validation to seven independent references and three
+  budgets with forty streams, aligned Sobol blocks, seeded Monte Carlo, and
+  a plain-Halton negative control. Logs include estimated RMS-summary uncertainty.
+- Product integration comparisons now use forty streams; correlation summaries
+  use thirty seeds and report per-seed-worst median, p90, and maximum.
+
 ### Scientific contract corrections
 
 - Fixed digit scrambling does not guarantee uniform marginals or unbiased

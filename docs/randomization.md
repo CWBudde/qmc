@@ -72,13 +72,13 @@ ramp together.
 
 Measured at 39 dimensions and 600 points, which is what a parameter search over 39 knobs on a
 600-evaluation budget actually asks for. These are absolute Pearson correlations over adjacent
-dimension pairs, over **thirty** seeds:
+dimension pairs, over **thirty** seeds (median/p90/worst of per-seed worst adjacent pairs):
 
-| configuration                   | median | p90  | worst    |
-| ------------------------------- | ------ | ---- | -------- |
-| unscrambled, skip 64            | —      | —    | **0.81** |
-| `WithScrambling`, skip 64       | 0.093  | 0.13 | **0.16** |
-| `WithNestedScrambling`, skip 64 | 0.089  | 0.12 | **0.14** |
+| configuration                   | median | p90   | worst     |
+| ------------------------------- | ------ | ----- | --------- |
+| unscrambled, skip 64            | —      | —     | **0.81**  |
+| `WithScrambling`, skip 64       | 0.091  | 0.114 | **0.161** |
+| `WithNestedScrambling`, skip 64 | 0.089  | 0.12  | **0.14**  |
 
 Thirty rather than a handful because the statistic is high-variance: a change to the
 scrambling that was a pure re-instantiation, not a change of scheme, moved a five-seed worst
