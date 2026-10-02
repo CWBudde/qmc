@@ -208,9 +208,9 @@ var embeddedTable = sync.OnceValues(func() ([]directionRow, error) {
 // polynomial, a the polynomial's s-1 interior coefficients packed into an
 // integer (bit s-1-k holds the coefficient of x^(s-k)), and m_1..m_s the
 // initial direction numbers — exactly s of them, no more and no fewer. The
-// header is skipped if its first field is not an integer, so a hand-made file
-// without one is accepted; refusing a file for the absence of a line nobody
-// reads would be pedantry.
+// optional header must be d s a m_i on the first nonempty line. Headerless
+// numeric rows are accepted and blank lines are ignored. Other leading text
+// is rejected instead of silently discarding a potentially malformed row.
 //
 // # What a caller-generated table must satisfy
 //
@@ -226,6 +226,7 @@ var embeddedTable = sync.OnceValues(func() ([]directionRow, error) {
 //     the linear independence the net property rests on.
 //   - every m_i is below 2^i, so that m_i << (32-i) does not shift bits off
 //     the top of the word.
+//   - a fits exactly s-1 interior coefficient bits; at s=1 only a=0 is valid.
 //   - the polynomial 1<<s | a<<1 | 1 is primitive over GF(2), not merely
 //     irreducible. This is the check a corrupted a field cannot pass by luck,
 //     and the one the direction-number recurrence actually depends on.

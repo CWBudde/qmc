@@ -283,16 +283,26 @@ API evaluation remains coordinated under PERF-01/API-01. Root lint passes.
 
 ### CORE-08 — Tighten custom direction-number validation (P1)
 
-- [ ] Apply the coefficient-width bound at degree one, where only `a = 0` is valid.
-- [ ] Reject rows such as `2 1 1 1` and `2 1 9223372036854775808 1` instead of
+- [x] Apply the coefficient-width bound at degree one, where only `a = 0` is valid.
+- [x] Reject rows such as `2 1 1 1` and `2 1 9223372036854775808 1` instead of
       accepting coefficients through OR/truncation.
-- [ ] Add parser cases for malformed headers, reader errors, row boundaries,
+- [x] Add parser cases for malformed headers, reader errors, row boundaries,
       and coefficient/degree limits. Consider a bounded parser fuzz target.
 
 Evidence: [sobol_direction.go](sobol_direction.go), [Sobol tests](sobol_test.go).
 
 Acceptance: malformed rows fail with useful diagnostics while embedded and valid
 caller-supplied tables produce the existing reference values.
+
+Verification (2026-10-03): malformed headers, nonzero degree-one coefficients,
+and header handling after blank lines reproduced the defects before the fix.
+Focused row/degree/coefficient limits, reader-error propagation, optional headers,
+line boundaries, embedded tables, extended tables, and architecture reference
+outputs pass on amd64 and executable 386. A bounded parser fuzz target completed
+116264 executions in a 10-second run with two workers and no failures
+(`go test -run '^$' -fuzz '^FuzzDirectionNumbersParser$' -fuzztime=10s -parallel=2 ./...`).
+Root lint/vet and demo js/wasm vet pass. Stricter rejection of malformed headers is
+recorded in the changelog; valid table outputs remain unchanged.
 
 ## Verification and statistical testing
 

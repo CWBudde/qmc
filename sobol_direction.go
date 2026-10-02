@@ -105,16 +105,16 @@ type directionRow struct {
 // parseDirectionNumbers reads the Joe-Kuo text format and returns one row per
 // dimension, starting at dimension 2.
 //
-// The format is a header line followed by rows `d s a m_1 ... m_s`. A leading
-// line whose first field is not an integer is taken as the header and skipped;
-// upstream ships one, a caller's hand-made file may not, and refusing a file
-// for the absence of a line nobody reads would be pedantry.
+// The optional header is `d s a m_i` on the first nonempty line, followed by
+// rows `d s a m_1 ... m_s`. Blank lines are ignored. Unrecognized leading
+// text is rejected, so a malformed data row cannot silently become a header.
 //
 // Everything it returns has been through validateDirectionRows, so a caller
 // holding the result holds a table that has already been proved consistent.
 func parseDirectionNumbers(r io.Reader) ([]directionRow, error) {
 	rows := make([]directionRow, 0, maxSobolDims)
 	scanner := bufio.NewScanner(r)
+	firstContent := true
 
 	for lineNo := 1; scanner.Scan(); lineNo++ {
 		fields := strings.Fields(scanner.Text())
@@ -122,8 +122,14 @@ func parseDirectionNumbers(r io.Reader) ([]directionRow, error) {
 			continue
 		}
 
-		if lineNo == 1 {
+		if firstContent {
+			firstContent = false
+
 			if _, err := strconv.Atoi(fields[0]); err != nil {
+				if strings.Join(fields, " ") != "d s a m_i" {
+					return nil, fmt.Errorf("qmc: direction numbers, line %d: invalid header; want d s a m_i or a numeric data row", lineNo)
+				}
+
 				continue
 			}
 		}
@@ -185,7 +191,7 @@ func parseDirectionRow(fields []string) (directionRow, error) {
 	// a encodes s-1 interior coefficients. A value with bits above that is not
 	// a truncation of a valid row, it is a different file format, and shifting
 	// it into poly would silently drop the excess.
-	if degree > 1 && a >= 1<<uint(degree-1) {
+	if a >= 1<<uint(degree-1) {
 		return directionRow{}, fmt.Errorf(
 			"polynomial coefficients a = %d do not fit the %d interior bits of a degree-%d polynomial",
 			a, degree-1, degree,

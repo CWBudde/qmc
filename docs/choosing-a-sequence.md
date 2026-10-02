@@ -61,7 +61,8 @@ behaving correctly.
 upstream publishes the same construction out to 21201 dimensions at
 <https://web.maths.unsw.edu.au/~fkuo/sobol/>, and `new-joe-kuo-6.21201` can be passed whole.
 The format and the invariants a table has to satisfy (contiguous _d_ from 2, exactly _s_
-direction numbers per row, every _m_i_ odd and below 2^_i_, a primitive polynomial) are
+direction numbers per row, every _m_i_ odd and below 2^_i_, exactly _s_-1
+coefficient bits with `a=0` at degree one, a primitive polynomial) are
 documented on `WithDirectionNumbers`; anything failing them is refused at construction. What
 the validator cannot prove is that the numbers came from the authors' search — direction
 numbers cannot be derived, so a table is the only honest option. A synthesised

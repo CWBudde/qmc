@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Prime sieve expansion now uses a positive integer bound and checks the initial
   dimension multiplier before allocation. Impossible bounds return constructor
   errors; the previously failing 637235-dimension Halton construction succeeds.
+- Custom direction tables now reject nonzero degree-one coefficients and
+  malformed headers rather than silently masking/truncating them. The optional
+  header is `d s a m_i` on the first nonempty line; headerless numeric rows and
+  blank lines remain supported. Valid table outputs are unchanged.
 
 ### Allocation contract corrections
 
