@@ -137,26 +137,26 @@ runtime/input metadata, Go's version-file parser, and the Pages upload dependenc
 chain. GitHub's [action security guidance](https://docs.github.com/en/actions/reference/security/secure-use)
 describes these pin and permission practices.
 
-| Action                  | Reviewed commit                            | Version family |
-| ----------------------- | ------------------------------------------ | -------------- |
-| actions/checkout        | `3d3c42e5aac5ba805825da76410c181273ba90b1` | v7             |
-| actions/setup-go        | `40f1582b2485089dde7abd97c1529aa768e1baff` | v5             |
-| actions/setup-node      | `49933ea5288caeca8642d1e84afbd3f7d6820020` | v4             |
-| actions/cache           | `55cc8345863c7cc4c66a329aec7e433d2d1c52a9` | v6             |
-| actions/upload-artifact | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` | v7             |
-| extractions/setup-just  | `53165ef7e734c5c07cb06b3c8e7b647c5aa16db3` | v4             |
-| actions/configure-pages | `45bfe0192ca1faeb007ade9deae92b16b8254a0d` | v6             |
-| actions/deploy-pages    | `368f82528645a54fb793d4d04e342629a3f51346` | v5             |
+| Action                        | Reviewed commit                            | Version family |
+| ----------------------------- | ------------------------------------------ | -------------- |
+| actions/checkout              | `3d3c42e5aac5ba805825da76410c181273ba90b1` | v7             |
+| actions/setup-go              | `40f1582b2485089dde7abd97c1529aa768e1baff` | v5             |
+| actions/setup-node            | `49933ea5288caeca8642d1e84afbd3f7d6820020` | v4             |
+| actions/cache                 | `55cc8345863c7cc4c66a329aec7e433d2d1c52a9` | v6             |
+| actions/upload-artifact       | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` | v7             |
+| actions/upload-pages-artifact | `fc324d3547104276b827a68afc52ff2a11cc49c9` | v5             |
+| extractions/setup-just        | `53165ef7e734c5c07cb06b3c8e7b647c5aa16db3` | v4             |
+| actions/configure-pages       | `45bfe0192ca1faeb007ade9deae92b16b8254a0d` | v6             |
+| actions/deploy-pages          | `368f82528645a54fb793d4d04e342629a3f51346` | v5             |
 
 Workflow defaults grant `contents: read`. Pages write/OIDC permissions belong
 only to the deploy job, which waits for the verified build. Checkouts disable
 persisted credentials, all jobs have deadlines, and CI bootstraps Just 1.21.0,
-the version exercised locally. The Pages composite uploader's nested floating
-action is replaced by verified archive creation and the directly pinned generic
-uploader. `package-demo.py` creates only regular-file entries, checks every
-archived byte against the site manifest, includes notices, refuses existing
-archive destinations, and enforces the Pages size limit. This follows the
-[Pages artifact format](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).
+the version exercised locally. The Pages build uploads the verified `dist`
+directory with the official `upload-pages-artifact` action, which itself pins
+its nested `upload-artifact` to a full commit SHA and produces the
+[Pages artifact format](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)
+the deploy service expects.
 
 Before a release, commit and review the changes, add exactly one changelog
 section for the version with actual change entries, and record the full reviewed

@@ -30,8 +30,6 @@ def check(workflows):
         uses = re.findall(r"^\s*(?:- )?uses:\s*(.*?)\s*$", text, re.M)
         if not uses or any(not re.fullmatch(r"[\w-]+/[\w-]+@[0-9a-f]{40} # v[0-9]+(?:\.[0-9]+)*", entry) for entry in uses):
             raise ValueError(f"{name}: actions need full commit SHAs and same-line version comments")
-        if "actions/upload-pages-artifact@" in text:
-            raise ValueError("Pages uploader must not reintroduce its floating nested action")
         if "jobs:\n" not in text:
             raise ValueError(f"{name}: expected an explicit jobs mapping")
         job_text = text.split("jobs:\n", 1)[1]
