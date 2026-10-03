@@ -201,3 +201,7 @@ MIT.
 
 The Sobol direction numbers in [`third_party/joe-kuo`](third_party/joe-kuo) are Frances Y.
 Kuo and Stephen Joe's, redistributed under their BSD-3 notice, which is kept alongside them.
+
+The built browser demo includes the complete project, Joe–Kuo, and Go toolchain
+notices. Both demo pages link **Credits and licenses**, where these materials are
+available from the same static distribution.

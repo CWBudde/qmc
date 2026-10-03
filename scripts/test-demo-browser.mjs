@@ -10,6 +10,9 @@ import { fileURLToPath } from "node:url";
 const started = Date.now();
 const root = resolve(process.argv[2] || "dist");
 const runtimeFixture = process.argv[3] ? resolve(process.argv[3]) : null;
+const artifact = JSON.parse(
+  await readFile(resolve(root, "build-manifest.json"), "utf8"),
+);
 const mountPath = process.env.QMC_BROWSER_PATH || "/";
 assert(
   /^\/(?:[a-zA-Z0-9_-]+\/)*$/.test(mountPath),
@@ -26,6 +29,7 @@ const mime = {
   ".html": "text/html",
   ".css": "text/css",
   ".svg": "image/svg+xml",
+  ".txt": "text/plain; charset=utf-8",
 };
 const server = createServer(async (req, res) => {
   try {
@@ -966,6 +970,54 @@ try {
   servedRoot = root;
   staleBuildPrefix = null;
   await send("Network.setCacheDisabled", { cacheDisabled: true }, sessionId);
+  for (const page of ["index.html", "analysis.html"]) {
+    await send(
+      "Page.navigate",
+      { url: `http://127.0.0.1:${server.address().port}${mountPath}${page}` },
+      sessionId,
+    );
+    pageDeadline = Date.now() + 30000;
+    while (
+      !(await evaluate(
+        'document.getElementById("rack")?.dataset.boot === "ready"',
+      ))
+    ) {
+      assert(Date.now() < pageDeadline, "credits navigation startup deadline");
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    assert.equal(
+      await evaluate(
+        'document.querySelector(".rack-footer a[href$=\\"credits.html\\"]").href',
+      ),
+      `http://127.0.0.1:${server.address().port}${mountPath}credits.html`,
+      "credits link escaped the stable project path",
+    );
+    await evaluate(
+      'document.querySelector(".rack-footer a[href$=\\"credits.html\\"]").click(); true',
+    );
+    pageDeadline = Date.now() + 10000;
+    while (
+      !(await evaluate(
+        'document.querySelector("main h1")?.textContent === "Credits and licenses"',
+      ))
+    ) {
+      assert(Date.now() < pageDeadline, "credits page navigation deadline");
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    const notices = await evaluate(`(async () => {
+      const links=Array.from(document.querySelectorAll('main a[href^="notices/"]'));
+      return Promise.all(links.map(async link=>{
+        const response=await fetch(link.href);
+        if(!response.ok)throw new Error('notice download failed: '+link.href);
+        const bytes=await response.arrayBuffer();
+        const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),v=>v.toString(16).padStart(2,'0')).join('');
+        return {path:link.getAttribute('href'),hash};
+      }));
+    })()`);
+    assert.equal(notices.length, 4, "credits omitted a required notice");
+    for (const notice of notices)
+      assert.equal(notice.hash, artifact.inputs[notice.path], notice.path);
+  }
   // Deliberate loading failures are allowed only for their precise asset URLs.
   for (const page of ["index.html", "analysis.html"]) {
     for (const mode of [
@@ -1036,6 +1088,7 @@ try {
       },
       loadingFailureCases: 8,
       cacheCoherence: true,
+      noticeDownloads: 8,
       mountPath,
       browserCPUs: browserCPUs || "unrestricted",
       unexpectedErrors: 0,

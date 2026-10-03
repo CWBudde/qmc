@@ -12,7 +12,7 @@ import tempfile
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
-from demo_artifact import MANIFEST, digest, validate
+from demo_artifact import MANIFEST, NOTICES, build_id, digest, public_entry, validate
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -23,6 +23,9 @@ with tempfile.TemporaryDirectory(prefix="qmc-artifact-test-") as directory:
     scripts.mkdir(parents=True)
     for name in ["build-wasm-demo.sh", "build-wasm-demo.py", "demo_artifact.py"]:
         shutil.copy(ROOT / "scripts" / name, scripts / name)
+    shutil.copy(ROOT / "LICENSE", copy / "LICENSE")
+    (copy / "third_party/joe-kuo").mkdir(parents=True)
+    shutil.copy(ROOT / "third_party/joe-kuo/LICENSE.txt", copy / "third_party/joe-kuo/LICENSE.txt")
     demo = copy / "examples/wasm-demo"
     demo.mkdir(parents=True)
     for source in (ROOT / "examples/wasm-demo").iterdir():
@@ -37,6 +40,8 @@ with tempfile.TemporaryDirectory(prefix="qmc-artifact-test-") as directory:
     toolchain = temporary / "compiler/lib/wasm"
     toolchain.mkdir(parents=True)
     (toolchain / "wasm_exec.js").write_text("// compiler-matched fixture runtime\n")
+    (toolchain.parent.parent / "LICENSE").write_text("Copyright 2009 The Go Authors.\nFixture license from this compiler.\n")
+    (toolchain.parent.parent / "PATENTS").write_text("Additional IP Rights Grant (Patents)\nFixture grant from this compiler.\n")
     mock = temporary / "bin"
     mock.mkdir()
     go = mock / "go"
@@ -77,6 +82,46 @@ else:
     assert "assets/nested/font.woff2" in first["inputs"]
     old_prefix = "build-" + first["build_id"]
     assert (output / old_prefix / "wasm_exec.js").read_bytes() == (toolchain / "wasm_exec.js").read_bytes()
+    notice_sources = {"notices/qmc-LICENSE.txt": copy / "LICENSE",
+                      "notices/joe-kuo-LICENSE.txt": copy / "third_party/joe-kuo/LICENSE.txt",
+                      "notices/go-LICENSE.txt": toolchain.parent.parent / "LICENSE",
+                      "notices/go-PATENTS.txt": toolchain.parent.parent / "PATENTS"}
+    for name, source in notice_sources.items():
+        assert (output / old_prefix / name).read_bytes() == source.read_bytes(), name
+    # A complete older managed build remains recognizable for replacement,
+    # while the distribution checker refuses its missing notices/credits.
+    legacy = temporary / "legacy managed build"
+    legacy.mkdir()
+    legacy_payload = {name: (output / old_prefix / name).read_bytes()
+                      for name in first["inputs"] if name not in NOTICES and name != "credits.html"}
+    legacy_pages = ["analysis.html", "index.html"]
+    for page in legacy_pages:
+        legacy_payload[page] = legacy_payload[page].replace(b'<a href="credits.html">Credits and licenses</a>', b'')
+    legacy_inputs = {name: digest(data) for name, data in legacy_payload.items()}
+    legacy_id = build_id(legacy_inputs, first["toolchain"])
+    legacy_prefix = f"build-{legacy_id}/"
+    legacy_files = {}
+    for name, data in legacy_payload.items():
+        path = legacy / legacy_prefix / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+        legacy_files[legacy_prefix + name] = digest(data)
+    for page in legacy_pages:
+        data = public_entry(legacy_payload[page], legacy_id, legacy_pages)
+        (legacy / page).write_bytes(data)
+        legacy_files[page] = digest(data)
+    (legacy / MANIFEST).write_text(json.dumps({**first, "build_id": legacy_id, "inputs": legacy_inputs,
+                                             "pages": legacy_pages, "files": legacy_files}))
+    validate(legacy, distribution=False)
+    try:
+        validate(legacy)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("legacy artifact passed the current distribution gate")
+    success(run(legacy))
+    validate(legacy)
+    assert not (legacy / legacy_prefix).exists(), "legacy namespace survived replacement"
     success(run())
     assert validate(output)["build_id"] == first["build_id"], "identical inputs changed identity"
     with ThreadPoolExecutor(max_workers=4) as pool:
@@ -97,6 +142,37 @@ else:
     assert second["build_id"] != first["build_id"] and not (output / old_prefix).exists()
     assert "assets/nested/points.json" not in second["inputs"]
     original = (output / MANIFEST).read_bytes()
+    # Missing/empty notice inputs fail before replacing the current build.
+    for source in notice_sources.values():
+        data = source.read_bytes()
+        source.unlink()
+        assert run().returncode != 0 and (output / MANIFEST).read_bytes() == original
+        source.write_bytes(b" \n")
+        assert run().returncode != 0 and (output / MANIFEST).read_bytes() == original
+        source.write_bytes(data)
+    for page in ["index.html", "analysis.html"]:
+        source = demo / page
+        data = source.read_bytes()
+        source.write_text(source.read_text().replace('<a href="credits.html">Credits and licenses</a>', ''))
+        assert run().returncode != 0 and (output / MANIFEST).read_bytes() == original
+        source.write_bytes(data)
+    source = demo / "credits.html"
+    data = source.read_bytes()
+    source.write_text(source.read_text().replace('href="notices/go-PATENTS.txt"', 'href="#removed"'))
+    assert run().returncode != 0 and (output / MANIFEST).read_bytes() == original
+    source.write_bytes(data)
+    for notice in NOTICES:
+        incomplete = json.loads(original)
+        del incomplete["inputs"][notice]
+        (output / MANIFEST).write_text(json.dumps(incomplete))
+        try:
+            validate(output)
+        except ValueError as error:
+            assert "lacks required" in str(error), str(error)
+        else:
+            raise AssertionError(f"missing required notice accepted: {notice}")
+        finally:
+            (output / MANIFEST).write_bytes(original)
     failure = run(QMC_TEST_GO_FAIL="1")
     assert failure.returncode != 0 and (output / MANIFEST).read_bytes() == original
     validate(output)
@@ -213,4 +289,4 @@ builder.build(pathlib.Path(sys.argv[2]))
     assert len(preserved) == 1 and (preserved[0] / "caller-note.txt").read_text() == "racing edit"
     validate(output)
 
-print("Demo artifact gates passed: content identity, recursive assets, removed assets, atomic exchange, caller preservation before/after publication, failures, paths, and references.")
+print("Demo artifact gates passed: content identity, recursive assets, removed assets, atomic exchange, caller preservation before/after publication, failures, paths, references, complete notices, and reachable credits.")

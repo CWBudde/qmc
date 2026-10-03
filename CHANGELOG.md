@@ -13,7 +13,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   race commands. Short mode now skips costly discrepancy and high-dimensional
   integration sweeps. PR checks use the routine commands; scheduled/manual jobs
   run full statistics on amd64 and 386, and release validation runs routine race
-  plus full ordinary tests. Browser verification remains pending in the plan.
+  plus full ordinary tests. Routine validation also requires real-browser checks.
+
+### Demo distribution
+
+- Build complete static sites in fresh staging directories and publish them
+  through atomic directory replacement. Every resource belongs to one content-
+  addressed build namespace, including the compiler-matched WASM runtime.
+  Exact manifests reject caller edits and unrelated output; obsolete assets
+  disappear on replacement. Existing unmanifested builds must be moved aside.
+- Both demo pages link a static credits page with the complete project MIT,
+  Joe–Kuo, and compiler-matched Go LICENSE/PATENTS notices. Artifact checks
+  require nonempty notices and reachable links; Chrome verifies all downloads.
+  Intact older managed builds can upgrade to the notice-bearing distribution.
 
 ### Statistical verification
 

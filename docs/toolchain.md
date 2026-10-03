@@ -122,8 +122,7 @@ library's Go 1.23 requirement.
 Every required configuration is tracked. Optional ignored local tool/editor
 state is not part of setup and does not affect these commands. Pages builds use
 `just build-wasm-demo dist`, then test that exact artifact before upload.
-Release policy/action SHA pins and distribution notices remain TOOL-04/SHIP-02
-in [PLAN.md](../PLAN.md).
+Release policy/action SHA pins remain TOOL-04 in [PLAN.md](../PLAN.md).
 
 ## Demo artifact publication
 
@@ -139,6 +138,11 @@ JPEG, GIF, WebP, AVIF, ICO, JSON, WOFF/WOFF2, TTF/OTF, TXT, and PDF. Unrecognize
 types and symlinks fail the build rather than silently copying source/private
 files. The Go compiler produces `qmc.wasm`; `wasm_exec.js` comes from that same
 compiler's GOROOT. Compiler identity is checked before and after compilation.
+The project MIT license, Joe–Kuo notice, and compiler-matched Go LICENSE/PATENTS
+are copied byte-for-byte into `notices/`. Both interactive pages link the static
+credits page, which links all four complete notices. No font files are bundled.
+Additional third-party assets should include their applicable notices under
+`assets/notices/` and credits links.
 
 All payload files occupy one `build-<sha256>/` namespace. The ID hashes the
 logical filenames, each file's SHA-256, and the compiler version. Public HTML
@@ -154,6 +158,10 @@ checker verifies them, the reconstructed entry pages, WASM header, and literal
 local references in HTML/SVG, CSS and JavaScript. It checks artifact integrity;
 real-browser tests additionally validate runtime behavior. Dynamic resource
 references added in future code need corresponding browser checks.
+Distribution verification also requires every notice to be nonempty and
+reachable through credits from both pages. Ownership verification accepts an
+intact preceding managed format so it can be replaced safely even if its notice
+set predates this gate; it still checks exact inventories and hashes.
 
 Destinations must be user-owned, nonsymlink directories that are new, empty,
 or an intact managed site. Existing unrelated or edited files/directories are

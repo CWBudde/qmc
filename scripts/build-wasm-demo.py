@@ -45,7 +45,7 @@ def verify_destination(path):
         raise ValueError("output must be a user-owned directory")
     if any(path.iterdir()):
         try:
-            validate(path)
+            validate(path, distribution=False)
         except (OSError, ValueError, KeyError, TypeError) as error:
             raise ValueError(f"existing output is unowned or edited; preserved at {path}: {error}") from error
 
@@ -149,6 +149,14 @@ def build(output):
             payload["qmc.wasm"] = (stage / "qmc.wasm").read_bytes()
             (stage / "qmc.wasm").unlink()
             payload["wasm_exec.js"] = runtime.read_bytes()
+            notices = {"notices/qmc-LICENSE.txt": ROOT / "LICENSE",
+                       "notices/joe-kuo-LICENSE.txt": ROOT / "third_party/joe-kuo/LICENSE.txt",
+                       "notices/go-LICENSE.txt": toolchain / "LICENSE",
+                       "notices/go-PATENTS.txt": toolchain / "PATENTS"}
+            for name, path in notices.items():
+                if path.is_symlink() or not path.is_file():
+                    raise ValueError(f"required notice must be a regular file: {path}")
+                payload[name] = path.read_bytes()
             inputs = {name: digest(data) for name, data in payload.items()}
             identifier = build_id(inputs, compiler["GOVERSION"])
             prefix = f"build-{identifier}"
@@ -177,7 +185,7 @@ def build(output):
                 # cleanup so an edit racing the swap is retained, not deleted.
                 discard_stage = False
                 try:
-                    validate(stage)
+                    validate(stage, distribution=False)
                 except (OSError, ValueError, KeyError, TypeError) as error:
                     raise ValueError(f"new build published; edited preceding output preserved at {stage}: {error}") from error
                 discard_stage = True

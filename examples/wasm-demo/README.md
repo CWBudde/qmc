@@ -155,7 +155,7 @@ URL cannot fetch a `.wasm` at all. The server must also send the module as
 refuses the response and the status line says so.
 
 The build stages and validates a complete site before publishing it. Stable
-`index.html` and `analysis.html` entry pages select one immutable
+`index.html`, `analysis.html`, and `credits.html` entry pages select one immutable
 `build-<sha256>/` directory through a relative HTML base URL. That directory
 contains the scripts, styles, worker, WASM and runtime, including recursive
 static files from `assets/`. A change to any payload file or compiler version
@@ -183,6 +183,19 @@ asset allowlist, locking, and caller-edit handling.
 committed. It is version-locked to the compiler that produced the `.wasm`, and a
 The build verifies the compiler identity before and after compilation, and the
 artifact's hash binds both runtime bytes and the compiler version.
+
+Both interactive pages link **Credits and licenses**. The built credits page
+links the complete project MIT license, Joe–Kuo copyright/conditions/disclaimer,
+and the build compiler's Go license and additional patent grant. These files
+live in the same immutable bundle under `notices/`. The artifact checker
+requires all four nonempty notices and working credits links; the browser test
+navigates from both pages and verifies every downloaded notice's content hash.
+The builder can safely replace an intact older managed artifact lacking these
+notices, while the current distribution gate rejects that older artifact.
+
+No fonts are bundled. When adding other third-party assets, include their
+applicable complete notices under `assets/notices/` and link them from the
+credits page alongside these existing materials.
 
 ## Browser regression checks
 

@@ -9,7 +9,11 @@ from urllib.parse import unquote, urljoin, urlsplit
 
 MANIFEST = "build-manifest.json"
 PRODUCER = "qmc-wasm-demo"
-REQUIRED = {"index.html", "analysis.html", "qmc.wasm", "wasm_exec.js", "compute-worker.js", "compute.js"}
+NOTICES = {"notices/qmc-LICENSE.txt", "notices/joe-kuo-LICENSE.txt",
+           "notices/go-LICENSE.txt", "notices/go-PATENTS.txt"}
+PAGES = {"index.html", "analysis.html", "credits.html"}
+RUNTIME_REQUIRED = {"index.html", "analysis.html", "qmc.wasm", "wasm_exec.js", "compute-worker.js", "compute.js"}
+REQUIRED = PAGES | NOTICES | RUNTIME_REQUIRED
 HEX = re.compile(r"[a-f0-9]{64}\Z")
 
 
@@ -67,7 +71,26 @@ def public_entry(data, identifier, pages):
     return source.encode()
 
 
-def validate(root, references=True):
+def anchor_paths(data):
+    class Anchors(HTMLParser):
+        paths = None
+
+        def __init__(self):
+            super().__init__()
+            self.paths = set()
+
+        def handle_starttag(self, tag, attributes):
+            href = dict(attributes).get("href", "")
+            url = urlsplit(href)
+            if tag == "a" and not url.scheme and not url.netloc:
+                self.paths.add(url.path.removeprefix("./"))
+
+    parser = Anchors()
+    parser.feed(data.decode("utf-8"))
+    return parser.paths
+
+
+def validate(root, references=True, distribution=True):
     root = Path(root)
     if root.is_symlink() or not root.is_dir():
         raise ValueError("artifact root must be a real directory")
@@ -79,8 +102,10 @@ def validate(root, references=True):
     inputs, files, pages = manifest["inputs"], manifest["files"], manifest["pages"]
     if not isinstance(inputs, dict) or not isinstance(files, dict) or not isinstance(pages, list):
         raise ValueError("invalid artifact manifest structure")
-    if not REQUIRED <= inputs.keys() or not {"index.html", "analysis.html"} <= set(pages):
-        raise ValueError("artifact lacks required pages/runtime/worker assets")
+    required = REQUIRED if distribution else RUNTIME_REQUIRED
+    required_pages = PAGES if distribution else {"index.html", "analysis.html"}
+    if not required <= inputs.keys() or not required_pages <= set(pages):
+        raise ValueError("artifact lacks required pages/runtime/worker assets/notices")
     for name, value in {**inputs, **files}.items():
         safe_name(name)
         if not isinstance(value, str) or not HEX.fullmatch(value):
@@ -111,6 +136,15 @@ def validate(root, references=True):
         expected_page = public_entry((root / prefix / page).read_bytes(), identifier, pages)
         if (root / page).read_bytes() != expected_page:
             raise ValueError(f"entry page does not select its complete build: {page}")
+    if distribution:
+        for notice in NOTICES:
+            if not (root / prefix / notice).read_text().strip():
+                raise ValueError(f"empty distribution notice: {notice}")
+        for page in ("index.html", "analysis.html"):
+            if "credits.html" not in anchor_paths((root / prefix / page).read_bytes()):
+                raise ValueError(f"credits are unreachable from {page}")
+        if not NOTICES <= anchor_paths((root / prefix / "credits.html").read_bytes()):
+            raise ValueError("credits page must link every required distribution notice")
     if not (root / prefix / "qmc.wasm").read_bytes().startswith(b"\0asm\x01\0\0\0"):
         raise ValueError("invalid WASM header")
     if references:
