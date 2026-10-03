@@ -44,6 +44,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   defaults. Recovered callback panics remain request failures; actual runtime
   termination disables controls and exposes Reload WebAssembly on both pages.
   Added a test-only Go-exit fixture and verified recovery/reload in Chrome.
+- Both demo pages and canvas labels now use system fonts, removing Google Fonts
+  requests. Browser regressions enforce same-origin resources.
 
 ### Scientific contract corrections
 

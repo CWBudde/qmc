@@ -43,6 +43,7 @@ const pending = new Map();
 let serial = 0,
   buffer = "";
 const errors = [];
+const requests = [];
 const rejectPending = (error) => {
   for (const p of pending.values()) {
     clearTimeout(p.timer);
@@ -93,6 +94,8 @@ try {
         else p.resolve(packet.result);
       } else if (packet.method === "Runtime.exceptionThrown")
         errors.push(packet.params.exceptionDetails);
+      else if (packet.method === "Network.requestWillBeSent")
+        requests.push(packet.params.request.url);
     }
   });
   const send = (method, params = {}, sessionId) =>
@@ -121,6 +124,7 @@ try {
   });
   await send("Runtime.enable", {}, sessionId);
   await send("Page.enable", {}, sessionId);
+  await send("Network.enable", {}, sessionId);
   const evaluate = async (expression) => {
     const r = await send(
       "Runtime.evaluate",
@@ -324,6 +328,12 @@ try {
     );
   }
   assert.equal(errors.length, 0, JSON.stringify(errors));
+  const thirdParty = requests.filter(
+    (url) =>
+      /^https?:/.test(url) &&
+      new URL(url).origin !== `http://127.0.0.1:${server.address().port}`,
+  );
+  assert.deepEqual(thirdParty, [], "demo requested third-party resources");
   console.log("Browser sweep contracts passed:", JSON.stringify(result));
 } finally {
   clearTimeout(budget);

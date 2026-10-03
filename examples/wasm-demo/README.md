@@ -172,6 +172,13 @@ version mismatch.
 
 ## Browser regression checks
 
+The demo uses system fonts and requests only its own static assets and WASM
+when it loads. Sequence generation and analysis run locally; there are no
+analytics, data submissions, or third-party font requests. Following a source
+or documentation link explicitly navigates away. The Go library itself has no
+network activity or runtime dependencies; serving/downloading the demo is a
+separate browser activity.
+
 After building, run `node scripts/test-demo-browser.mjs dist` from the repository
 root. Node 18 or newer and Chrome on PATH are required (`CHROME_BIN` can select
 another Chrome executable). The runner serves the built files on an ephemeral

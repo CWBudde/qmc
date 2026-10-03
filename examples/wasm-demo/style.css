@@ -46,10 +46,8 @@
   --bad: #ff5d8f;
 
   /* ---- type ---- */
-  --font-display:
-    "Archivo", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
-  --font-mono:
-    "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --font-display: system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
 
   /* ---- rhythm ---- */
   --gutter: 24px;

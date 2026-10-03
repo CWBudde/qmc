@@ -569,8 +569,8 @@ verification cover both pages.
 
 ### DEMO-08 — Remove unnecessary external font requests (P2)
 
-- [ ] Use system fonts or self-host the chosen fonts with their required notices.
-- [ ] Document the demo's actual network behavior and distinguish it from the
+- [x] Use system fonts or self-host the chosen fonts with their required notices.
+- [x] Document the demo's actual network behavior and distinguish it from the
       dependency-free, network-free sequence-generation library.
 
 Evidence: [index.html](examples/wasm-demo/index.html),
@@ -578,6 +578,17 @@ Evidence: [index.html](examples/wasm-demo/index.html),
 
 Acceptance: after local assets load, the demo needs no third-party requests for
 fonts or computation; existing absence of analytics and data submission is preserved.
+
+Verification (2026-10-03): the Chrome network gate fails against the previous
+HTML and records Google Fonts CSS and Archivo/JetBrains Mono font requests.
+After removing both pages' external links and using system font stacks in CSS
+and canvas labels, the complete existing browser regression passes with zero
+third-party requests across both pages and reloads. No fonts are bundled, so
+no new font notices are needed. Demo README and toolchain documentation explain
+same-origin asset downloads, local computation, and explicit external-link
+navigation separately from the network-free Go library. DEMO-08 was completed
+before DEMO-06 because its third-party requests would undermine a clean network
+and console-error validation gate.
 
 ### DEMO-09 — Stop idle animation wakeups (P2)
 

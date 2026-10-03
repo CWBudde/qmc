@@ -189,7 +189,7 @@
   // --- text and frames ---------------------------------------------------
 
   function monoFont(size) {
-    return `${size}px "JetBrains Mono", ui-monospace, monospace`;
+    return `${size}px ${readVar("--font-mono", "ui-monospace, monospace")}`;
   }
 
   function label(ctx, text, x, y, align, color, size) {

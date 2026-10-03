@@ -81,7 +81,9 @@ Not worth adding for this repository, so that nobody adds them by reflex:
 - `.nojekyll` — `upload-pages-artifact` plus `deploy-pages` does not run Jekyll, so it would
   be cargo cult here.
 - `CODEOWNERS` — does nothing without branch protection.
-- `SECURITY.md` — no dependencies, no network, no untrusted parsing.
+- `SECURITY.md` — the library has no runtime dependencies or network activity.
+  The demo downloads its own static/WASM assets, uses system fonts, and performs
+  computation locally without analytics, submissions, or third-party requests.
 - Issue and PR templates, `CODE_OF_CONDUCT.md`.
 - `doc.go` — the package comment in `halton.go` already does that job.
 - A `gomod` Dependabot updater — the module has no dependencies, by design. The
