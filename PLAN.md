@@ -10,7 +10,7 @@ decision task and an acceptance criterion.
 
 ## Coverage and current status
 
-There are 32 remediation tasks: 25 have recorded completion evidence and seven
+There are 32 remediation tasks: 26 have recorded completion evidence and six
 remain open. Checkboxes track verified completion; unchecked tasks describe the
 work still required. Changes under development count as open until their
 acceptance criteria are met.
@@ -27,7 +27,7 @@ acceptance criteria are met.
 | Reproducible tooling and module coverage                     | TOOL-01 through TOOL-03                     | Verified       |
 | Workflow security and release validation                     | TOOL-04                                     | Open           |
 | Build consistency                                            | SHIP-01                                     | Verified       |
-| Distribution notices                                         | SHIP-02                                     | Open           |
+| Distribution notices                                         | SHIP-02                                     | Verified       |
 | Documentation accuracy and contributor guidance              | DOC-01, DOC-02                              | Open           |
 | Performance evidence and API decisions                       | PERF-01, API-01                             | Open           |
 
@@ -36,8 +36,8 @@ reliable checks and delivery, followed by documentation and measured design
 decisions. Each detailed task includes the affected files, specific actions,
 and an acceptance criterion so it can be implemented and reviewed independently.
 
-For the remaining work, finish SHIP-02 before TOOL-04 so release
-validation can require the final artifact and notice checks. Complete PERF-01
+For the remaining work, complete TOOL-04 using the final artifact and notice
+checks established by SHIP-01 and SHIP-02. Complete PERF-01
 before closing the related API-01 workspace/bulk decisions. Resolve DEMO-10's
 maintenance decisions and reconcile DOC-01 and DOC-02 with those outcomes, then
 run the final completion checklist.
@@ -966,10 +966,10 @@ packaging remains SHIP-02.
 
 ### SHIP-02 — Include distribution notices and credits (P2)
 
-- [ ] Copy the Joe–Kuo copyright, conditions, and disclaimer into the demo output.
-- [ ] Link credits/notices from both pages and include the project license.
-- [ ] Include notices for any newly self-hosted fonts or other bundled materials.
-- [ ] Add a build-artifact assertion that required notices are present.
+- [x] Copy the Joe–Kuo copyright, conditions, and disclaimer into the demo output.
+- [x] Link credits/notices from both pages and include the project license.
+- [x] Include notices for any newly self-hosted fonts or other bundled materials.
+- [x] Add a build-artifact assertion that required notices are present.
 
 Evidence: [Joe–Kuo notice](third_party/joe-kuo/LICENSE.txt), [LICENSE](LICENSE),
 [build script](scripts/build-wasm-demo.sh), [README](README.md).
@@ -977,6 +977,30 @@ Evidence: [Joe–Kuo notice](third_party/joe-kuo/LICENSE.txt), [LICENSE](LICENSE
 Acceptance: source and built distributions contain the applicable third-party
 materials and users can find them from the demo. This addresses the packaging
 omission observed in review without claiming a legal determination.
+
+Verification (2026-10-03): implementation committed as `5426420`. All four notices are copied byte-for-byte from the
+project LICENSE, complete Joe–Kuo LICENSE.txt, and the build compiler's
+LICENSE/PATENTS. The static credits page needs no WASM startup and is linked
+from both interactive pages. No fonts were introduced; system fonts remain in
+use, and adding other materials has an explicit notice/credits policy.
+
+`just test-demo-artifact` requires each notice and credits page, rejects missing
+or empty notice sources and broken page/notice links, and checks the copied
+bytes. It also verifies upgrade of a fully hashed older managed site without
+notices: ownership remains recognizable, but that site's distribution gate
+fails until rebuilt. All earlier atomic publication/caller-preservation gates
+continue to pass. The real Go 1.26.1 artifact contains 21 verified files with
+build ID `ac46cf1a92419de83010cd7f231332c37822819fb4d6c6827ad069f28b32d672`;
+all four bundled notices match their full source files exactly.
+
+Chrome on `/qmc/` passes all existing checks and navigates through credits from
+both pages, downloading all four notices and checking each SHA-256 against the
+verified artifact manifest (30.219 s, zero unexpected errors). Shared `just ci`
+passes both modules' tidy/verify/lint/build/vet, routine race contracts (40.150 s),
+the root-path browser run including eight notice downloads (29.999 s), artifact,
+installer, formatter, and read-only module regressions. Strict formatting checks
+95 files with zero changes. Source and built distribution attribution is present;
+this records packaging evidence rather than a legal determination.
 
 ## Documentation and maintainability
 
@@ -1076,7 +1100,7 @@ behavior remain stable unless an intentional change is documented.
 - [x] DEMO-01 through DEMO-09 are verified in browser, accessibility, and failure-state checks.
 - [ ] DEMO-10 resolves the smaller maintenance gaps with regressions or documented decisions.
 - [ ] TOOL-01 through TOOL-04 run reproducibly in a clean environment for both modules.
-- [ ] SHIP-01 and SHIP-02 verify complete, consistent artifacts and notices.
+- [x] SHIP-01 and SHIP-02 verify complete, consistent artifacts and notices.
 - [ ] DOC-01 and DOC-02 reconcile every affected public claim and open-work list.
 - [ ] PERF-01 and API-01 have measured implementations or documented decisions.
 - [ ] Final ordinary, required race, statistical, WASM, browser, formatting, lint,
