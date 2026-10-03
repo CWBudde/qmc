@@ -467,17 +467,29 @@ try {
         2,
         "missing progressbars in accessibility tree",
       );
+      // Chrome's CDP tree does not reliably report valuetext: 154 returns an
+      // empty string even when the attribute is set, and 144 mis-encodes
+      // non-ASCII text. Read the text from the attribute the AX engine
+      // consumes, and require any reported value to share its ASCII prefix.
+      const valueTexts = JSON.parse(
+        await evaluate(
+          "JSON.stringify(Object.fromEntries(Array.from(document.querySelectorAll('[role=progressbar]'),e=>[e.getAttribute('aria-label'),e.getAttribute('aria-valuetext')])))",
+        ),
+      );
       for (const node of progress) {
         const props = Object.fromEntries(
           node.properties.map((p) => [p.name, p.value.value]),
         );
+        const valueText = valueTexts[node.name?.value];
+        const rungs = `${node.value?.value} of ${props.valuemax} rungs completed.`;
         assert(
           node.name?.value &&
             Number.isFinite(node.value?.value) &&
             props.valuemin === 0 &&
             props.valuemax >= node.value.value &&
-            props.valuetext,
-          "invalid accessible progress range/name",
+            valueText?.startsWith(rungs) &&
+            (!props.valuetext || props.valuetext.startsWith(rungs)),
+          `invalid accessible progress range/name: ${JSON.stringify({ name: node.name?.value, value: node.value?.value, props, valueText })}`,
         );
       }
       assert(
@@ -821,17 +833,33 @@ try {
   await evaluate(
     `document.getElementById('scrub').value='2';document.getElementById('scrub').dispatchEvent(new Event('input'));document.getElementById('play').click();true`,
   );
-  const background = await send("Target.createTarget", { url: "about:blank" });
-  await send("Target.activateTarget", { targetId: background.targetId });
-  await new Promise((r) => setTimeout(r, 100));
+  // Minimizing hides the page in headless Chrome 144 and 154; in 154,
+  // activating another tab no longer changes the original page's visibility.
+  const { windowId } = await send("Browser.getWindowForTarget", { targetId });
+  await send("Browser.setWindowBounds", {
+    windowId,
+    bounds: { windowState: "minimized" },
+  });
+  const hiddenDeadline = Date.now() + 5000;
+  while (!(await evaluate("document.hidden"))) {
+    assert(Date.now() < hiddenDeadline, "minimized window stayed visible");
+    await new Promise((r) => setTimeout(r, 20));
+  }
   assert(
     await evaluate(
-      'document.hidden && document.getElementById("play").getAttribute("aria-pressed") === "false"',
+      'document.getElementById("play").getAttribute("aria-pressed") === "false"',
     ),
     "background tab did not pause playback",
   );
-  await send("Target.closeTarget", { targetId: background.targetId });
-  await send("Target.activateTarget", { targetId });
+  await send("Browser.setWindowBounds", {
+    windowId,
+    bounds: { windowState: "normal" },
+  });
+  const visibleDeadline = Date.now() + 5000;
+  while (await evaluate("document.hidden")) {
+    assert(Date.now() < visibleDeadline, "restored window stayed hidden");
+    await new Promise((r) => setTimeout(r, 20));
+  }
   await send(
     "Emulation.setEmulatedMedia",
     { features: [{ name: "prefers-reduced-motion", value: "reduce" }] },
