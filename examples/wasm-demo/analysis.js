@@ -1760,76 +1760,12 @@
 
   // --- boot --------------------------------------------------------------
 
-  async function loadWasmWithProgress(onProgress) {
-    if (!WebAssembly.instantiateStreaming) {
-      WebAssembly.instantiateStreaming = async (resp, importObject) => {
-        const source = await (await resp).arrayBuffer();
-
-        return WebAssembly.instantiate(source, importObject);
-      };
-    }
-
-    const go = new Go();
-    const response = await fetch("qmc.wasm");
-
-    if (!response.ok) {
-      throw new Error(`fetch qmc.wasm: ${response.status}`);
-    }
-
-    if (!response.body || !response.body.getReader || reducedMotion) {
-      onProgress(1);
-
-      return {
-        go,
-        result: await WebAssembly.instantiateStreaming(
-          response,
-          go.importObject,
-        ),
-      };
-    }
-
-    const total = Number(response.headers.get("content-length")) || 0;
-    const reader = response.body.getReader();
-    const chunks = [];
-    let received = 0;
-
-    for (;;) {
-      const { done, value } = await reader.read();
-
-      if (done) {
-        break;
-      }
-
-      chunks.push(value);
-      received += value.length;
-
-      if (total > 0) {
-        onProgress(Math.min(0.98, received / total));
-      }
-    }
-
-    onProgress(1);
-
-    const bytes = new Uint8Array(received);
-    let offset = 0;
-
-    for (const chunk of chunks) {
-      bytes.set(chunk, offset);
-      offset += chunk.length;
-    }
-
-    return {
-      go,
-      result: await WebAssembly.instantiate(bytes, go.importObject),
-    };
-  }
-
   async function initWasm() {
     setStatus("Loading WebAssembly…", "loading");
 
-    const { go, result } = await loadWasmWithProgress((progress) => {
+    const { go, result } = await WasmRuntime.load((progress) => {
       Render.ring(bootRing, progress);
-    });
+    }, reducedMotion);
 
     // Deliberately not awaited: the demo's main() ends in select{} so this
     // promise never resolves. Awaiting it would hang the page forever.

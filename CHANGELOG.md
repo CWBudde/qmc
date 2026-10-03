@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Demo maintenance
+
+- Share the Point Lab and Bench WASM progress loader while retaining their
+  runtime recovery behavior; cover reader and instantiation fallbacks offline.
+- Check digit-inspector descriptions against independent library construction,
+  keep DOM contracts current, and record measured hover-rendering costs.
+
 ### Release verification
 
 - Pin workflow actions to upstream commit SHAs, use read-only defaults and

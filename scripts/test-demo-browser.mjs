@@ -359,6 +359,45 @@ try {
     return {cases,transitions:true,gaussianDimensions:[1,4,32],sourceDescriptions:true,typedArrayCases:mismatches.length+3};
   })()`);
   // Inspect actual browser semantics and dispatch real keyboard input.
+  const profileHover = () =>
+    evaluate(`(async () => {
+    const heat=document.getElementById('heatmap'), legend=document.getElementById('heatLegend');
+    const result=qmc.correlate({dims:48,count:64,skip:0});
+    const sample=draw=>{const times=[];for(let k=0;k<110;k++){
+      const start=performance.now();draw(k);if(k>=10)times.push(performance.now()-start);
+    }times.sort((a,b)=>a-b);return {median:times[50],p95:times[95],max:times[99]};};
+    const matrix=sample(k=>Render.drawHeatmap(heat,{dims:48,matrix:result.matrix,hover:{i:k%48,j:(k*7)%48}}));
+    const scale=sample(()=>Render.drawHeatLegend(legend));
+    const check=(v,msg)=>{if(!v)throw new Error(msg)}, style=document.documentElement.style;
+    const previous=style.getPropertyValue('--corr-neg');style.setProperty('--corr-neg','#010203');
+    Render.invalidateTheme();
+    const geometry=Render.drawHeatmap(heat,{dims:1,matrix:new Float32Array([-1])});
+    const ratio=Math.min(devicePixelRatio||1,2);
+    const pixel=heat.getContext('2d').getImageData(Math.floor((geometry.left+geometry.size/2)*ratio),Math.floor((geometry.top+geometry.size/2)*ratio),1,1).data;
+    check(pixel[0]===1&&pixel[1]===2&&pixel[2]===3,'theme invalidation retained old matrix colour');
+    check(heat.width===Math.round(Math.round(heat.getBoundingClientRect().width)*ratio),'DPR/resize backing-store drift');
+    if(previous)style.setProperty('--corr-neg',previous);else style.removeProperty('--corr-neg');
+    Render.invalidateTheme();
+    const report={dimensions:48,samples:100,matrix,legend:scale,dpr:devicePixelRatio,
+      box:{width:heat.getBoundingClientRect().width,height:heat.getBoundingClientRect().height}};
+    window.dispatchEvent(new Event('resize'));await new Promise(resolve=>setTimeout(resolve,180));
+    return report;
+  })()`);
+  const hoverRendering = [await profileHover()];
+  await send(
+    "Emulation.setDeviceMetricsOverride",
+    { width: 1280, height: 900, deviceScaleFactor: 2, mobile: false },
+    sessionId,
+  );
+  await evaluate("new Promise(resolve=>setTimeout(resolve,180))");
+  hoverRendering.push(await profileHover());
+  await send("Emulation.clearDeviceMetricsOverride", {}, sessionId);
+  await evaluate("new Promise(resolve=>setTimeout(resolve,180))");
+  console.log(
+    "Maximum-width hover rendering, ms:",
+    JSON.stringify(hoverRendering),
+  );
+
   await send("Accessibility.enable", {}, sessionId);
   const auditPage = async (page) => {
     await evaluate(`(() => {

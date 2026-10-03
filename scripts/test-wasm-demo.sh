@@ -5,6 +5,8 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 TASK_DIR="$(mktemp -d)"
 trap 'rm -rf "$TASK_DIR"' EXIT
 
+node "$ROOT_DIR/scripts/test-demo-loader.mjs"
+
 # An optional existing build lets Pages validate the actual upload directory.
 SITE_DIR="${qmc_browser_site:-}"
 if [ -z "$SITE_DIR" ]; then

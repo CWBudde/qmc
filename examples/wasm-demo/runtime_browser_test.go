@@ -10,7 +10,9 @@ import (
 
 // This deliberately long-lived test binary is loaded only by the browser
 // regression runner. Neither fixture export exists in production builds.
-func TestBrowserRuntimeFixture(_ *testing.T) {
+func TestBrowserRuntimeFixture(t *testing.T) {
+	verifyDigitInspector(t)
+
 	exports["testPanic"] = func(js.Value) any { panic("browser fixture request panic") }
 	exports["testExit"] = func(js.Value) any {
 		os.Exit(0)

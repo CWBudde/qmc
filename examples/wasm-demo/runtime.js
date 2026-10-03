@@ -2,6 +2,66 @@
 (function () {
   "use strict";
 
+  // Both pages use the same progress reader and non-reader/reduced-motion
+  // fallback. Runtime startup and terminal handling remain separate below.
+  async function load(onProgress, reducedMotion = false) {
+    const go = new Go();
+    const response = await fetch("qmc.wasm");
+
+    if (!response.ok) {
+      throw new Error(`fetch qmc.wasm: ${response.status}`);
+    }
+
+    if (!response.body || !response.body.getReader || reducedMotion) {
+      onProgress(1);
+
+      return {
+        go,
+        result: WebAssembly.instantiateStreaming
+          ? await WebAssembly.instantiateStreaming(response, go.importObject)
+          : await WebAssembly.instantiate(
+              await response.arrayBuffer(),
+              go.importObject,
+            ),
+      };
+    }
+
+    const total = Number(response.headers.get("content-length")) || 0;
+    const reader = response.body.getReader();
+    const chunks = [];
+    let received = 0;
+
+    for (;;) {
+      const { done, value } = await reader.read();
+
+      if (done) {
+        break;
+      }
+
+      chunks.push(value);
+      received += value.length;
+
+      if (total > 0) {
+        onProgress(Math.min(0.98, received / total));
+      }
+    }
+
+    onProgress(1);
+
+    const bytes = new Uint8Array(received);
+    let offset = 0;
+
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.length;
+    }
+
+    return {
+      go,
+      result: await WebAssembly.instantiate(bytes, go.importObject),
+    };
+  }
+
   function create({ onError, onTerminal }) {
     let go = null;
     let dead = false;
@@ -53,5 +113,5 @@
     return { start, call, terminate };
   }
 
-  globalThis.WasmRuntime = { create };
+  globalThis.WasmRuntime = { load, create };
 })();

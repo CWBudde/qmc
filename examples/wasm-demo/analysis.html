@@ -23,11 +23,16 @@
         #bootRing       .boot-ring; JS sets --boot-progress (0..1)
         #liveRegion     aria-live="polite" announcements, throttled
         #buildInfo      footer "go1.x · js/wasm"
+        #reloadWasm     recovery button shown after terminal runtime failure
 
       Correlation heatmap:
         #heatmap              dims x dims canvas
         #heatLegend           the diverging colour scale
         #cellReadout          hover report: pair, bases, r
+        #heatSummary #heatLegendText   accessible matrix and colour descriptions
+        #corrValues #corrKeys          expandable keyboard explorer and instructions
+        #corrTable #corrCaption        grid and caption, with one moving tab stop
+        #corrHead #corrBody            dynamically generated headers and values
         #worstAdjacent        big |r| readout for the worst adjacent pair
         #worstPairLabel       "dimensions 37 and 38" sub-line
         #docReference         comparison against the README's figures
@@ -58,6 +63,7 @@
         #start #stop                  transport for the sweep
         #progressBar #progressText    progress readout
         #convChart                    the log–log chart
+        #convSummary #convConfig       accessible chart description and result snapshot
         #convRows                     <tbody> of per-N results
         #tExact #tQmcError #tMcError #tRatio    .v readouts
 
@@ -77,6 +83,7 @@
         #discStart #discStop          transport for the sweep
         #discProgressBar #discProgressText   progress readout
         #discChart                    the log–log chart
+        #discSummary #discConfig       accessible chart description and result snapshot
         #discRows                     <tbody> of per-N results
         #discCeilingNote              the sentence explaining why the N
                                       ceiling moves with the dimension slider

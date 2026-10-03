@@ -32,6 +32,18 @@ their documented fallbacks. Matched output buffers are validated before reuse.
 Recovered requests leave Go usable; actual runtime termination disables compute
 controls and offers a reload action.
 
+Both pages use `WasmRuntime.load` in runtime.js for byte-stream progress and the
+non-reader/reduced-motion instantiation path. When streaming instantiation is
+unavailable, that path reads bytes without replacing a browser global. Runtime
+startup remains separate so normal exit, traps, request recovery, and Reload
+retain the same terminal-state handling. `just test-browser` first runs the
+offline loader/DOM regressions, then tests production pages and a separate Go
+runtime fixture. The fixture checks 36 digit-inspector configurations against
+independently constructed Halton generators, including all three offered
+randomizations, skip/leap, clamping, maximum indices/dimensions, raw expansions,
+fixed-permutation tails, and rejected requests. No library internals or new
+production exports were added solely for this inspection.
+
 ## Accessible inspection
 
 The heatmap has a textual correlation grid with row/column dimension headers,
@@ -40,6 +52,26 @@ both sweeps expose named progressbars and full result tables. The Point Lab
 reveal slider and digit inspector provide keyboard inspection. Reduced-motion
 behavior, visible focus, and throttled final announcements are browser-tested.
 The demo README contains keyboard steps and limits of the automated checks.
+
+## Rendering maintenance decision
+
+Retain full hover redraws for now. On 2026-10-03, Chrome 144.0.7559.109 on
+Linux/amd64 with an i7-1255U measured 100 redraws after ten warmups at the
+48-dimension limit. At a 295.5-pixel square and DPR 1, the heatmap median/p95
+was 1.115/2.070 ms and the legend 0.115/0.275 ms. At a 344.34-pixel square and
+DPR 2, the heatmap was 0.830/1.020 ms and the legend 0.155/0.195 ms. The shared
+browser recipe reports these samples; they measure JavaScript/canvas command
+submission in headless Chrome, not end-to-end frame presentation or every device.
+Runs were sequential, with no concurrent benchmark workload.
+
+These modest costs do not presently justify a retained bitmap and its separate
+data/size/theme ownership. Revisit caching if a representative slower device
+or larger layout demonstrates a material problem. Current redraws always use
+current matrix data and canvas geometry; resize and DPR callbacks redraw, and
+DPR callbacks call `Render.invalidateTheme`. CSS-variable reads already have
+an explicit theme cache invalidator. There is no theme-switching control: any
+future theme change must invalidate that cache and redraw all canvases. Browser
+regressions check changed theme colours and resized/DPR-scaled backing stores.
 
 ## Quality gates
 
@@ -60,7 +92,7 @@ local, with no analytics, submissions, or third-party font requests.
 
 ## Remaining work
 
-All DEMO-01 through DEMO-09 findings have completion evidence in
-[PLAN.md](../PLAN.md). Smaller maintenance decisions remain DEMO-10, and measurement/API
+All DEMO-01 through DEMO-10 findings have completion evidence in
+[PLAN.md](../PLAN.md). Measurement/API
 proposals remain DOC-01/PERF-01/API-01. Use the task records and current demo
 README for implementation status.
