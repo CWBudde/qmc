@@ -18,10 +18,10 @@ package qmc
 //
 // Each node uses Fisher-Yates with rejection sampling, avoiding modulo bias
 // under the pseudorandom-word model used by random-digit
-// scrambling. There are p^k nodes at depth k so none of them can be
-// precomputed, and materialising one costs O(p); nestedDigit explains how that
-// is avoided without giving up the uniformity, and nestedRadicalInverse
-// explains why the obvious cache is not the way to avoid it.
+// scrambling. There are p^k nodes at depth k, so precomputing the whole tree is
+// impractical. A bounded immutable root cache amortizes the reused first digit;
+// deeper entries are evaluated lazily by nestedDigit. See docs/performance.md
+// for the separate root, shallow-node, and full-tree measurements.
 //
 // # This used to be an affine construction, and the swap is measured
 //
@@ -86,36 +86,11 @@ package qmc
 // unbiasedness guarantee. Independent randomly selected seeds measure seed
 // variability, which does not include truncation or PRNG bias.
 //
-// It is not a free upgrade over WithScrambling and it is deliberately not the
-// default. Measured at 39 dimensions, against random-digit scrambling:
-//
-//   - Integration is roughly twice as accurate. RMS relative error at n=4096
-//     is 41x better than Monte Carlo over 40 seeds against random-digit's 24x,
-//     and 42x against 26x over 80. Over 10 seeds the measurement is too noisy
-//     to quote — it read 32x against 18x, and a variant differing only in the
-//     direction of a shuffle read 44x on the same seeds.
-//   - Adjacent-pair correlation at small point counts is a shade better rather
-//     than worse. Over 30 seeds at 600 points the median is 0.089 against
-//     0.093, the 90th percentile 0.123 against 0.126, and the worst 0.141
-//     against 0.161.
-//   - It costs about forty times as much per point. AtInto at 39 dimensions
-//     measured 20881 ns/op against 548 for random-digit scrambling and 467
-//     unscrambled, medians of seven runs on one machine — the ratio is the
-//     part that travels. It is about 484 tree nodes per point, of which 366
-//     are the leading-zero tails of the small bases, and each one now costs a
-//     draw from a uniform permutation rather than a table lookup.
-//
-// So: reach for it when the budget is spent on an integral or an expectation,
-// where the extra digit-level uniformity is what is being paid for, and when
-// the integrand rather than the point count is what the wall clock is going
-// on. Keep WithScrambling when the points are cheap to consume — a parameter
-// sweep, a set of trial configurations — where forty times the cost per point
-// buys an improvement in a statistic that was already acceptable.
-//
-// Before this version this option drew its per-node permutations from the
-// affine family x -> a*x+b mod p rather than from all p!. It integrated
-// somewhat better and had a much heavier correlation tail; the points it
-// produces have changed. See the top of nested.go for both measurements.
+// A bounded immutable root-permutation cache amortizes the first digit.
+// Construction retains at most 64 KiB of cached digit entries, plus roots and
+// prefix offsets; reuse the generator across a run. Deeper nodes are evaluated
+// lazily. Cost and integration accuracy depend on the workload; repeated
+// measurements and the cache tradeoff are recorded in docs/performance.md.
 func WithNestedScrambling(seed uint64) Option {
 	return func(s *settings) {
 		s.randomize = randomizeNested
@@ -125,23 +100,59 @@ func WithNestedScrambling(seed uint64) Option {
 
 // nestedScrambler holds the per-dimension root of the permutation tree.
 //
-// Only the roots are kept, not the seed they came from. Everything below a
-// root is derived by walking the digits, so a retained seed would be a second
-// route to the same values — and the first time someone derived a node from
-// (seed, dim, depth) instead of by walking, the two would disagree for exactly
-// the indices whose digit paths differ, which is most indices but not most
-// test cases.
+// Roots and a bounded prefix of their permutations are fixed at construction.
+// Everything below a root is still derived by walking the original digit path;
+// cache hits preserve the same permutation entries and hashes. No cache is
+// filled or modified during indexed calls.
 type nestedScrambler struct {
-	roots []uint64
+	roots            []uint64
+	rootPermutations []int32
+	rootOffsets      []int
 }
 
-func newNestedScrambler(seed uint64, dims int) *nestedScrambler {
-	n := &nestedScrambler{roots: make([]uint64, dims)}
-	for d := range n.roots {
-		n.roots[d] = nestedRoot(seed, d)
+// Bound table storage independently of dimensions and indices. Offsets cover
+// only the cached prefix, not every requested dimension. These slices are
+// immutable after construction and indexed reads require no shared scratch.
+const nestedRootCacheEntries = 64 * 1024 / 4
+
+func newNestedScrambler(seed uint64, bases []int) *nestedScrambler {
+	entries, cachedDims := 0, 0
+	for _, base := range bases {
+		if base > nestedRootCacheEntries-entries {
+			break
+		}
+
+		entries += base
+		cachedDims++
 	}
 
+	n := &nestedScrambler{
+		roots:            make([]uint64, len(bases)),
+		rootPermutations: make([]int32, entries),
+		rootOffsets:      make([]int, cachedDims+1),
+	}
+	offset := 0
+
+	for d := range n.roots {
+		n.roots[d] = nestedRoot(seed, d)
+		if d < cachedDims {
+			n.rootOffsets[d] = offset
+			nestedPermutation(n.roots[d], n.rootPermutations[offset:offset+bases[d]])
+			offset += bases[d]
+		}
+	}
+
+	n.rootOffsets[cachedDims] = offset
+
 	return n
+}
+
+func (n *nestedScrambler) rootPermutation(dim int) []int32 {
+	if dim+1 >= len(n.rootOffsets) {
+		return nil
+	}
+
+	return n.rootPermutations[n.rootOffsets[dim]:n.rootOffsets[dim+1]]
 }
 
 // nestedRoot derives the tree root for one dimension.
@@ -312,33 +323,18 @@ const nestedPermStack = 512
 // inverses: callers are promised [0,1), and a tail of near-maximal digits
 // rounds up.
 //
-// # There is no permutation cache, and the reason is measured
-//
-// The natural way to amortise a shuffle per digit is a cache of permutations
-// keyed by node: the shallow nodes are shared by many indices, so the O(p)
-// work would be paid once per node instead of once per visit. The premise
-// people reach for is that the tree depth is bounded by the digit count, so
-// the cache stays small. The depth is indeed bounded. The node count is not,
-// and it is the node count that a cache holds.
-//
-// Counted on the 39-dimension, 4096-point workload the benchmarks use, the
-// walk touches 1,982,974 nodes of which 1,544,674 are distinct: a reuse factor
-// of 1.28, and 382 MB of permutation arrays to hold them. The leading-zero
-// tail is why. It is 366 of the 484 nodes a point visits, every
-// one of those tails hangs below a different index's explicit digits, and no
-// node in one is ever reached twice. The distinct-node count therefore grows
-// with the number of points drawn, not with the number of digits.
-// BenchmarkNestedNodeCache measures both numbers so the claim stays checked.
-//
-// A 28% ceiling does not pay for 382 MB, and it does not pay for the other
-// cost either. Halton.At is documented as safe to call from any number of
-// goroutines at once — it is how this package tells callers to drive one
-// sequence from a worker pool — and a map populated on first visit would end
-// that, whether it were fixed afterwards with a mutex, a sync.Map, or a race
-// nobody noticed. Keeping the scramble stateless keeps that promise exactly as
-// written. The O(p) shuffle is instead avoided by not running it: see
-// nestedDigit.
+// Roots are cached eagerly under a fixed table budget; deeper nodes remain
+// stateless. A full-tree cache has a different cost: BenchmarkNestedNodeCache
+// reports node visits, distinct nodes, and estimated full-permutation storage
+// on a fixed workload. Its memory grows with the sampled indices and a lazy
+// map would require synchronization. Bounded shallow caching is feasible but
+// adds construction/memory beyond the root-only choice. The measurements and
+// separate decisions are recorded in docs/performance.md.
 func nestedRadicalInverse(index int, base int, root uint64) float64 {
+	return nestedInverse(index, base, root, nil)
+}
+
+func nestedInverse(index int, base int, root uint64, rootPermutation []int32) float64 {
 	if base < 2 || index < 0 {
 		return 0
 	}
@@ -354,6 +350,18 @@ func nestedRadicalInverse(index int, base int, root uint64) float64 {
 	place := invBase
 	node := root
 	result := 0.0
+
+	// A full root permutation evaluates exactly the entry nestedDigit would
+	// produce. Peel that one digit without changing the remaining arithmetic,
+	// child hashes, zero tail, or scratch ownership. For index zero this is the
+	// first zero-tail digit, with the same stopping condition as the loop below.
+	if rootPermutation != nil {
+		digit := index % base
+		result += float64(rootPermutation[digit]) * place
+		node = nestedChild(node, uint64(digit))
+		place *= invBase
+		index /= base
+	}
 
 	for i := index; i > 0; i /= base {
 		digit := i % base

@@ -42,6 +42,12 @@ type Halton struct {
 // dims is bounded only by how many primes fit in memory; there is no fixed
 // base table to run out of.
 // A skip that leaves no representable first raw index is an error.
+// WithScrambling constructs one int32 permutation per prime base, with memory
+// proportional to the sum of those bases. At 1000 dimensions the measured
+// constructor allocates about 15.6 MB; reuse a generator across a run rather
+// than constructing it per point. WithNestedScrambling instead keeps roots
+// and a bounded immutable root-permutation cache. See docs/performance.md for
+// repeated timings, allocations, and the cache's construction tradeoff.
 func NewHalton(dims int, opts ...Option) (*Halton, error) {
 	if dims < 1 {
 		return nil, fmt.Errorf("qmc: dims must be >= 1, got %d", dims)
@@ -94,7 +100,7 @@ func NewHalton(dims int, opts ...Option) (*Halton, error) {
 	}
 	switch cfg.randomize {
 	case randomizeNested:
-		h.nest = newNestedScrambler(cfg.seed, dims)
+		h.nest = newNestedScrambler(cfg.seed, bases)
 	case randomizeDigitPermutation:
 		h.perms = make([][]int32, dims)
 		for d, base := range h.bases {
@@ -253,7 +259,7 @@ func (h *Halton) fill(i int, dst []float64) {
 	switch {
 	case h.nest != nil:
 		for d := 0; d < h.dims; d++ {
-			dst[d] = nestedRadicalInverse(index, h.bases[d], h.nest.roots[d])
+			dst[d] = nestedInverse(index, h.bases[d], h.nest.roots[d], h.nest.rootPermutation(d))
 		}
 	case h.perms != nil:
 		for d := 0; d < h.dims; d++ {

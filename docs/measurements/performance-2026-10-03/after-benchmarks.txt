@@ -1,0 +1,231 @@
+goos: linux
+goarch: amd64
+pkg: github.com/cwbudde/qmc
+cpu: 12th Gen Intel(R) Core(TM) i7-1255U
+BenchmarkReviewPoint/Halton/plain/AtInto         	  737746	       303.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/plain/AtInto         	  830083	       282.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/plain/AtInto         	  822294	       284.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/plain/AtInto         	  931310	       275.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/plain/AtInto         	  896533	       286.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/plain/NextInto       	  896737	       283.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/plain/NextInto       	  822247	       271.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/plain/NextInto       	  908536	       270.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/plain/NextInto       	  877113	       279.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/plain/NextInto       	  860445	       273.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/fixed/AtInto         	  721291	       348.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/fixed/AtInto         	  705529	       404.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/fixed/AtInto         	  587337	       365.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/fixed/AtInto         	  722599	       357.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/fixed/AtInto         	  702061	       348.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/fixed/NextInto       	  702375	       356.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/fixed/NextInto       	  700396	       350.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/fixed/NextInto       	  632492	       361.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/fixed/NextInto       	  667594	       358.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/fixed/NextInto       	  702013	       357.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/nested/AtInto        	   34086	      7202 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/nested/AtInto        	   34430	      7124 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/nested/AtInto        	   33778	      7225 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/nested/AtInto        	   34616	      7171 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/nested/AtInto        	   33945	      7238 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/nested/NextInto      	   34464	      7452 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/nested/NextInto      	   33430	      8313 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/nested/NextInto      	   32679	      7525 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/nested/NextInto      	   32292	      8505 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/nested/NextInto      	   28178	      7691 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/leap/AtInto          	  552139	       431.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/leap/AtInto          	  580916	       457.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/leap/AtInto          	  591620	       436.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/leap/AtInto          	  582114	       436.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/leap/AtInto          	  530216	       414.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/leap/NextInto        	  606230	       451.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/leap/NextInto        	  565914	       424.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/leap/NextInto        	  532909	       421.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/leap/NextInto        	  549313	       414.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Halton/leap/NextInto        	  595455	       408.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/plain/AtInto          	 1496354	       161.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/plain/AtInto          	 1502389	       159.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/plain/AtInto          	 1501012	       162.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/plain/AtInto          	 1409163	       166.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/plain/AtInto          	 1492720	       170.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/plain/NextInto        	 4127625	        56.27 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/plain/NextInto        	 4066416	        57.61 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/plain/NextInto        	 4149460	        56.91 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/plain/NextInto        	 4198915	        58.89 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/plain/NextInto        	 3461428	        68.98 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/shift/AtInto          	 1333926	       169.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/shift/AtInto          	 1419414	       166.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/shift/AtInto          	 1421648	       165.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/shift/AtInto          	 1392081	       171.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/shift/AtInto          	 1404363	       172.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/shift/NextInto        	 4389306	        54.78 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/shift/NextInto        	 4219501	        57.98 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/shift/NextInto        	 4073058	        78.79 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/shift/NextInto        	 4242094	        57.90 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/shift/NextInto        	 2740911	        77.59 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/Owen/AtInto           	  836048	       286.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/Owen/AtInto           	  861008	       280.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/Owen/AtInto           	  854523	       430.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/Owen/AtInto           	  839479	       290.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/Owen/AtInto           	  851277	       287.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/Owen/NextInto         	 1295442	       204.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/Owen/NextInto         	 1256116	       192.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/Owen/NextInto         	 1292844	       186.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/Owen/NextInto         	 1278966	       184.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/Owen/NextInto         	 1000000	       202.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/leap/AtInto           	 1000000	       227.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/leap/AtInto           	 1000000	       230.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/leap/AtInto           	 1000000	       226.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/leap/AtInto           	 1000000	       221.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/leap/AtInto           	 1000000	       229.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/leap/NextInto         	 1000000	       221.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/leap/NextInto         	 1000000	       221.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/leap/NextInto         	 1000000	       231.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/leap/NextInto         	 1000000	       227.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewPoint/Sobol/leap/NextInto         	 1000000	       221.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewConstruction/Halton/plain/39d     	  193648	      1099 ns/op	    2080 B/op	       5 allocs/op
+BenchmarkReviewConstruction/Halton/plain/39d     	  206064	      1114 ns/op	    2080 B/op	       5 allocs/op
+BenchmarkReviewConstruction/Halton/plain/39d     	  204249	      1188 ns/op	    2080 B/op	       5 allocs/op
+BenchmarkReviewConstruction/Halton/plain/39d     	  202213	      1144 ns/op	    2080 B/op	       5 allocs/op
+BenchmarkReviewConstruction/Halton/plain/39d     	  188812	      1107 ns/op	    2080 B/op	       5 allocs/op
+BenchmarkReviewConstruction/Halton/fixed/39d     	   13760	     18390 ns/op	   15408 B/op	      47 allocs/op
+BenchmarkReviewConstruction/Halton/fixed/39d     	   13972	     18308 ns/op	   15408 B/op	      47 allocs/op
+BenchmarkReviewConstruction/Halton/fixed/39d     	   14308	     17336 ns/op	   15408 B/op	      47 allocs/op
+BenchmarkReviewConstruction/Halton/fixed/39d     	   14413	     16746 ns/op	   15408 B/op	      47 allocs/op
+BenchmarkReviewConstruction/Halton/fixed/39d     	   14077	     18113 ns/op	   15408 B/op	      47 allocs/op
+BenchmarkReviewConstruction/Halton/nested/39d    	   12868	     17139 ns/op	   15120 B/op	      11 allocs/op
+BenchmarkReviewConstruction/Halton/nested/39d    	   14910	     16679 ns/op	   15120 B/op	      11 allocs/op
+BenchmarkReviewConstruction/Halton/nested/39d    	   14680	     16288 ns/op	   15120 B/op	      11 allocs/op
+BenchmarkReviewConstruction/Halton/nested/39d    	   14616	     16610 ns/op	   15120 B/op	      11 allocs/op
+BenchmarkReviewConstruction/Halton/nested/39d    	   15200	     17173 ns/op	   15120 B/op	      11 allocs/op
+BenchmarkReviewConstruction/Sobol/plain/39d      	   36122	      6653 ns/op	    5744 B/op	       5 allocs/op
+BenchmarkReviewConstruction/Sobol/plain/39d      	   40228	      6245 ns/op	    5744 B/op	       5 allocs/op
+BenchmarkReviewConstruction/Sobol/plain/39d      	   29977	      7360 ns/op	    5744 B/op	       5 allocs/op
+BenchmarkReviewConstruction/Sobol/plain/39d      	   38985	      6019 ns/op	    5744 B/op	       5 allocs/op
+BenchmarkReviewConstruction/Sobol/plain/39d      	   33381	      6245 ns/op	    5744 B/op	       5 allocs/op
+BenchmarkReviewConstruction/Halton/plain/500d    	   18848	     12699 ns/op	   24736 B/op	       5 allocs/op
+BenchmarkReviewConstruction/Halton/plain/500d    	   17250	     13665 ns/op	   24736 B/op	       5 allocs/op
+BenchmarkReviewConstruction/Halton/plain/500d    	   17206	     12528 ns/op	   24736 B/op	       5 allocs/op
+BenchmarkReviewConstruction/Halton/plain/500d    	   18267	     12933 ns/op	   24736 B/op	       5 allocs/op
+BenchmarkReviewConstruction/Halton/plain/500d    	   14541	     14413 ns/op	   24736 B/op	       5 allocs/op
+BenchmarkReviewConstruction/Halton/fixed/500d    	      49	   4915738 ns/op	 3506936 B/op	     508 allocs/op
+BenchmarkReviewConstruction/Halton/fixed/500d    	      50	   5392873 ns/op	 3506936 B/op	     508 allocs/op
+BenchmarkReviewConstruction/Halton/fixed/500d    	      50	   4911376 ns/op	 3506936 B/op	     508 allocs/op
+BenchmarkReviewConstruction/Halton/fixed/500d    	      50	   4950214 ns/op	 3506936 B/op	     508 allocs/op
+BenchmarkReviewConstruction/Halton/fixed/500d    	      48	   4990016 ns/op	 3506936 B/op	     508 allocs/op
+BenchmarkReviewConstruction/Halton/nested/500d   	    2040	    112901 ns/op	   95184 B/op	      11 allocs/op
+BenchmarkReviewConstruction/Halton/nested/500d   	    2454	    102329 ns/op	   95184 B/op	      11 allocs/op
+BenchmarkReviewConstruction/Halton/nested/500d   	    2119	    104894 ns/op	   95184 B/op	      11 allocs/op
+BenchmarkReviewConstruction/Halton/nested/500d   	    2161	    109492 ns/op	   95184 B/op	      11 allocs/op
+BenchmarkReviewConstruction/Halton/nested/500d   	    2130	    103969 ns/op	   95184 B/op	      11 allocs/op
+BenchmarkReviewConstruction/Sobol/plain/500d     	    1534	    154445 ns/op	   67792 B/op	       5 allocs/op
+BenchmarkReviewConstruction/Sobol/plain/500d     	    1539	    170513 ns/op	   67792 B/op	       5 allocs/op
+BenchmarkReviewConstruction/Sobol/plain/500d     	     906	    230584 ns/op	   67792 B/op	       5 allocs/op
+BenchmarkReviewConstruction/Sobol/plain/500d     	    1498	    177382 ns/op	   67792 B/op	       5 allocs/op
+BenchmarkReviewConstruction/Sobol/plain/500d     	    1477	    190856 ns/op	   67792 B/op	       5 allocs/op
+BenchmarkReviewConstruction/Halton/plain/1000d   	    3963	     52373 ns/op	   49312 B/op	       5 allocs/op
+BenchmarkReviewConstruction/Halton/plain/1000d   	    4418	     52448 ns/op	   49312 B/op	       5 allocs/op
+BenchmarkReviewConstruction/Halton/plain/1000d   	    4065	     52653 ns/op	   49312 B/op	       5 allocs/op
+BenchmarkReviewConstruction/Halton/plain/1000d   	    3912	     54887 ns/op	   49312 B/op	       5 allocs/op
+BenchmarkReviewConstruction/Halton/plain/1000d   	    3974	     52104 ns/op	   49312 B/op	       5 allocs/op
+BenchmarkReviewConstruction/Halton/fixed/1000d   	       8	  25321580 ns/op	15622264 B/op	    1008 allocs/op
+BenchmarkReviewConstruction/Halton/fixed/1000d   	       9	  22324862 ns/op	15622264 B/op	    1008 allocs/op
+BenchmarkReviewConstruction/Halton/fixed/1000d   	       9	  23368523 ns/op	15622264 B/op	    1008 allocs/op
+BenchmarkReviewConstruction/Halton/fixed/1000d   	       9	  23679202 ns/op	15622264 B/op	    1008 allocs/op
+BenchmarkReviewConstruction/Halton/fixed/1000d   	      10	  21818844 ns/op	15622264 B/op	    1008 allocs/op
+BenchmarkReviewConstruction/Halton/nested/1000d  	    1720	    129897 ns/op	  123856 B/op	      11 allocs/op
+BenchmarkReviewConstruction/Halton/nested/1000d  	    1924	    124515 ns/op	  123856 B/op	      11 allocs/op
+BenchmarkReviewConstruction/Halton/nested/1000d  	    1797	    139460 ns/op	  123856 B/op	      11 allocs/op
+BenchmarkReviewConstruction/Halton/nested/1000d  	    1686	    143618 ns/op	  123856 B/op	      11 allocs/op
+BenchmarkReviewConstruction/Halton/nested/1000d  	    1606	    160838 ns/op	  123856 B/op	      11 allocs/op
+BenchmarkReviewConstruction/Sobol/plain/1000d    	     732	    328116 ns/op	  135376 B/op	       5 allocs/op
+BenchmarkReviewConstruction/Sobol/plain/1000d    	     705	    331380 ns/op	  135376 B/op	       5 allocs/op
+BenchmarkReviewConstruction/Sobol/plain/1000d    	     740	    319485 ns/op	  135376 B/op	       5 allocs/op
+BenchmarkReviewConstruction/Sobol/plain/1000d    	     723	    326234 ns/op	  135376 B/op	       5 allocs/op
+BenchmarkReviewConstruction/Sobol/plain/1000d    	     757	    318785 ns/op	  135376 B/op	       5 allocs/op
+BenchmarkReviewArithmetic/original               	  868572	       264.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewArithmetic/original               	  830428	       263.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewArithmetic/original               	  956005	       265.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewArithmetic/original               	  917978	       271.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewArithmetic/original               	  829860	       267.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewArithmetic/binary                 	 1000000	       239.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewArithmetic/binary                 	 1000000	       249.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewArithmetic/binary                 	  917203	       240.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewArithmetic/binary                 	 1000000	       240.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewArithmetic/binary                 	  964155	       247.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewArithmetic/reciprocal             	  792098	       289.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewArithmetic/reciprocal             	  877387	       288.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewArithmetic/reciprocal             	  862958	       287.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewArithmetic/reciprocal             	  842346	       290.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewArithmetic/reciprocal             	  825226	       289.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewCacheConstruction/39d/shallow=false         	   15025	     15559 ns/op	   14320 B/op	      40 allocs/op
+BenchmarkReviewCacheConstruction/39d/shallow=false         	   15322	     15855 ns/op	   14320 B/op	      40 allocs/op
+BenchmarkReviewCacheConstruction/39d/shallow=false         	   15488	     16312 ns/op	   14320 B/op	      40 allocs/op
+BenchmarkReviewCacheConstruction/39d/shallow=false         	   15612	     15576 ns/op	   14320 B/op	      40 allocs/op
+BenchmarkReviewCacheConstruction/39d/shallow=false         	   15608	     16029 ns/op	   14320 B/op	      40 allocs/op
+BenchmarkReviewCacheConstruction/39d/shallow=true          	    2454	     90560 ns/op	   79944 B/op	     437 allocs/op
+BenchmarkReviewCacheConstruction/39d/shallow=true          	    2737	     86806 ns/op	   79944 B/op	     437 allocs/op
+BenchmarkReviewCacheConstruction/39d/shallow=true          	    2887	     93785 ns/op	   79944 B/op	     437 allocs/op
+BenchmarkReviewCacheConstruction/39d/shallow=true          	    2820	     86498 ns/op	   79944 B/op	     437 allocs/op
+BenchmarkReviewCacheConstruction/39d/shallow=true          	    2534	     86568 ns/op	   79944 B/op	     437 allocs/op
+BenchmarkReviewCacheConstruction/1000d/shallow=false       	    2605	     92405 ns/op	  116912 B/op	      84 allocs/op
+BenchmarkReviewCacheConstruction/1000d/shallow=false       	    2354	     93921 ns/op	  116912 B/op	      84 allocs/op
+BenchmarkReviewCacheConstruction/1000d/shallow=false       	    2450	     86609 ns/op	  116912 B/op	      84 allocs/op
+BenchmarkReviewCacheConstruction/1000d/shallow=false       	    2622	     87739 ns/op	  116912 B/op	      84 allocs/op
+BenchmarkReviewCacheConstruction/1000d/shallow=false       	    2608	     86709 ns/op	  116912 B/op	      84 allocs/op
+BenchmarkReviewCacheConstruction/1000d/shallow=true        	    2535	     99547 ns/op	  119720 B/op	     131 allocs/op
+BenchmarkReviewCacheConstruction/1000d/shallow=true        	    2556	     92651 ns/op	  119720 B/op	     131 allocs/op
+BenchmarkReviewCacheConstruction/1000d/shallow=true        	    2322	     89459 ns/op	  119720 B/op	     131 allocs/op
+BenchmarkReviewCacheConstruction/1000d/shallow=true        	    2589	     91627 ns/op	  119720 B/op	     131 allocs/op
+BenchmarkReviewCacheConstruction/1000d/shallow=true        	    2503	     90742 ns/op	  119720 B/op	     131 allocs/op
+BenchmarkReviewCache/uncached                              	   16036	     15291 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewCache/uncached                              	   16129	     14863 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewCache/uncached                              	   16545	     14746 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewCache/uncached                              	   16123	     15487 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewCache/uncached                              	   15928	     14896 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewCache/root                                  	   32416	      7752 ns/op	     11656 table-B	       0 B/op	       0 allocs/op
+BenchmarkReviewCache/root                                  	   32331	      7584 ns/op	     11656 table-B	       0 B/op	       0 allocs/op
+BenchmarkReviewCache/root                                  	   32841	      7719 ns/op	     11656 table-B	       0 B/op	       0 allocs/op
+BenchmarkReviewCache/root                                  	   32112	      7833 ns/op	     11656 table-B	       0 B/op	       0 allocs/op
+BenchmarkReviewCache/root                                  	   30469	      7727 ns/op	     11656 table-B	       0 B/op	       0 allocs/op
+BenchmarkReviewCache/shallow                               	   37074	      7148 ns/op	     64756 table-B	       0 B/op	       0 allocs/op
+BenchmarkReviewCache/shallow                               	   36356	      6730 ns/op	     64756 table-B	       0 B/op	       0 allocs/op
+BenchmarkReviewCache/shallow                               	   31988	      8120 ns/op	     64756 table-B	       0 B/op	       0 allocs/op
+BenchmarkReviewCache/shallow                               	   33204	      7006 ns/op	     64756 table-B	       0 B/op	       0 allocs/op
+BenchmarkReviewCache/shallow                               	   36242	      7114 ns/op	     64756 table-B	       0 B/op	       0 allocs/op
+BenchmarkReviewBulk/dimension-first=false                  	     951	    248426 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewBulk/dimension-first=false                  	    1012	    246046 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewBulk/dimension-first=false                  	    1016	    252799 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewBulk/dimension-first=false                  	     969	    241512 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewBulk/dimension-first=false                  	     942	    257348 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewBulk/dimension-first=true                   	    1024	    244754 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewBulk/dimension-first=true                   	     990	    249707 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewBulk/dimension-first=true                   	     967	    242922 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewBulk/dimension-first=true                   	     934	    244605 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewBulk/dimension-first=true                   	     936	    250849 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewIntegration/MC                              	       9	  23317108 ns/op	         0.005131 RMS	         0.0004683 RMS-SE	  215040 B/op	      40 allocs/op
+BenchmarkReviewIntegration/MC                              	       9	  22987601 ns/op	         0.005131 RMS	         0.0004683 RMS-SE	  215040 B/op	      40 allocs/op
+BenchmarkReviewIntegration/MC                              	       9	  23120163 ns/op	         0.005131 RMS	         0.0004683 RMS-SE	  215040 B/op	      40 allocs/op
+BenchmarkReviewIntegration/MC                              	       9	  23402936 ns/op	         0.005131 RMS	         0.0004683 RMS-SE	  215040 B/op	      40 allocs/op
+BenchmarkReviewIntegration/MC                              	       9	  23926604 ns/op	         0.005131 RMS	         0.0004683 RMS-SE	  215040 B/op	      40 allocs/op
+BenchmarkReviewIntegration/Halton/fixed                    	       4	  64837065 ns/op	         0.0002226 RMS	         0.0000197 RMS-SE	  614400 B/op	    1760 allocs/op
+BenchmarkReviewIntegration/Halton/fixed                    	       4	  63924687 ns/op	         0.0002226 RMS	         0.0000197 RMS-SE	  614400 B/op	    1760 allocs/op
+BenchmarkReviewIntegration/Halton/fixed                    	       4	  66581314 ns/op	         0.0002226 RMS	         0.0000197 RMS-SE	  614400 B/op	    1760 allocs/op
+BenchmarkReviewIntegration/Halton/fixed                    	       4	  64110450 ns/op	         0.0002226 RMS	         0.0000197 RMS-SE	  614400 B/op	    1760 allocs/op
+BenchmarkReviewIntegration/Halton/fixed                    	       4	  66781908 ns/op	         0.0002226 RMS	         0.0000197 RMS-SE	  614400 B/op	    1760 allocs/op
+BenchmarkReviewIntegration/Halton/nested                   	       1	1310113409 ns/op	         0.0001322 RMS	         0.0000112 RMS-SE	  602880 B/op	     320 allocs/op
+BenchmarkReviewIntegration/Halton/nested                   	       1	1358355193 ns/op	         0.0001322 RMS	         0.0000112 RMS-SE	  602880 B/op	     320 allocs/op
+BenchmarkReviewIntegration/Halton/nested                   	       1	1241351510 ns/op	         0.0001322 RMS	         0.0000112 RMS-SE	  602880 B/op	     320 allocs/op
+BenchmarkReviewIntegration/Halton/nested                   	       1	1287194577 ns/op	         0.0001322 RMS	         0.0000112 RMS-SE	  602880 B/op	     320 allocs/op
+BenchmarkReviewIntegration/Halton/nested                   	       1	1235307852 ns/op	         0.0001322 RMS	         0.0000112 RMS-SE	  602880 B/op	     320 allocs/op
+BenchmarkReviewIntegration/Sobol/shift                     	       6	  35105200 ns/op	         0.0001568 RMS	         0.0000198 RMS-SE	  235520 B/op	     200 allocs/op
+BenchmarkReviewIntegration/Sobol/shift                     	       6	  35702942 ns/op	         0.0001568 RMS	         0.0000198 RMS-SE	  235520 B/op	     200 allocs/op
+BenchmarkReviewIntegration/Sobol/shift                     	       6	  36893314 ns/op	         0.0001568 RMS	         0.0000198 RMS-SE	  235520 B/op	     200 allocs/op
+BenchmarkReviewIntegration/Sobol/shift                     	       6	  43564224 ns/op	         0.0001568 RMS	         0.0000198 RMS-SE	  235520 B/op	     200 allocs/op
+BenchmarkReviewIntegration/Sobol/shift                     	       6	  39539468 ns/op	         0.0001568 RMS	         0.0000198 RMS-SE	  235520 B/op	     200 allocs/op
+BenchmarkReviewIntegration/Sobol/Owen                      	       4	  58990268 ns/op	         0.0001277 RMS	         0.0000146 RMS-SE	  235520 B/op	     200 allocs/op
+BenchmarkReviewIntegration/Sobol/Owen                      	       4	  56040981 ns/op	         0.0001277 RMS	         0.0000146 RMS-SE	  235520 B/op	     200 allocs/op
+BenchmarkReviewIntegration/Sobol/Owen                      	       4	  53237988 ns/op	         0.0001277 RMS	         0.0000146 RMS-SE	  235520 B/op	     200 allocs/op
+BenchmarkReviewIntegration/Sobol/Owen                      	       4	  61777665 ns/op	         0.0001277 RMS	         0.0000146 RMS-SE	  235520 B/op	     200 allocs/op
+BenchmarkReviewIntegration/Sobol/Owen                      	       4	  59979952 ns/op	         0.0001277 RMS	         0.0000146 RMS-SE	  235520 B/op	     200 allocs/op
+PASS
+ok  	github.com/cwbudde/qmc	73.598s

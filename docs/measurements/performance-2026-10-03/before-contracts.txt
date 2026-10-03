@@ -1,0 +1,6 @@
+=== RUN   TestReviewExperimentContracts
+    performance_review_test.go:356: arithmetic compatibility: binary changes=0 reciprocal changes=7 max absolute error=5.551115123125783e-17
+    performance_review_test.go:366: binary compatibility including 4096 full-width indices: changes=1019
+--- PASS: TestReviewExperimentContracts (0.00s)
+PASS
+ok  	github.com/cwbudde/qmc	0.005s

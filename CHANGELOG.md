@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Performance
+
+- Cache a bounded prefix of nested Halton root permutations at construction,
+  preserving exact seeded coordinates and concurrent indexed access. Digit
+  tables use at most 64 KiB; constructor memory and work increase in exchange
+  for lower per-point cost. Deeper-node scratch allocation rules are unchanged.
+- Add reproducible, fixed-window throughput/construction/integration benchmarks
+  and separate compatibility experiments for arithmetic, bulk fills, and caches.
+
 ### Demo maintenance
 
 - Share the Point Lab and Bench WASM progress loader while retaining their

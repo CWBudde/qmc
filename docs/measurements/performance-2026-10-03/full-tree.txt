@@ -1,0 +1,8 @@
+Command: ['go', 'test', '-run', '^$', '-bench', '^BenchmarkNestedNodeCache$', '-benchtime=1x', '-count=1', '-benchmem', '-cpu=1', '.']
+goos: linux
+goarch: amd64
+pkg: github.com/cwbudde/qmc
+cpu: 12th Gen Intel(R) Core(TM) i7-1255U
+BenchmarkNestedNodeCache 	       1	 129345047 ns/op	       381.9 cache-MB	   1544674 distinct-nodes	         1.284 reuse	   1982974 visits	142316616 B/op	  154018 allocs/op
+PASS
+ok  	github.com/cwbudde/qmc	0.132s

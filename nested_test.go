@@ -726,12 +726,9 @@ var sinkNested float64
 // figure in this file's doc comments was measured at.
 const benchNestedDims = 39
 
-// BenchmarkNewHaltonNested is the construction cost, which is the one number
-// this scheme is cheap at: the constructor derives one root hash per dimension
-// and nothing else, where random-digit scrambling builds a permutation per
-// dimension and so does work proportional to the sum of the bases. Everything
-// nested scrambling costs is deferred to the point where a digit is actually
-// rewritten.
+// BenchmarkNewHaltonNested includes root derivation and the bounded immutable
+// root-permutation cache. Review baselines and cache tradeoffs are in
+// docs/performance.md; deeper-node work stays deferred to indexed calls.
 func BenchmarkNewHaltonNested(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()

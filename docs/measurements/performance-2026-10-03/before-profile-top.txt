@@ -1,0 +1,22 @@
+File: qmc.test
+Build ID: ed65a64e5514c718ed3fc8a17911ed401e8ac7d1
+Type: cpu
+Time: 2026-10-03 06:24:55 CEST
+Duration: 6.80s, Total samples = 6.78s (99.77%)
+Showing nodes accounting for 6.76s, 99.71% of 6.78s total
+Dropped 2 nodes (cum <= 0.03s)
+      flat  flat%   sum%        cum   cum%
+     4.84s 71.39% 71.39%      4.85s 71.53%  github.com/cwbudde/qmc.radicalInverse (inline)
+     0.96s 14.16% 85.55%      1.23s 18.14%  github.com/cwbudde/qmc.reviewReciprocal
+     0.25s  3.69% 89.23%      0.25s  3.69%  math.archMin
+     0.21s  3.10% 92.33%      1.41s 20.80%  github.com/cwbudde/qmc.BenchmarkReviewArithmetic.func1.2
+     0.18s  2.65% 94.99%      1.41s 20.80%  github.com/cwbudde/qmc.BenchmarkReviewArithmetic.func1.3
+     0.12s  1.77% 96.76%      2.37s 34.96%  github.com/cwbudde/qmc.reviewBulk
+     0.09s  1.33% 98.08%      1.56s 23.01%  github.com/cwbudde/qmc.BenchmarkReviewArithmetic.func1.1
+     0.06s  0.88% 98.97%      1.15s 16.96%  github.com/cwbudde/qmc.(*Halton).fill
+     0.03s  0.44% 99.41%      4.41s 65.04%  github.com/cwbudde/qmc.BenchmarkReviewArithmetic.func1
+     0.02s  0.29% 99.71%      0.27s  3.98%  math.Min (inline)
+         0     0% 99.71%      1.15s 16.96%  github.com/cwbudde/qmc.(*Halton).AtInto (inline)
+         0     0% 99.71%      2.37s 34.96%  github.com/cwbudde/qmc.BenchmarkReviewBulk.func1
+         0     0% 99.71%      6.78s   100%  testing.(*B).launch
+         0     0% 99.71%      6.78s   100%  testing.(*B).runN

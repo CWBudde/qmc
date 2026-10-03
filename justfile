@@ -33,6 +33,10 @@ test-race-statistical:
 bench:
     go test -run '^$' -bench=. -benchmem ./...
 
+# Controlled performance experiments; output must be a new directory
+measure-performance $qmc_measurement_output:
+    python3 ./scripts/measure-performance.py "$qmc_measurement_output"
+
 # Build with the publishing toolchain; optional output is forwarded safely
 build-wasm-demo $qmc_demo_output="dist":
     #!/usr/bin/env bash
