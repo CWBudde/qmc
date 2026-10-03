@@ -566,19 +566,18 @@
         </p>
         <p>
           <b>The discrepancy panel's N ceiling moves.</b> Every other control on
-          these pages has a fixed range. This one does not: centred L2 costs
-          O(<i>N</i>²<i>s</i>) and a single <i>N</i> cannot be subdivided, so
-          the only way to keep one blocking call short is to cap <i>N</i>, and
-          the cap has to fall as dimensions are added. It is a browser
-          responsiveness limit, not a mathematical one.
+          these pages has a fixed range. This one does not: general centred L2
+          costs O(<i>N</i>²<i>s</i>), so its work-policy cap falls as dimensions
+          are added. One dimension uses a cheaper formula. These caps bound
+          computation work; they do not promise the same runtime on every
+          device.
         </p>
         <p>
-          <b>The sweep loops in JavaScript on purpose.</b> A call into Go blocks
-          the event loop for its whole duration, so a Stop pressed during one
-          cannot be dispatched. Each <code>converge</code> call therefore covers
-          exactly one <i>N</i>, and the page yields between them. That gap is
-          the cancellation mechanism, and it is also why the chart fills in one
-          point at a time.
+          <b>The sweep runs in a computation worker.</b> Each Go call covers one
+          <i>N</i>; completed rungs fill the chart one point at a time. Controls
+          remain available while a rung runs. Stop terminates that worker
+          immediately, and request IDs prevent an obsolete result from joining a
+          restarted sweep. Correlation uses its own worker channel.
         </p>
       </div>
 
@@ -594,6 +593,7 @@
     <script src="wasm_exec.js"></script>
     <script src="render.js"></script>
     <script src="runtime.js"></script>
+    <script src="compute.js"></script>
     <script src="analysis.js"></script>
   </body>
 </html>

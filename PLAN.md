@@ -461,13 +461,13 @@ explicit js/wasm vet pass. Core sequence outputs and convergence math are unchan
 
 ### DEMO-03 — Bound work on the browser main thread (P2)
 
-- [ ] Debounce expensive controls and use reduced sampling while dragging.
-- [ ] Evaluate a worker-hosted WASM instance for scatter, correlation, convergence,
+- [x] Debounce expensive controls and use reduced sampling while dragging.
+- [x] Evaluate a worker-hosted WASM instance for scatter, correlation, convergence,
       and discrepancy work, with request IDs and cancellation between bounded chunks.
-- [ ] Until workers are available, cap per-call work using the selected scheme,
+- [x] Until workers are available, cap per-call work using the selected scheme,
       dimensions, sample count, and measured device behavior; test nested scrambling
       at the currently legal large configurations.
-- [ ] Avoid treating animation-frame coalescing or yielding between large calls
+- [x] Avoid treating animation-frame coalescing or yielding between large calls
       as a guarantee that Stop can interrupt an individual computation.
 
 Evidence: [app.js](examples/wasm-demo/app.js),
@@ -478,6 +478,41 @@ Evidence: [app.js](examples/wasm-demo/app.js),
 Acceptance: interactive controls and cancellation remain responsive under the
 supported maximum workloads; measured budgets and worker/partial-result behavior
 are recorded, including behavior on a constrained device.
+
+Verification (2026-10-03): the four heavy exports now run in dedicated WASM
+workers. One outstanding request per channel is identified and invalidated on
+control changes; cancelling an active request terminates its worker, resolves
+its pending result to null, and permits a fresh instance. Idle instances are
+reused. Transferred typed buffers preserve selected scatter coordinates against
+independent indexed-export results, without detaching displayed buffers.
+Scatter and correlation sliders debounce for 80 ms, use 64 nested / 256 other
+preview points, and request the full selected budget after 350 ms. Twenty rapid
+scatter changes produce exactly one preview and one full request. No temporary
+scheme-dependent reduction of the legal full budgets is needed now that workers
+are used. Sweep charts show completed rungs; interrupted partial rungs are discarded.
+
+Real Chrome 144.0.7559.109, Go 1.26.1, linux/amd64, Intel i7-1255U:
+`QMC_BROWSER_CPUS=0 just test-browser` restricts all Chrome threads to one CPU.
+At normal / 6× DOM throttling, measured call time and maximum 25-ms UI timer gap:
+
+| Workload (nested Halton except CD2 calculation)   | Call time, normal / 6× | Largest timer gap, normal / 6× |
+| ------------------------------------------------- | ---------------------- | ------------------------------ |
+| Scatter, 64 dimensions, 20,000 points             | 1.839 / 5.185 s        | 32.5 / 34.8 ms                 |
+| Correlation, 48 dimensions, 5,000 points          | 0.266 / 0.595 s        | 28.2 / 27.4 ms                 |
+| Convergence export, 32 dimensions, 200,000 points | 7.772 / 18.486 s       | 28.4 / 74.6 ms                 |
+| General CD2, 39 dimensions, capped 1,142 points   | 0.223 / 0.759 s        | 25.6 / 32.2 ms                 |
+
+The actual Stop control during the UI's maximum 65,536-point nested convergence
+rung responds in 1.5 ms at 6× DOM throttling; restart rejects obsolete results.
+The constrained suite passes in 48.81 seconds, including worker loading failures,
+all eight asset failure/reload cases, and zero unexpected browser errors.
+These are measured workloads on a constrained execution profile, not universal
+mobile-device throughput guarantees. Prior direct DOM calls blocked for about
+3.1 / 17.2 seconds for maximum scatter and 3.2 / 17.5 seconds for 65,536-point
+convergence at normal / 6× throttling on the same host. The worker/client deadlines
+and exact reproduction commands are documented in the demo README. A final
+unrestricted run against the formatted current sources also passes (23.828 s);
+changed JavaScript parses, the diff is clean, and fixture-tagged js/wasm vet passes.
 
 ### DEMO-04 — Validate typed-array output buffers (P1)
 

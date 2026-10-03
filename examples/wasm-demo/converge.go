@@ -154,18 +154,10 @@ var integrands = map[string]integrand{
 // integration error at sample size n, for the selected sequence and for a
 // pseudo-random sampler, over the same integrand and the same n.
 //
-// One n per call is deliberate, and it is the whole reason this export is
-// shaped the way it is. A call into wasm is synchronous: it occupies the
-// browser's single JavaScript thread for its entire duration, and nothing else
-// can be dispatched while it runs — not a click, not a timer, not the page's
-// own "stop" flag. A sweep computed entirely inside Go would therefore be
-// uninterruptible, and at the top of the range (200,000 points in 32
-// dimensions, twice) that is long enough to look like a hung tab.
-//
-// So the sweep loop lives in JavaScript, which awaits a turn of the event loop
-// between calls. That gap is not an implementation detail: it IS the
-// cancellation mechanism, and the only one available. Batching the n-sweep back
-// into Go would remove it.
+// One n per call gives the UI one completed rung at a time. This export remains
+// synchronous in its calling realm; the UI runs it in a dedicated worker,
+// which Stop can terminate even during a call. Calling it directly from the
+// console still blocks that realm until the computation returns.
 func jsConverge(opts js.Value) any {
 	key := readString(opts, "integrand", "product")
 

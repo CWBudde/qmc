@@ -53,5 +53,5 @@
     return { start, call, terminate };
   }
 
-  window.WasmRuntime = { create };
+  globalThis.WasmRuntime = { create };
 })();

@@ -129,22 +129,15 @@ probes downward for the widest cube star still accepts and offers it as a
 button, so the page offers the fix and not only the refusal. The metric menu
 stays fully populated at every dimension count; Start is what gets disabled.
 
-**The N ceiling moves with the dimension slider**, which nothing else on either
-page does, and that needs saying or it reads as a bug. Centred L2 costs
-O(*N*²*s*) and the library computes one _N_ in a single atomic call, so it
-cannot be sliced the way the sweep itself is — the only lever left is _N_, and
-it has to fall as dimensions are added. Both ceilings are **measured on
-`js/wasm` in a browser**, not estimated: one centred-L2 rung costs
-`N(N-1)/2 * (5.7s + 7.5)` nanoseconds, fitted over dimensions 1 to 64 and _N_ 64
-to 7072, and the cap solves that for 150 ms per call — 4767 points at one
-dimension, 1142 at 39, 897 at 64. Star's cost cannot be modelled from outside at
-all, because its pruner depends on the point set and not only on its shape, so
-its cap is a measured table: 1792 points at two dimensions down to 32 at six,
-each about 350–420 ms per call. That is a browser-responsiveness limit and not a
-mathematical one, and the sentence under the chart says so.
+**The N ceiling moves with the dimension slider.** General centred L2 costs
+O(*N*²*s*), with a cheaper one-dimensional path. The demo retains conservative
+work ceilings derived from its earlier browser policy: 1142 centred-L2 points
+at 39 dimensions, and star discrepancy from 1792 points at two dimensions to
+32 at six. These are total-work policies, not library limitations or duration
+guarantees. Each rung now runs in a worker and Stop can terminate it in progress.
 
-Expect a **short ladder** for star. At four dimensions it is six rungs and the
-whole sweep finishes in about a second; at six it is three.
+Expect a **short ladder** for star. At four dimensions it is six rungs; at six
+it is three. Runtime depends on the point set and device.
 
 ## Build and run
 
@@ -185,7 +178,8 @@ on an ephemeral local port, starts Chrome with a private profile, and cleans up
 on success or failure. To check an existing build, use `just test-browser dist`.
 Node 18 or newer and Chrome on PATH are required (`CHROME_BIN` can select another
 Chrome executable). Server startup, page readiness, protocol requests, and the
-overall browser run have 5/30/20/120-second deadlines respectively. Compilation
+overall browser run have 5/30/20/120-second deadlines respectively (the batched
+responsiveness measurement has a 90-second protocol deadline). Compilation
 is also bounded by the CI job's timeout.
 
 The Point Lab schedules reveal-animation frames only during playback. Pause
@@ -221,18 +215,21 @@ are untouched.
 
 ## Layout
 
-| File             | Role                                                                        |
-| ---------------- | --------------------------------------------------------------------------- |
-| `main.go`        | Export table; publishes `globalThis.qmc`                                    |
-| `leap.go`        | The `leaps` export: which leaps a generator accepts                         |
-| `discrepancy.go` | The `discrepancy` and `metrics` exports, and both measured browser ceilings |
-| `index.html`     | Point Lab markup, with its DOM contract                                     |
-| `analysis.html`  | Discrepancy Bench markup, with its DOM contract                             |
-| `style.css`      | The shared instrument-rack stylesheet; owns the palette                     |
-| `render.js`      | `window.Render` — canvas primitives for both pages                          |
-| `app.js`         | Point Lab controller: scatter, transport, digit inspector                   |
-| `analysis.js`    | Bench controller: heatmap, hover, two cancellable N-sweeps                  |
-| `favicon.svg`    | An even point set and a clumped one, in 32 pixels                           |
+| File                | Role                                                                        |
+| ------------------- | --------------------------------------------------------------------------- |
+| `main.go`           | Export table; publishes `globalThis.qmc`                                    |
+| `leap.go`           | The `leaps` export: which leaps a generator accepts                         |
+| `discrepancy.go`    | The `discrepancy` and `metrics` exports, and both measured browser ceilings |
+| `index.html`        | Point Lab markup, with its DOM contract                                     |
+| `analysis.html`     | Discrepancy Bench markup, with its DOM contract                             |
+| `style.css`         | The shared instrument-rack stylesheet; owns the palette                     |
+| `render.js`         | `window.Render` — canvas primitives for both pages                          |
+| `runtime.js`        | Go runtime monitoring and recoverable request handling in each realm        |
+| `compute.js`        | UI worker client, request ownership, deadlines, and cancellation            |
+| `compute-worker.js` | Worker-hosted WASM exports and transferred output buffers                   |
+| `app.js`            | Point Lab controller: scatter, transport, digit inspector                   |
+| `analysis.js`       | Bench controller: heatmap, hover, two cancellable N-sweeps                  |
+| `favicon.svg`       | An even point set and a clumped one, in 32 pixels                           |
 
 The Go side publishes eight exports — `info`, `points`, `correlate`, `converge`,
 `digits`, `leaps`, `discrepancy` and `metrics` — each taking one options object
@@ -283,10 +280,10 @@ sequence-against-random is the one comparison these pages exist to make.
 - **The heatmap's colour ramp is eased, not linear.** Magnitudes are raised to
   the 0.65 power before they are coloured, making small coefficients easier to
   inspect. The legend says so.
-- **The wasm timings are relative only.** Under `js/wasm` everything runs on one
-  thread with no SIMD. Nothing on these pages quotes a wall-clock figure as a
-  benchmark of the library, and you should not read one into the responsiveness
-  of a slider either.
+- **The wasm timings are relative only.** Each Go instance executes within its
+  own realm. Worker placement changes responsiveness; benchmark timings still
+  depend on the device, compiler, configuration, and warmup. The controlled
+  measurements below concern UI behavior rather than universal library throughput.
 - **Centred L2 saturates, and the panel is built to show it.** Its expectation
   over _N_ uniform points is exactly `sqrt(((5/4)^s - (13/12)^s)/N)`, and the
   `(5/4)^s` term — the diagonal of the double sum, which depends only on each
@@ -332,23 +329,45 @@ the runner verifies that production builds do not contain them. Both pages are
 checked for continued operation after a recovered panic, disabled controls after
 exit, and a working reload action.
 
-**The convergence sweep loops in JavaScript, not in Go.** A synchronous call
-into Go blocks the event loop for its whole duration, which means a click on
-Stop cannot be dispatched while one is running. `converge` therefore covers
-exactly one _N_ per call, and the sweep `await`s a zero-delay timeout between
-calls. That gap is the entire cancellation mechanism — delete the yield and the
-Stop button becomes decorative. Every sweep also carries a monotonic run id that
-is re-checked after each yield, so a sweep restarted while an older one is still
-in flight cannot append its points to the new chart.
+**Heavy calls run in workers.** Each export is synchronous within its calling
+realm. The UI awaits worker responses, checks its generation ID, and renders
+completed results. Stop terminates the sweep worker rather than waiting for
+an event-loop gap after a Go call. Convergence and discrepancy share one sweep
+channel; correlation has another, so changing the heatmap cannot cancel a sweep.
+The Point Lab has one scatter channel. Idle workers are reused; active replaced
+requests are terminated, and page unload/terminal errors dispose of all channels.
+The maximum is one worker in Point Lab and two in the Bench, alongside the
+small main-thread Go instance used for metadata, leaps, and digit inspection.
 
-Both sweeps — convergence and discrepancy — walk that ladder through the same
-`runSweep` and share the same run id, deliberately. The page has one thread and
-every rung is a blocking call into Go, so two sweeps could not run side by side
-even with separate ids: they would interleave, each freezing the other's yields,
-and both progress bars would crawl. Sharing the id makes "start the other panel"
-mean "cancel this one", which is what the machine was going to do anyway — the
-difference is that the cancelled panel's transport is restored rather than left
-disabled.
+Worker output uses JS-owned typed buffers transferred to the DOM thread.
+Displayed buffers are never detached merely to reuse them. The direct `qmc`
+exports remain synchronous for console/API callers, including their optional
+matched-buffer reuse contract. Calling a heavy export directly on the DOM
+thread still blocks that thread; the controllers use the worker client.
+
+## Responsiveness verification
+
+`just test-browser` measures all four worker exports at normal and 6× DOM CPU
+throttling, without reducing the supported scatter/correlation/convergence
+budgets. The tested convergence export budget is 200,000 points; the sweep UI's maximum
+rung is 65,536 points. It asserts that DOM timers continue, verifies selected scatter values
+against the Go indexed export, cancels an active request and restarts, and clicks
+Stop while the largest nested convergence rung is running. Twenty rapid slider
+inputs must produce one reduced preview and one full result. While dragging,
+preview counts are capped at 64 for nested scrambling or 256 otherwise; after
+350 ms without input the full selected budget runs. Controls debounce previews
+for 80 ms and invalidate prior results immediately.
+
+For a constrained Linux run, set `QMC_BROWSER_CPUS` to a permitted CPU affinity
+list, for example `QMC_BROWSER_CPUS=0 just test-browser`. All Chrome threads,
+including workers, then share that CPU; the runner also applies its 6× DOM
+profile. This is a reproducible constrained execution profile, not a claim
+about all mobile devices. The runner emits per-call time, timer ticks, maximum
+DOM timer gap, and Stop latency. Normal protocol requests have 20-second
+budgets; the batched workload measurement gets 90 seconds within the overall
+120-second browser budget. Each worker has a 20-second boot and two-minute
+computation deadline. Timing thresholds bound responsiveness rather than
+promise throughput; see PLAN.md for recorded machine/toolchain evidence.
 
 ## Randomization interpretation
 

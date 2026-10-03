@@ -96,17 +96,15 @@
     lastTick: 0,
     selected: -1,
     lastAnnounce: 0,
-    pending: false,
+    refreshTimer: null,
+    fullRefreshTimer: null,
+    renderId: 0,
 
     // The last answer from the leaps() export. Cached because refresh() has to
     // consult it before every draw and the answer only changes when the
     // sequence, the dimension count or the leap does.
     leapCheck: null,
   };
-
-  // Reusable views over JS-owned ArrayBuffers, one set per point cloud so the
-  // two calls never write into each other's memory.
-  const sinks = { sequence: {}, random: {} };
 
   function setStatus(message, tone) {
     statusEl.textContent = message;
@@ -138,6 +136,10 @@
     onTerminal: (message) => {
       state.dead = true;
       state.ready = false;
+      state.renderId += 1;
+      compute.dispose();
+      clearTimeout(state.refreshTimer);
+      clearTimeout(state.fullRefreshTimer);
       setPlaying(false);
       for (const input of document.querySelectorAll("input, select, button")) {
         input.disabled = input.id !== "reloadWasm";
@@ -151,26 +153,13 @@
 
   el("reloadWasm").addEventListener("click", () => window.location.reload());
 
+  const compute = QMCCompute.create({
+    onError: (message) => setStatus(message, "error"),
+    onTerminal: (message) => runtime.terminate(message),
+  });
+
   function call(name, opts, callOpts) {
     return runtime.call(name, opts, callOpts);
-  }
-
-  // cacheSinks remembers the views Go handed back so the next call can reuse
-  // their buffers. A returned view may be a subarray of the buffer, so the
-  // whole ArrayBuffer is re-wrapped rather than the view stored directly —
-  // caching `result.xy` itself would hand Go a short window into a long buffer
-  // and the next, larger request would look like it needed a reallocation.
-  function cacheSinks(store, result, keys) {
-    for (const key of keys) {
-      const view = result[key];
-
-      if (view && view.buffer) {
-        store[key] = {
-          f32: new Float32Array(view.buffer),
-          u8: new Uint8Array(view.buffer),
-        };
-      }
-    }
   }
 
   // --- control readers ---------------------------------------------------
@@ -486,19 +475,28 @@
 
   // --- drawing -----------------------------------------------------------
 
-  function scheduleRefresh() {
-    if (state.pending || !state.ready) {
+  function scheduleRefresh(preview) {
+    if (!state.ready) {
       return;
     }
-
-    state.pending = true;
-    requestAnimationFrame(() => {
-      state.pending = false;
-      refresh();
-    });
+    state.renderId += 1;
+    compute.cancel();
+    clearTimeout(state.refreshTimer);
+    clearTimeout(state.fullRefreshTimer);
+    setPlaying(false);
+    state.sequence = null;
+    state.random = null;
+    playButton.disabled = true;
+    scrub.disabled = true;
+    draw();
+    setStatus("Updating points…", "loading");
+    const dragging = preview === true;
+    state.refreshTimer = setTimeout(() => refresh(dragging), dragging ? 80 : 0);
+    if (dragging)
+      state.fullRefreshTimer = setTimeout(() => refresh(false), 350);
   }
 
-  function refresh() {
+  async function refresh(preview = false) {
     if (!state.ready) {
       return;
     }
@@ -514,27 +512,27 @@
     }
 
     const request = baseRequest();
+    const renderId = ++state.renderId;
+    if (preview)
+      request.count = Math.min(
+        request.count,
+        request.randomization === "nested" ? 64 : 256,
+      );
+    const sequence = await compute.call("points", request);
 
-    const sequence = call(
-      "points",
-      Object.assign({}, request, { out: sinks.sequence }),
-    );
+    if (renderId !== state.renderId || !state.ready) return;
 
     if (!sequence) {
       return;
     }
 
-    cacheSinks(sinks.sequence, sequence, ["xy"]);
     state.sequence = sequence;
 
-    const random = call(
+    const random = await compute.call(
       "points",
-      Object.assign({}, request, { source: "random", out: sinks.random }),
+      Object.assign({}, request, { source: "random" }),
     );
-
-    if (random) {
-      cacheSinks(sinks.random, random, ["xy"]);
-    }
+    if (renderId !== state.renderId || !state.ready) return;
 
     state.random = random;
 
@@ -562,7 +560,7 @@
     const label = spec ? spec.label : request.source;
 
     setStatus(
-      `${label} · ${count.toLocaleString("en-US")} points · ${sequence.dims} dims · axes ${sequence.axisX}×${sequence.axisY} · randomization ${request.randomization}`,
+      `${preview ? "Preview · " : ""}${label} · ${count.toLocaleString("en-US")} points · ${sequence.dims} dims · axes ${sequence.axisX}×${sequence.axisY} · randomization ${request.randomization}`,
       "ready",
     );
     announce(
@@ -930,8 +928,9 @@
           refreshLeapCheck();
         }
 
-        scheduleRefresh();
+        scheduleRefresh(true);
       });
+      input.addEventListener("change", () => scheduleRefresh(false));
     }
 
     leapInput.addEventListener("input", () => {

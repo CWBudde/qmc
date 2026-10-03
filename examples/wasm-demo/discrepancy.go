@@ -29,14 +29,9 @@ const maxDiscrepancyPoints = 8192
 // set, not a point.
 const minDiscrepancyPoints = 2
 
-// cd2CallBudgetNs is how long one centred-L2 call may hold the browser's only
-// thread, in nanoseconds. It is the lever the n ceiling is derived from.
-//
-// 150 ms is a visible pause and not a hang. It is not a mathematical limit —
-// CenteredL2Discrepancy will measure a hundred thousand points if you have the
-// patience — it is a statement about responsiveness, and that distinction is
-// what the note on screen has to make, because this is the only ceiling on
-// either page that MOVES when another control moves.
+// cd2CallBudgetNs retains the demo's historical work ceiling. Heavy calls now
+// run in a cancellable worker. This policy bounds total work and is neither a
+// library limitation nor a duration guarantee on every device.
 const cd2CallBudgetNs = 150e6
 
 // cd2NsPerTerm and cd2NsPerPair are the measured cost of one jsDiscrepancy
@@ -67,13 +62,9 @@ const (
 // starDemoPoints caps N per dimension count on top of whatever
 // qmc.StarDiscrepancy itself accepts.
 //
-// The library's ceiling is a statement about what is COMPUTABLE. Under
-// js/wasm, at that ceiling, it is also a statement about a frozen tab:
-// measured in the browser, one call at the library's own limit takes 1.96 s at
-// 2 dimensions, 5.57 s at 3, 5.04 s at 4, 4.80 s at 5 and 4.97 s at 6. So the
-// demo needs a second, smaller ceiling, and it is about responsiveness rather
-// than tractability. It cannot be modelled from outside either: the pruner
-// makes the cost depend on the point set and not only on its shape.
+// These policy ceilings bound total work separately from the library's generic
+// work limit. Worker execution keeps the DOM responsive during each call.
+// The pruner's cost depends on the point set as well as its shape.
 //
 // The entries below are MEASURED, one per dimension count, chosen so that a
 // single rung costs about the same everywhere — 353 ms at 2 dimensions, 351 at

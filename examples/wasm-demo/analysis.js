@@ -3,14 +3,12 @@
  *
  * Two invariants worth stating up front, because both are easy to break:
  *
- *   Stop. A synchronous call into Go blocks the event loop for its whole
- *   duration, so a click on Stop cannot be dispatched while one is running.
- *   The sweep therefore asks Go for exactly one N per call and awaits a
- *   zero-delay timeout between calls. That gap is the entire cancellation
- *   mechanism; remove the yield and Stop stops working.
+ *   Stop terminates the sweep worker, including a Go call in progress. Each
+ *   completed rung is kept. Correlation uses a separate worker so a heatmap
+ *   update cannot replace a sweep request.
  *
  *   runId. Every sweep carries a monotonic id, and each step re-checks it
- *   after the yield. A sweep restarted while an older one is mid-flight must
+ *   after each asynchronous call. A sweep restarted while an older one is mid-flight must
  *   not append its points to the new chart.
  *
  * As on the Point Lab, no quasi-Monte Carlo logic lives here. Every
@@ -135,7 +133,9 @@
     matrix: null,
     corr: null,
     hover: null,
-    pending: false,
+    corrTimer: null,
+    fullCorrTimer: null,
+    corrRunId: 0,
     runId: 0,
 
     // The one sweep now walking its ladder, of either panel, or null. Both
@@ -153,8 +153,6 @@
     disc: { seq: [], rnd: [], analytic: [] },
     lastAnnounce: 0,
   };
-
-  const sinks = { correlate: {} };
 
   function setStatus(message, tone) {
     statusEl.textContent = message;
@@ -182,6 +180,11 @@
     onTerminal: (message) => {
       state.dead = true;
       state.ready = false;
+      state.corrRunId += 1;
+      corrCompute.dispose();
+      sweepCompute.dispose();
+      clearTimeout(state.corrTimer);
+      clearTimeout(state.fullCorrTimer);
       state.runId += 1;
       if (state.sweep) finishSweep(state.sweep, "runtime terminated");
       for (const input of document.querySelectorAll("input, select, button")) {
@@ -196,23 +199,15 @@
 
   el("reloadWasm").addEventListener("click", () => window.location.reload());
 
+  const computeOptions = {
+    onError: (message) => setStatus(message, "error"),
+    onTerminal: (message) => runtime.terminate(message),
+  };
+  const corrCompute = QMCCompute.create(computeOptions);
+  const sweepCompute = QMCCompute.create(computeOptions);
+
   function call(name, opts, callOpts) {
     return runtime.call(name, opts, callOpts);
-  }
-
-  // cacheSinks re-wraps the whole ArrayBuffer rather than storing the returned
-  // view, because that view may be a subarray of a larger buffer.
-  function cacheSinks(store, result, keys) {
-    for (const key of keys) {
-      const view = result[key];
-
-      if (view && view.buffer) {
-        store[key] = {
-          f32: new Float32Array(view.buffer),
-          u8: new Uint8Array(view.buffer),
-        };
-      }
-    }
   }
 
   // --- helpers -----------------------------------------------------------
@@ -682,19 +677,30 @@
 
   // --- correlation -------------------------------------------------------
 
-  function scheduleCorrelate() {
-    if (state.pending || !state.ready) {
+  function scheduleCorrelate(preview) {
+    if (!state.ready) {
       return;
     }
 
-    state.pending = true;
-    requestAnimationFrame(() => {
-      state.pending = false;
-      refreshCorrelation();
-    });
+    state.corrRunId += 1;
+    corrCompute.cancel();
+    clearTimeout(state.corrTimer);
+    clearTimeout(state.fullCorrTimer);
+    state.matrix = null;
+    state.corr = null;
+    state.hover = null;
+    drawHeat();
+    setStatus("Updating correlation…", "loading");
+    const dragging = preview === true;
+    state.corrTimer = setTimeout(
+      () => refreshCorrelation(dragging),
+      dragging ? 80 : 0,
+    );
+    if (dragging)
+      state.fullCorrTimer = setTimeout(() => refreshCorrelation(false), 350);
   }
 
-  function refreshCorrelation() {
+  async function refreshCorrelation(preview = false) {
     if (!state.ready) {
       return;
     }
@@ -708,7 +714,8 @@
       return;
     }
 
-    const result = call("correlate", {
+    const corrRunId = ++state.corrRunId;
+    const request = {
       source: corrSource.value,
       randomization: corrRandom.value,
       dims: intValue(corrDims, 39),
@@ -716,14 +723,19 @@
       skip: intValue(corrSkip, 64),
       leap: corrLeap ? corrLeap.value() : 1,
       seed: intValue(corrSeed, 1),
-      out: sinks.correlate,
-    });
+    };
+    if (preview)
+      request.count = Math.min(
+        request.count,
+        request.randomization === "nested" ? 64 : 256,
+      );
+    const result = await corrCompute.call("correlate", request);
+    if (corrRunId !== state.corrRunId || !state.ready) return;
 
     if (!result) {
       return;
     }
 
-    cacheSinks(sinks.correlate, result, ["matrix"]);
     state.corr = result;
     state.matrix = result.matrix;
     state.hover = null;
@@ -731,10 +743,12 @@
     drawHeat();
     updateVerdict(result);
 
-    setStatus(
-      `${result.dims}×${result.dims} correlation over ${result.count.toLocaleString("en-US")} points · ${result.source} · randomization ${result.randomization}`,
-      "ready",
-    );
+    if (!state.sweep && statusEl.dataset.state !== "error") {
+      setStatus(
+        `${preview ? "Preview · " : ""}${result.dims}×${result.dims} correlation over ${result.count.toLocaleString("en-US")} points · ${result.source} · randomization ${result.randomization}`,
+        "ready",
+      );
+    }
     announce(
       `Correlation recomputed. Worst adjacent pair ${coefficient(result.worstAdjacent)}.`,
     );
@@ -851,7 +865,7 @@
 
   // A geometric ladder at √2 per step: dense enough that a slope is readable
   // on log–log axes, sparse enough that the whole sweep is a couple of dozen
-  // blocking calls rather than a couple of hundred.
+  // worker calls rather than a couple of hundred.
   //
   // The floor is a parameter because the discrepancy panel's ceiling can be
   // below the convergence panel's first rung: star discrepancy at six
@@ -895,6 +909,7 @@
   function cancelPanel(exportName) {
     if (state.sweep && state.sweep.exportName === exportName) {
       state.runId += 1;
+      sweepCompute.cancel();
       finishSweep(state.sweep, "settings changed — results cleared");
     }
   }
@@ -907,7 +922,7 @@
   // runSweep is the ladder BOTH panels walk. It was extracted from the
   // convergence sweep rather than copied for it: the yield-and-recheck dance
   // below is subtle enough that two copies would drift, and the second copy is
-  // always the one that forgets to re-check the id before the blocking call.
+  // always the one that forgets to re-check the id after an asynchronous call.
   //
   // job = {
   //   steps          array of N values, in order
@@ -921,13 +936,8 @@
   //   status         the status line while it runs
   // }
   //
-  // The two sweeps SHARE state.runId, deliberately. The page has one thread
-  // and every rung is a blocking call into Go, so two sweeps could not run
-  // side by side even with separate ids — they would interleave, each freezing
-  // the other's yields, and both progress bars would crawl. Sharing the id
-  // makes "start the other panel" mean "cancel this one", which is what the
-  // machine was going to do anyway; the difference is that the cancelled
-  // panel's transport is restored here instead of being left disabled.
+  // Both panels share a sweep channel and runId: starting the other sweep
+  // cancels this one and restores its controls. Correlation is independent.
   async function runSweep(job) {
     if (!state.ready || state.sweep === job) {
       return;
@@ -948,14 +958,16 @@
     setStatus(job.status, "loading");
 
     for (let step = 0; step < job.steps.length; step += 1) {
-      // The guard is checked before the blocking call, not only after it: Stop
-      // and a restart both land in the yield below, and neither should get one
-      // more Go call out of a sweep that is already over.
+      // Check before and after the worker call. Cancellation resolves the old
+      // promise, and a superseded run must not append even a queued response.
       if (runId !== state.runId) {
         return;
       }
 
-      const result = call(job.exportName, job.request(job.steps[step]));
+      const result = await sweepCompute.call(
+        job.exportName,
+        job.request(job.steps[step]),
+      );
 
       if (runId !== state.runId) {
         return;
@@ -974,9 +986,8 @@
       job.progress.text.textContent = `${job.label(result)} · ${done} / ${job.steps.length}`;
       announce(job.announce(result));
 
-      // THE yield. A synchronous Go call cannot be interrupted, so this gap is
-      // the only moment a Stop click or a restart can be dispatched. It is not
-      // a politeness; delete it and the Stop button becomes decorative.
+      // Give DOM updates a turn between completed rungs. Worker termination
+      // handles cancellation during a computation; this yield is not its gate.
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
 
@@ -1016,10 +1027,10 @@
       return;
     }
 
-    // Bumping the id is what actually cancels: the loop re-reads it after its
-    // next yield, sees a stranger's number, and returns without touching
-    // anything the new sweep owns.
+    // Invalidate queued responses, then terminate an active worker call.
+    // The old loop returns without touching a restarted sweep's results.
     state.runId += 1;
+    sweepCompute.cancel();
     finishSweep(job, "stopped — partial results kept");
     setStatus("Sweep stopped", "ready");
   }
@@ -1256,7 +1267,7 @@
       return `<b>The N ceiling moves with the dimension slider.</b> Exact star discrepancy is NP-hard in the dimension, so its ceiling does not fall as dimensions are added — it collapses: ${affordable}, against a few thousand at two. Expect a short ladder, two or three rungs wide, and read the ratio rather than the slope.`;
     }
 
-    return `<b>The N ceiling moves with the dimension slider.</b> Centred L2 costs O(N²s) and the library computes one N in a single atomic call, so it cannot be sliced the way the sweep itself is; capping N is the only lever left, and the cap has to fall as dimensions are added — ${affordable}, against a few thousand in two or three. This is a browser-responsiveness limit and not a mathematical one: the library will measure as many points as you have patience for.`;
+    return `<b>The N ceiling moves with the dimension slider.</b> General centred L2 costs O(N²s), with a cheaper one-dimensional path. Each rung runs in a worker; Stop terminates its computation and keeps completed rungs. The cap bounds total work — ${affordable} — rather than guaranteeing a duration on every device.`;
   }
 
   function resetDiscSweep() {
@@ -1454,8 +1465,9 @@
           corrLeap.refresh();
         }
 
-        scheduleCorrelate();
+        scheduleCorrelate(true);
       });
+      input.addEventListener("change", () => scheduleCorrelate(false));
     }
 
     corrSeed.addEventListener("change", scheduleCorrelate);
