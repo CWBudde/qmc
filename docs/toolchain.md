@@ -9,10 +9,10 @@ deliberate.
 `check-formatted`, `check-tidy`, `lint` and `test`; `just ci` adds `go mod verify`.
 
 Formatting is `treefmt` (`treefmt.toml`) dispatching gofumpt, gci, shfmt, prettier and
-shellcheck by file type. Linting is golangci-lint against `.golangci.yml`, pinned to one
-version across `justfile`, both workflows and `.trunk/trunk.yaml` — each site carries a
-comment naming the other three, because those four drifting apart once made `just lint` and
-CI lint differ by construction.
+shellcheck by file type. Development versions are tracked in `tools/versions.sh`.
+Linting uses golangci-lint against `.golangci.yml`; workflow linter versions must
+match that source. Strict format enforcement remains tracked as TOOL-01 in
+[PLAN.md](../PLAN.md).
 
 ## The format check can pass without checking anything
 
@@ -26,10 +26,43 @@ This is the weakness worth knowing about first.
   `scripts/build-wasm-demo.sh` has never been shellchecked anywhere. Note that shellcheck
   never writes, so treefmt's change-detection contract does not apply to it either.
 
-## Unpinned tools
+## Pinned development-tool installation
 
-`gofumpt`, `gci`, `shfmt` and `prettier` are all unpinned, so an upstream release can break
-`check-formatted` with no change to this repository. golangci-lint is pinned; these are not.
+Run `just setup-deps`. Prerequisites are Bash, Go 1.23 or newer, Node/npm,
+Python 3, curl and tar; Node 18 or newer also supports the browser runner.
+The installer selects official archives for Linux/macOS on amd64/arm64,
+checks SHA-256 against `tools/archive-checksums.sha256` before extraction,
+and verifies the resulting tool version. Other platforms fail explicitly.
+Go tools use exact module versions and the public Go checksum database;
+Prettier uses an exact version plus npm's integrity-locked `tools/package-lock.json`,
+with lifecycle scripts disabled. Installation errors stop setup.
+
+`tools/versions.sh` is the version source for local setup/checks: treefmt 2.5.0,
+gofumpt 0.10.0, gci 0.14.0, shfmt 3.12.0, Prettier 3.5.3, ShellCheck 0.11.0,
+and golangci-lint 2.13.1. Source-built tools use Go 1.26.1 through `GOTOOLCHAIN`;
+the Go command downloads that exact toolchain when necessary. This development
+toolchain is separate from the library's Go 1.23 compatibility requirement.
+Archive pins come from the official
+[treefmt release](https://github.com/numtide/treefmt/releases/tag/v2.5.0) and
+[ShellCheck release](https://github.com/koalaman/shellcheck/releases/tag/v0.11.0).
+Update the version source, archive checksums, npm lock, and workflow lint pin
+together when intentionally upgrading tools.
+
+A matching version already on PATH is reused; a missing or mismatched version
+is installed under `${XDG_DATA_HOME:-$HOME/.local/share}/qmc-tools/bin` without
+sudo. Set `QMC_TOOLS_DIR` to an absolute, dedicated user-owned directory to
+choose another location. Symlinked installation directories and relative paths
+are rejected. Just recipes source the tracked tool environment automatically.
+For direct tool commands, prepend that installation directory's `bin` to PATH.
+An unrelated tool already on PATH is not overwritten.
+
+`just test-tool-setup` runs offline fixtures with real archive extraction and
+hash checking, mocked platform/download/build endpoints, and temporary installation
+directories. It checks all four platform selections, version replacement and reuse,
+checksum refusal before extraction, wrong compiled versions, npm failures,
+unsupported platforms, and invalid destinations. CI runs it after setup. Linux
+amd64 installation is also exercised with real upstream downloads; the fixtures
+verify other platform routing without claiming native execution on macOS/arm64.
 
 ## Trunk is dead configuration
 
@@ -55,8 +88,6 @@ checking it but the compiler. See [the WebAssembly demo](wasm-demo.md) for what 
   parameter is unreachable through `just`. The two paths can drift.
 - Pages builds with `go-version-file: go.mod`, so the published demo is compiled by the oldest
   supported toolchain rather than a current one.
-- `setup-deps` hardcodes `linux_amd64` (broken on macOS and arm64) and pipes a tarball to
-  `sudo tar` with no checksum.
 
 ## `scripts/build-wasm-demo.sh`
 

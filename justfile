@@ -50,39 +50,18 @@ check-wasm-demo:
 test-browser $qmc_browser_site="":
     bash ./scripts/test-wasm-demo.sh
 
-# Install the formatters and linters used by `just fmt` / `just lint`
+# Install pinned development tools into a user-owned directory
 setup-deps:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    export PATH=$HOME/go/bin:$PATH
-    echo "Installing development dependencies..."
+    bash ./scripts/setup-deps.sh
 
-    # treefmt (formatter multiplexer)
-    command -v treefmt >/dev/null 2>&1 || { echo "Installing treefmt..."; curl -fsSL https://github.com/numtide/treefmt/releases/download/v2.5.0/treefmt_2.5.0_linux_amd64.tar.gz | sudo tar -C /usr/local/bin -xz treefmt; }
-
-    # golangci-lint v2 (linter + formatter runner)
-    #
-    # Pinned, not @latest: an unpinned install makes a local `just lint` a
-    # different check from CI's on any day upstream releases, and the
-    # difference shows up as a lint failure nobody can reproduce. This version
-    # is mirrored in .github/workflows/test.yml, .github/workflows/release.yml
-    # and .trunk/trunk.yaml; change it in all four or not at all.
-    command -v golangci-lint >/dev/null 2>&1 || { echo "Installing golangci-lint..."; go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1; }
-
-    # Go formatters
-    command -v gofumpt >/dev/null 2>&1 || { echo "Installing gofumpt..."; go install mvdan.cc/gofumpt@latest; }
-    command -v gci >/dev/null 2>&1 || { echo "Installing gci..."; go install github.com/daixiang0/gci@latest; }
-
-    # Shell formatter
-    command -v shfmt >/dev/null 2>&1 || { echo "Installing shfmt..."; go install mvdan.cc/sh/v3/cmd/shfmt@latest; }
-
-    # Markdown/JSON/YAML plus the demo's JS/CSS/HTML formatter
-    command -v prettier >/dev/null 2>&1 || { echo "Installing prettier..."; npm install -g prettier || echo "Prettier installation failed - npm not found."; }
+# Offline installer contract checks; no host installation is changed
+test-tool-setup:
+    python3 ./scripts/test-tool-setup.py
 
 # Format all files with treefmt
 fmt:
     #!/usr/bin/env bash
-    export PATH=$HOME/go/bin:$PATH
+    source ./tools/versions.sh
     treefmt --allow-missing-formatter
 
 # Alias for `just fmt`
@@ -91,13 +70,13 @@ treefmt: fmt
 # Run linter
 lint:
     #!/usr/bin/env bash
-    export PATH=$HOME/go/bin:$PATH
+    source ./tools/versions.sh
     golangci-lint run --config ./.golangci.yml --timeout 5m ./...
 
 # Run linter (with fix)
 lint-fix:
     #!/usr/bin/env bash
-    export PATH=$HOME/go/bin:$PATH
+    source ./tools/versions.sh
     golangci-lint fmt --config ./.golangci.yml
     golangci-lint run --config ./.golangci.yml --timeout 5m --fix ./...
 
@@ -119,7 +98,7 @@ clean:
 # Fail if any file is not formatted
 check-formatted:
     #!/usr/bin/env bash
-    export PATH=$HOME/go/bin:$PATH
+    source ./tools/versions.sh
     treefmt --allow-missing-formatter --fail-on-change
 
 # Fail if go.mod/go.sum are not tidy

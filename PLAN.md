@@ -712,17 +712,41 @@ a fresh installation produces the same results as CI.
 
 ### TOOL-02 — Harden and broaden development-tool installation (P2)
 
-- [ ] Detect supported OS/architecture combinations instead of hardcoding
+- [x] Detect supported OS/architecture combinations instead of hardcoding
       `linux_amd64`; document unsupported platforms clearly.
-- [ ] Verify downloaded archive checksums before extraction and installation.
-- [ ] Prefer a user-owned installation directory over unconditional privileged
+- [x] Verify downloaded archive checksums before extraction and installation.
+- [x] Prefer a user-owned installation directory over unconditional privileged
       extraction; document PATH setup and required host prerequisites.
-- [ ] Verify an existing tool's version rather than accepting any binary on PATH.
+- [x] Verify an existing tool's version rather than accepting any binary on PATH.
 
 Evidence: `setup-deps` in [justfile](justfile).
 
 Acceptance: setup validates installed versions, handles supported amd64/arm64 and
 macOS/Linux environments consistently, and refuses unverifiable downloads.
+
+Verification (2026-10-03): `just setup-deps` now invokes a tracked installer
+with one version source, exact Go tool modules/compiler, integrity-locked npm
+installation, and eight committed archive SHA-256 pins from official release
+asset digests. It selects Linux/macOS amd64/arm64 assets, checks archive hashes
+before extracting the named binary, validates compiled/downloaded versions,
+and replaces missing or mismatched tools in a dedicated user-owned directory.
+Matching PATH tools are reused. No sudo or global npm install is used. Directory
+ownership/symlink checks and absolute-path validation precede installation.
+
+`just test-tool-setup` passes offline fixtures for all four platform mappings,
+real hash checking and archive extraction, replacement/reuse, corrupted-download
+refusal before extraction or replacement, wrong compiled versions, npm failure
+propagation, unsupported OS/architecture, and relative destination refusal.
+CI now runs these contracts. A real Linux amd64 run in an owned temporary tool
+directory deliberately shadowed every required tool with version 0.0.0: both
+upstream archives passed their committed checksums, all exact Go tools installed,
+and npm installed locked Prettier. A second public-recipe run reused those exact
+versions without reinstalling. ShellCheck with external sources, shell formatting,
+and diff checks pass. Other platforms have verified asset routing and checksum
+pins but were not executed natively on this Linux host. Setup prerequisites,
+PATH, version provenance, upgrade steps, and this limitation are documented.
+TOOL-02 precedes TOOL-01 because required version enforcement needs a trustworthy
+installation path; strict formatter and missing-tool failure gates remain TOOL-01.
 
 ### TOOL-03 — Cover the nested module and align local verification with CI (P2)
 

@@ -70,6 +70,7 @@ includes = [
 
 [formatter.shellcheck]
 command = "shellcheck"
+options = ["-x"]
 includes = ["*.sh"]
 
 [formatter.shfmt]
