@@ -10,7 +10,7 @@ decision task and an acceptance criterion.
 
 ## Coverage and current status
 
-There are 32 remediation tasks: 27 have recorded completion evidence and five
+There are 32 remediation tasks: 28 have recorded completion evidence and four
 remain open. Checkboxes track verified completion; unchecked tasks describe the
 work still required. Changes under development count as open until their
 acceptance criteria are met.
@@ -23,7 +23,7 @@ acceptance criteria are met.
 | Test quality and verification budgets                        | TEST-01 through TEST-03                     | Verified       |
 | Demo correctness, failure handling, and browser verification | DEMO-01, DEMO-02, DEMO-04 through DEMO-06   | Verified       |
 | Responsiveness, accessibility, privacy, and idle work        | DEMO-03, DEMO-07 through DEMO-09            | Verified       |
-| Demo duplication and rendering maintenance                   | DEMO-10                                     | Open           |
+| Demo duplication and rendering maintenance                   | DEMO-10                                     | Verified       |
 | Reproducible tooling and module coverage                     | TOOL-01 through TOOL-03                     | Verified       |
 | Workflow security and release validation                     | TOOL-04                                     | Verified       |
 | Build consistency                                            | SHIP-01                                     | Verified       |
@@ -36,7 +36,7 @@ reliable checks and delivery, followed by documentation and measured design
 decisions. Each detailed task includes the affected files, specific actions,
 and an acceptance criterion so it can be implemented and reviewed independently.
 
-For the remaining work, resolve DEMO-10's maintenance decisions. Complete PERF-01
+For the remaining work, complete PERF-01
 before closing the related API-01 workspace/bulk decisions. Reconcile DOC-01 and
 DOC-02 with those outcomes, then run the final completion checklist.
 
@@ -728,16 +728,16 @@ response to control/resize/DPR changes; no idle animation loop remains.
 
 ### DEMO-10 — Resolve smaller demo maintenance and rendering gaps (P3)
 
-- [ ] Evaluate extracting the duplicated page WASM loaders into a shared helper.
+- [x] Evaluate extracting the duplicated page WASM loaders into a shared helper.
       Preserve progress reporting, streaming fallback, errors, runtime termination,
       and reload behavior; record the decision if extraction adds little value.
-- [ ] Add a digit-inspector regression comparing its duplicated raw-index and
+- [x] Add a digit-inspector regression comparing its duplicated raw-index and
       base-digit calculations with actual Halton coordinates for skips and leaps,
       including supported randomizations and boundary/error cases. Evaluate shared
       helpers without exporting library internals solely for the demo.
-- [ ] Reconcile the HTML DOM-contract comments with controller selectors and the
+- [x] Reconcile the HTML DOM-contract comments with controller selectors and the
       accessible controls added since the review.
-- [ ] Profile heatmap and legend redraws during hover. Evaluate retaining the
+- [x] Profile heatmap and legend redraws during hover. Evaluate retaining the
       unchanged rendering layer; require invalidation on theme, data, resize, and
       device-pixel-ratio changes for any added cache. Record the existing
       theme-invalidation behavior and the decision if caching is unnecessary.
@@ -753,6 +753,34 @@ Acceptance: both pages retain their browser-verified loader and failure behavior
 digit descriptions agree with the library; documented DOM contracts match the
 markup and selectors; rendering changes have measured benefit and correct cache
 invalidation, or a recorded decision explains retaining the current approach.
+
+Verification (2026-10-03): implementation committed as `76f7e2f`. The identical
+page loaders now use `WasmRuntime.load`; offline regressions cover byte progress,
+unknown lengths, non-reader/reduced-motion paths, missing streaming support,
+and fetch/read/instantiation failures without replacing browser globals. HTML
+contracts now include recovery and accessible summary/grid controls. The same
+regression checks exact documented IDs and literal controller selectors.
+
+The runtime fixture verifies 36 digit configurations against separately
+constructed library generators and independent plain/fixed-digit expansions,
+including leading-zero tails, skip/leap, both seeds, all three offered
+randomizations, maximum indices/dimensions, clamping, and seven refused requests.
+These execute before the browser fixture's long-lived runtime starts. Duplicated
+base expansion stays private to the demo; it illustrates digits without exporting
+library internals or recomputing the reported library coordinate.
+
+Real Chrome checks pass on the production artifact and fixture (29.513 s,
+zero unexpected errors), retaining reduced-motion, panic/exit/reload, missing
+asset, cache-coherence, accessibility, and worker checks. At 48 dimensions, 100
+draws after ten warmups measured heatmap median/p95 of 1.115/2.070 ms at DPR 1
+and 0.830/1.020 ms on the larger DPR-2 canvas; legend medians were 0.115/0.155 ms.
+The measurement scope and host are recorded in the demo topic. Retained bitmap
+caching is deferred because these command-submission costs are modest and a cache
+would add data/size/theme ownership. Existing theme invalidation, resize/DPR
+redraws, and the absence of a theme-switching control are documented; browser
+checks verify changed theme colours and scaled backing stores. Explicit WASM
+vet/build/tidy/verify, demo lint, pinned formatting (99 files, zero changes),
+and diff checks pass.
 
 ## Tooling and CI
 
@@ -1132,7 +1160,7 @@ behavior remain stable unless an intentional change is documented.
 - [x] SCI-01 and CORE-01 through CORE-08 are resolved with regressions and accurate contracts.
 - [x] TEST-01 through TEST-03 establish meaningful, bounded verification for supported targets.
 - [x] DEMO-01 through DEMO-09 are verified in browser, accessibility, and failure-state checks.
-- [ ] DEMO-10 resolves the smaller maintenance gaps with regressions or documented decisions.
+- [x] DEMO-10 resolves the smaller maintenance gaps with regressions or documented decisions.
 - [x] TOOL-01 through TOOL-04 run reproducibly in a clean environment for both modules.
 - [x] SHIP-01 and SHIP-02 verify complete, consistent artifacts and notices.
 - [ ] DOC-01 and DOC-02 reconcile every affected public claim and open-work list.
