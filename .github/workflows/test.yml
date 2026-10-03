@@ -17,24 +17,40 @@ jobs:
   format:
     name: Format
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version-file: go.mod
+          go-version-file: tools/go-version
           cache: true
 
       - name: Set up just
-        uses: extractions/setup-just@v4
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          just-version: "1.21.0"
+
+      - name: Set up Node for pinned formatting tools
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
 
       - name: Install formatters
         run: just setup-deps
 
+      - name: Verify tool installation contracts
+        run: just test-tool-setup
+
       - name: Check formatting
         run: just check-formatted
+
+      - name: Verify required formatter failure gates
+        run: just test-formatting
 
       - name: Check go.mod is tidy
         run: just check-tidy
@@ -42,34 +58,43 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version-file: go.mod
+          go-version-file: tools/go-version
           cache: true
 
-      # The version is mirrored in justfile (setup-deps),
-      # .github/workflows/release.yml and .trunk/trunk.yaml; change it in all
-      # four or not at all. The args match the ones `just lint` uses, so a
-      # local run and this job are the same check.
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v9
+      - name: Set up just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
         with:
-          version: v2.13.1
-          args: --config ./.golangci.yml --timeout 5m ./...
+          just-version: "1.21.0"
+
+      - name: Set up Node for development tools
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Install pinned development tools
+        run: just setup-deps
+
+      - name: Lint both modules
+        run: just lint lint-wasm-demo
 
   test:
     name: Test (go ${{ matrix.go-version }}, ${{ matrix.arch }})
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        go-version: ["1.23", "1.24", "1.25"]
+        go-version: ["1.23", "1.24", "1.25", "1.26.1"]
         # The 386 leg is not padding. This package computes prime bases with an
         # i*i that overflows a 32-bit int, and the sequence a caller gets would
         # differ by architecture if it regressed. That bug is invisible on
@@ -83,15 +108,22 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: ${{ matrix.go-version }}
 
+      - name: Set up just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          just-version: "1.21.0"
+
       - name: Cache Go build and module caches
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/.cache/go-build
@@ -100,8 +132,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-${{ matrix.go-version }}-
 
-      - name: Vet
+      - name: Vet supported architecture
+        env:
+          GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: "0"
         run: go vet ./...
+
+      - name: Check demo compatibility with this Go version
+        run: just check-wasm-demo
 
       # -race needs cgo and a 64-bit target, so the 32-bit leg goes without it.
       # It is not there for the race detector; it is there so the sieve runs
@@ -109,60 +147,60 @@ jobs:
       - name: Run tests
         run: |
           if [ "${{ matrix.arch }}" = "386" ]; then
-            CGO_ENABLED=0 GOARCH=386 go test ./...
+            CGO_ENABLED=0 GOARCH=386 just test-fast
           else
-            go test -race ./...
+            just test-race
           fi
-
-      # Coverage is measured once, on amd64. The 386 leg exists to exercise a
-      # different int width, not to produce a second identical report.
-      - name: Run tests with coverage
-        if: matrix.arch == 'amd64'
-        run: go test -coverprofile=coverage.out -covermode=atomic ./...
-
-      - name: Generate coverage report
-        if: matrix.arch == 'amd64'
-        run: go tool cover -html=coverage.out -o coverage.html
-
-      - name: Archive coverage report
-        if: matrix.arch == 'amd64'
-        uses: actions/upload-artifact@v7
-        with:
-          name: coverage-report-go-${{ matrix.go-version }}
-          path: coverage.html
 
   wasm:
     name: WebAssembly
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # The demo under examples/wasm-demo is a separate module that only ever
-    # builds for js/wasm, so no other job in this workflow compiles it. Without
-    # this check a breakage there is caught only when wasm-demo-pages.yml runs
-    # on main, which is after the pull request has already merged.
+    # Real browser behavior uses the deliberate publishing toolchain; the
+    # compatibility matrix separately compiles/vets the nested module.
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version-file: go.mod
+          go-version-file: tools/go-version
           cache: true
 
       - name: Set up just
-        uses: extractions/setup-just@v4
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          just-version: "1.21.0"
 
       - name: Check the WebAssembly demo builds
         run: just check-wasm-demo
 
-      # wasip1/wasm shares the js/wasm compiler backend, so this catches a
-      # target-specific miscompile or an unsupported stdlib call in the library
-      # itself. It is not a 32-bit check: GOARCH=wasm has a 64-bit int and only
-      # a 32-bit uintptr, so TestSieveIsArchitectureIndependent exercises the
-      # same int width here as it does on amd64. A real 32-bit run would need
-      # GOARCH=386, which cannot compile this test suite at all — several
-      # regression cases in robustness_test.go are untyped constants above
-      # 2^31 and overflow int by construction.
+      - name: Verify read-only module gates
+        run: just test-module-gates
+
+      - name: Verify artifact publication and safety gates
+        run: just test-demo-artifact
+
+      - name: Verify release policy and failure gates
+        run: just test-release-gates
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Verify Chrome is available
+        run: google-chrome --version
+
+      - name: Verify the demo in Chrome
+        run: just test-browser
+
+      # This compile-only backend check complements real-browser js/wasm runs.
+      # wasm uses a 64-bit int; the matrix's executable 386 tests cover 32-bit
+      # overflow instead of treating a wasm build as evidence for that target.
       - name: Build the library for wasip1/wasm
         env:
           GOOS: wasip1

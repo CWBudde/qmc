@@ -1,0 +1,70 @@
+name: Statistical validation
+
+on:
+  schedule:
+    - cron: "17 3 * * 0"
+  workflow_dispatch:
+    inputs:
+      full_race:
+        description: Also run the expensive full-suite race audit
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: statistics-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  statistical:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, "386"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: tools/go-version
+          cache: true
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          just-version: "1.21.0"
+      - name: Full ordinary suite
+        env:
+          GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: "0"
+        run: |
+          if [ "$GOARCH" = "amd64" ]; then
+            just test
+          else
+            just test-statistical
+          fi
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: matrix.arch == 'amd64'
+        with:
+          name: statistical-coverage
+          path: coverage.html
+
+  full-race:
+    if: github.event_name == 'workflow_dispatch' && inputs.full_race
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: tools/go-version
+          cache: true
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          just-version: "1.21.0"
+      - run: just test-race-statistical

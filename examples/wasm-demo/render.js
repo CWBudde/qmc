@@ -189,7 +189,7 @@
   // --- text and frames ---------------------------------------------------
 
   function monoFont(size) {
-    return `${size}px "JetBrains Mono", ui-monospace, monospace`;
+    return `${size}px ${readVar("--font-mono", "ui-monospace, monospace")}`;
   }
 
   function label(ctx, text, x, y, align, color, size) {
@@ -233,9 +233,10 @@
     };
   }
 
-  // The unit square, gridded in tenths. The grid is what turns "the points
-  // look spread out" into "there is exactly one point per cell", which is the
-  // property a low-discrepancy sequence is actually claiming.
+  // The unit square, gridded in tenths for visual orientation. A generic
+  // low-discrepancy set does not promise one point per displayed cell.
+  // Base-2 net counts apply to qualifying dyadic boxes in aligned blocks:
+  // 2^t points per box, with one-point occupancy only when t = 0.
   function drawScatterGrid(ctx, geo) {
     ctx.save();
     ctx.strokeStyle = alpha(readVar("--rule", "#232b4c"), 0.75);
@@ -438,10 +439,9 @@
 
   const HEAT_PAD = { top: 10, right: 10, bottom: 30, left: 34 };
 
-  // corrColor maps a signed correlation onto the diverging ramp. The magnitude
-  // is eased (^0.65) because the values that matter here — a 0.14 worst pair
-  // against a 0.81 one — live at the low end, and a linear ramp paints them
-  // both as ground.
+  // corrColor maps signed correlation onto the diverging ramp. Easing the
+  // magnitude (^0.65) makes small coefficients easier to inspect; the legend
+  // describes this nonlinear colour scale.
   function corrColor(value, ramp) {
     const t = Math.max(0, Math.min(1, Math.pow(Math.abs(value), 0.65)));
 
@@ -661,12 +661,10 @@
     return { low, high };
   }
 
-  // drawLogLog is the convergence chart: absolute integration error against N,
-  // both axes logarithmic, which is the only pair of axes on which "QMC beats
-  // Monte Carlo" is a statement you can check rather than take on faith. On
-  // log–log a power law is a straight line, so the reference slopes for 1/N
-  // and 1/sqrt(N) turn the comparison into reading which line each series runs
-  // parallel to.
+  // drawLogLog plots positive values on logarithmic axes. Power laws become
+  // straight lines; reference slopes are visual guides rather than guarantees
+  // about a single seed or an arbitrary integrand. Zero values are omitted
+  // because they cannot be placed on a logarithmic axis.
   //
   // series: [{points: [{x, y}], color, glyph: "circle"|"cross"|"none", dash, width}]
   // refs:   [{slope, label, anchor: {x, y}, color}]

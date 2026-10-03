@@ -9,12 +9,6 @@
       content="Pairwise correlation across every dimension, integration error against N, and star and centred L2 discrepancy against N on log–log axes. Go compiled to WebAssembly, no numerics in JavaScript."
     />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
-      rel="stylesheet"
-    />
     <link rel="stylesheet" href="style.css" />
 
     <!--
@@ -29,14 +23,19 @@
         #bootRing       .boot-ring; JS sets --boot-progress (0..1)
         #liveRegion     aria-live="polite" announcements, throttled
         #buildInfo      footer "go1.x · js/wasm"
+        #reloadWasm     recovery button shown after terminal runtime failure
 
       Correlation heatmap:
         #heatmap              dims x dims canvas
         #heatLegend           the diverging colour scale
         #cellReadout          hover report: pair, bases, r
+        #heatSummary #heatLegendText   accessible matrix and colour descriptions
+        #corrValues #corrKeys          expandable keyboard explorer and instructions
+        #corrTable #corrCaption        grid and caption, with one moving tab stop
+        #corrHead #corrBody            dynamically generated headers and values
         #worstAdjacent        big |r| readout for the worst adjacent pair
         #worstPairLabel       "dimensions 37 and 38" sub-line
-        #docReference         comparison against the README's figures
+        #docReference         current measurement configuration
         #corrDims #corrDimsOut        dimensions
         #corrCount #corrCountOut      points
         #corrSkip #corrSkipOut        burn-in
@@ -64,6 +63,7 @@
         #start #stop                  transport for the sweep
         #progressBar #progressText    progress readout
         #convChart                    the log–log chart
+        #convSummary #convConfig       accessible chart description and result snapshot
         #convRows                     <tbody> of per-N results
         #tExact #tQmcError #tMcError #tRatio    .v readouts
 
@@ -83,6 +83,7 @@
         #discStart #discStop          transport for the sweep
         #discProgressBar #discProgressText   progress readout
         #discChart                    the log–log chart
+        #discSummary #discConfig       accessible chart description and result snapshot
         #discRows                     <tbody> of per-N results
         #discCeilingNote              the sentence explaining why the N
                                       ceiling moves with the dimension slider
@@ -123,9 +124,20 @@
         </div>
       </header>
 
+      <noscript>
+        <p class="callout">
+          This interactive demo requires JavaScript and WebAssembly. Enable
+          JavaScript in a WebAssembly-capable browser to run the calculations.
+          The
+          <a href="https://github.com/CWBudde/qmc">source and documentation</a>
+          remain available without JavaScript.
+        </p>
+      </noscript>
+
       <div class="status" id="status" data-state="loading">
         Loading WebAssembly…
       </div>
+      <button id="reloadWasm" hidden>Reload WebAssembly</button>
 
       <section class="panels">
         <div class="panel panel--wide">
@@ -134,9 +146,9 @@
             Cell (<i>i</i>, <i>j</i>) is the Pearson correlation between
             coordinate <i>i</i> and coordinate <i>j</i> over the whole point
             set. Correlation is <b>signed</b>, so the scale is diverging and
-            centred on zero: cool is negative, warm is positive, ground is
-            independent. The diagonal is 1 by construction. Hover any cell for
-            the pair and <i>r</i
+            centred on zero: cool is negative, warm is positive, ground is near
+            zero linear association. The diagonal is 1 by construction. Hover
+            any cell for the pair and <i>r</i
             ><span id="corrBaseNote">, and for their prime bases</span>.
           </p>
 
@@ -147,10 +159,9 @@
               <span class="sub" id="worstPairLabel">—</span>
             </div>
             <div>
-              <span class="k">against the documented figures</span>
+              <span class="k">measurement configuration</span>
               <span class="sub" id="docReference">
-                The library reports 0.81 unscrambled and 0.14 scrambled for
-                Halton at 39 dimensions, 600 points, burn-in 64.
+                The current result and its configuration will appear here.
               </span>
             </div>
           </div>
@@ -235,11 +246,44 @@
                   id="heatmap"
                   role="img"
                   aria-label="Correlation matrix across all dimension pairs"
+                  aria-describedby="heatSummary heatLegendText"
                 ></canvas>
                 <canvas id="heatLegend" aria-hidden="true"></canvas>
+                <p class="field-note" id="heatSummary">
+                  Correlation is loading.
+                </p>
+                <p class="field-note" id="heatLegendText">
+                  Pearson correlation r ranges from −1 to +1: negative values
+                  use blue, zero is dark, and positive values use rose. The
+                  diagonal is 1. Values measure linear association, not general
+                  independence. Dimension indices start at zero.
+                </p>
                 <p class="cell-readout mono" id="cellReadout">
                   hover a cell for the pair, their bases and r
                 </p>
+                <details id="corrValues">
+                  <summary>Correlation values and keyboard explorer</summary>
+                  <p class="field-note" id="corrKeys">
+                    Tab enters the values. Arrow keys move by row or column;
+                    Home and End move within a row; Control + Home or End moves
+                    to the first or last value. Tab leaves the matrix.
+                  </p>
+                  <div class="table-wrap corr-values-wrap">
+                    <table
+                      id="corrTable"
+                      role="grid"
+                      aria-label="Correlation values"
+                      aria-describedby="corrKeys heatSummary"
+                      aria-busy="true"
+                    >
+                      <caption id="corrCaption">
+                        Waiting for correlation values.
+                      </caption>
+                      <thead id="corrHead"></thead>
+                      <tbody id="corrBody"></tbody>
+                    </table>
+                  </div>
+                </details>
               </div>
             </div>
           </div>
@@ -249,12 +293,11 @@
           <span class="corner-label">Convergence</span>
           <p class="panel-note">
             Absolute integration error against <i>N</i>, both axes logarithmic —
-            the only pair of axes on which "QMC beats Monte Carlo" is something
-            you can check rather than take on faith. A power law is a straight
-            line here, so the two dotted references matter: plain Monte Carlo
-            error falls as <b>1/√N</b>, and a well-behaved quasi-Monte Carlo
-            rule approaches <b>1/N</b>. Read which line each series runs
-            parallel to.
+            a power law is a straight line here. The dotted <b>1/√N</b> and
+            <b>1/N</b> slopes are references, not guarantees for a single run.
+            Monte Carlo RMS error scales as 1/√N for finite-variance integrands;
+            QMC behavior depends on the function, dimensions and sampled block.
+            Compare several seeds and budgets.
           </p>
 
           <div class="controls" style="margin-top: 0">
@@ -328,7 +371,16 @@
                 <button id="start" data-primary disabled>Start</button>
                 <button id="stop" disabled>Stop</button>
               </div>
-              <div class="progress">
+              <div
+                class="progress"
+                role="progressbar"
+                aria-label="Convergence sweep"
+                aria-valuemin="0"
+                aria-valuemax="1"
+                aria-valuenow="0"
+                aria-valuetext="Idle"
+                aria-describedby="progressText"
+              >
                 <div class="progress__bar" id="progressBar"></div>
               </div>
               <p class="field-note mono" id="progressText">idle</p>
@@ -374,7 +426,14 @@
             id="convChart"
             role="img"
             aria-label="Absolute integration error against N on log–log axes"
+            aria-describedby="convSummary convConfig"
           ></canvas>
+          <p class="field-note" id="convSummary">
+            No completed convergence rungs.
+          </p>
+          <p class="field-note mono" id="convConfig">
+            No results for the current settings.
+          </p>
           <div class="chart-legend">
             <span class="qmc"><i></i>quasi-Monte Carlo — circles</span>
             <span class="mc"><i></i>pseudo-random Monte Carlo — crosses</span>
@@ -388,11 +447,11 @@
             The quantity the phrase "low-discrepancy sequence" actually refers
             to, measured against <i>N</i> on log–log axes: the sequence's
             discrepancy, a pseudorandom sample's over the same <i>N</i>, and —
-            for centred L2 — the closed-form expectation
+            for centred L2 — the analytic random RMS baseline
             <b>√(((5/4)<sup>s</sup> − (13/12)<sup>s</sup>)/N)</b> of the random
-            one. The headline is the ratio <b>random ÷ sequence</b>, and a ratio
-            of <b>1.00</b> needs no interpretation: the statistic has stopped
-            distinguishing the two point sets.
+            one, <b>√E[CD2²]</b>, rather than mean discrepancy E[CD2]. The
+            headline is the measured ratio <b>random ÷ sequence</b>; a ratio
+            near one means these two sets have similar scores on this metric.
           </p>
 
           <div class="verdict">
@@ -400,8 +459,9 @@
               <span class="k">random ÷ sequence</span>
               <span class="big" id="dRatio">—</span>
               <span class="sub" id="discVerdict">
-                Press Start. The page opens on 39 dimensions and centred L2,
-                which is the configuration in which this statistic says nothing.
+                Press Start to compare the selected point sets. At high
+                dimensions centred L2 can distinguish useful sequences from
+                random points only weakly.
               </span>
             </div>
           </div>
@@ -486,7 +546,7 @@
                   <span class="v" id="dRandom" data-tone="plain">—</span>
                 </div>
                 <div>
-                  <span class="k">analytic E[·]</span>
+                  <span class="k">analytic random RMS</span>
                   <span class="v" id="dAnalytic">—</span>
                 </div>
                 <div>
@@ -498,7 +558,16 @@
                 <button id="discStart" data-primary disabled>Start</button>
                 <button id="discStop" disabled>Stop</button>
               </div>
-              <div class="progress">
+              <div
+                class="progress"
+                role="progressbar"
+                aria-label="Discrepancy sweep"
+                aria-valuemin="0"
+                aria-valuemax="1"
+                aria-valuenow="0"
+                aria-valuetext="Idle"
+                aria-describedby="discProgressText"
+              >
                 <div class="progress__bar" id="discProgressBar"></div>
               </div>
               <p class="field-note mono" id="discProgressText">idle</p>
@@ -524,12 +593,19 @@
             id="discChart"
             role="img"
             aria-label="Discrepancy against N on log–log axes, sequence against pseudo-random"
+            aria-describedby="discSummary discConfig"
           ></canvas>
+          <p class="field-note" id="discSummary">
+            No completed discrepancy rungs.
+          </p>
+          <p class="field-note mono" id="discConfig">
+            No results for the current settings.
+          </p>
           <div class="chart-legend">
             <span class="qmc"><i></i>the sequence — circles</span>
             <span class="mc"><i></i>pseudo-random — crosses</span>
-            <span class="ref"
-              ><i></i>analytic random expectation — no markers</span
+            <span class="ref" data-analytic-reference
+              ><i></i>analytic random RMS baseline — no markers</span
             >
           </div>
         </div>
@@ -539,61 +615,69 @@
         <h3>Reading the numbers</h3>
         <p>
           <b>Correlation is a symptom, not the disease.</b> A low-discrepancy
-          sequence promises even coverage of the whole box, and pairwise
-          correlation only catches the most visible way that promise fails. Zero
-          everywhere is necessary, not sufficient.
+          sequence aims for even coverage of the whole box. Pairwise correlation
+          measures linear association; small sample coefficients neither
+          establish independence nor guarantee low discrepancy or integration
+          accuracy.
         </p>
         <p>
           <b>A single seed is a single sample.</b> With any randomization
-          selected this is randomized quasi-Monte Carlo: every seed gives a
-          different, equally valid point set, and both the worst pair and the
-          error curve wobble from one to the next. The library's quoted 0.14 is
-          the worst of five seeds, not the best of one.
+          selected this is randomized quasi-Monte Carlo: seeds can give
+          different point sets, and both the worst pair and the error curve can
+          vary. One displayed seed does not summarize the distribution over
+          seeds or measure undetected bias.
         </p>
         <p>
-          <b>Centred L2 saturates; that is not a bug in the panel.</b> Its
-          expectation over <i>N</i> uniform points is exactly √(((5/4)<sup
-            >s</sup
+          <b
+            >Centred L2 can separate point sets only weakly at high
+            dimensions.</b
           >
-          − (13/12)<sup>s</sup>)/<i>N</i>), and the (5/4)<sup>s</sup> term —
-          which depends only on each coordinate's marginal spread — swamps
-          everything a well-spread point set can improve. At 39 dimensions it is
-          100.4% of the total, so the ratio reads about 1.02 and the three
-          curves lie on top of one another. Drop the dimension slider and watch
-          them separate. Star discrepancy does not saturate, but it is NP-hard
-          in the dimension, so the library refuses it above six dimensions and a
-          few dozen points — the metric menu prints that refusal in the
-          library's own words rather than restating the limit here.
+          For independent continuous uniform points, its random RMS baseline
+          √E[CD2²] is √(((5/4)<sup>s</sup> − (13/12)<sup>s</sup>)/<i>N</i>).
+          This is not the mean E[CD2]. The (5/4)<sup>s</sup> term dominates that
+          squared expectation as dimensions grow, but does not determine the
+          ratio for a particular seed or sequence. Compare lower dimensions and
+          available metrics. Generic multi-point star evaluation has dimension
+          and work limits; the library also has cheap one-point and
+          one-dimensional paths. The menu reports acceptance for the demo's
+          minimum of two points, separately from its own work ceilings.
         </p>
         <p>
-          <b>The discrepancy panel's N ceiling moves.</b> Every other control on
-          these pages has a fixed range. This one does not: centred L2 costs
-          O(<i>N</i>²<i>s</i>) and a single <i>N</i> cannot be subdivided, so
-          the only way to keep one blocking call short is to cap <i>N</i>, and
-          the cap has to fall as dimensions are added. It is a browser
-          responsiveness limit, not a mathematical one.
+          <b>The discrepancy panel's N ceiling moves with dimensions.</b>
+          General centred L2 costs O(<i>N</i>²<i>s</i>), so its work-policy cap
+          falls as dimensions are added. One dimension uses a cheaper formula.
+          These caps bound computation work; they do not promise the same
+          runtime on every device.
         </p>
         <p>
-          <b>The sweep loops in JavaScript on purpose.</b> A call into Go blocks
-          the event loop for its whole duration, so a Stop pressed during one
-          cannot be dispatched. Each <code>converge</code> call therefore covers
-          exactly one <i>N</i>, and the page yields between them. That gap is
-          the cancellation mechanism, and it is also why the chart fills in one
-          point at a time.
+          <b>The sweep runs in a computation worker.</b> Each Go call covers one
+          <i>N</i>; completed rungs fill the chart one point at a time. Controls
+          remain available while a rung runs. Stop terminates that worker
+          immediately, and request IDs prevent an obsolete result from joining a
+          restarted sweep. Correlation uses its own worker channel.
         </p>
       </div>
 
-      <p class="sr-only" id="liveRegion" aria-live="polite"></p>
+      <p
+        class="sr-only"
+        id="liveRegion"
+        aria-live="polite"
+        aria-atomic="true"
+      ></p>
 
       <footer class="rack-footer mono">
         <span>github.com/cwbudde/qmc</span>
         <span id="buildInfo">—</span>
         <span>correlation · convergence · discrepancy</span>
+        <a href="credits.html">Credits and licenses</a>
       </footer>
     </div>
 
     <script src="wasm_exec.js"></script>
     <script src="render.js"></script>
+    <script src="runtime.js"></script>
+    <script src="compute.js"></script>
+    <script src="accessibility.js"></script>
     <script src="analysis.js"></script>
   </body>
 </html>

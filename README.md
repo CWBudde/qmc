@@ -3,15 +3,14 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/cwbudde/qmc.svg)](https://pkg.go.dev/github.com/cwbudde/qmc)
 [![Go Report Card](https://goreportcard.com/badge/github.com/cwbudde/qmc)](https://goreportcard.com/report/github.com/cwbudde/qmc)
 
-Quasi-Monte Carlo sequences for Go: deterministic, low-discrepancy point sets that fill a
-unit hypercube more evenly than independent random sampling does. Sobol and Halton, each
-with optional randomization.
+Quasi-Monte Carlo sequences for Go: Sobol and Halton, with optional seeded
+randomization and no runtime dependencies. Structured sampling can improve
+integration accuracy; the gain depends on the integrand, projections, and sample
+window.
 
-**[Try it in your browser →](https://cwbudde.github.io/qmc/)** — watch a 39-dimensional
-Halton sequence collapse onto a diagonal ramp, and one toggle dissolve it, with the library
-itself compiled to WebAssembly.
-
-No dependencies.
+**[Try it in your browser](https://cwbudde.github.io/qmc/)** — explore scatter
+projections, digit scrambling, correlation, convergence, and discrepancy using
+the library compiled to WebAssembly.
 
 ```bash
 go get github.com/cwbudde/qmc
@@ -25,171 +24,119 @@ if err != nil {
     return err
 }
 for i := 0; i < 600; i++ {
-    point := g.Next() // len(point) == 39, every coordinate in [0,1)
-    ...
+    point := g.Next() // len(point) == 39, coordinates in [0,1)
+    // Use point in your application.
 }
 ```
 
-`At(i)` is the stateless form. It depends only on `i` and the generator's configuration,
-never on how many points have been drawn, so a worker pool can share one sequence by
-claiming indices from an atomic counter:
+Both generators implement `qmc.Sequence`: `Dims`, `Next`, `NextInto`, `Reset`,
+`At`, and `AtInto`. Indexed access depends only on the index and configuration
+and leaves the cursor unchanged. `At` and `AtInto` are safe to share between
+goroutines, with separate destination buffers. Serialize `Next`, `NextInto`,
+and `Reset`. The concrete generators document index limits, panic boundaries,
+and scratch allocation; Into methods avoid allocating a point slice.
 
-```go
-idx := counter.Add(1)
-g.AtInto(int(idx)-1, pos)
-```
+## Choosing a sequence
 
-`Next`, `NextInto` and `Reset` are stateful and not safe for concurrent use. `At` and
-`AtInto` are.
+Sobol is a useful starting choice. It uses base 2 in every dimension; the embedded
+Joe–Kuo table supports 1024 dimensions. `WithDirectionNumbers` accepts a caller's
+larger table. Projection quality and effective dimension still matter.
 
-Both generators satisfy `qmc.Sequence`, which carries exactly those six methods, so code
-that just needs points can accept the interface and let the caller choose the sequence.
-`Bases()` and `Permutation()` are Halton-only and deliberately not on it — Sobol works in
-base 2 in every dimension and has neither, and the honest answer to a question that does
-not apply is that you are holding the wrong type, not a zero value.
+Halton has no fixed table ceiling: primes are generated on demand, subject to
+arithmetic and memory limits. Large prime bases can produce correlated early
+coordinates. Scrambling often helps at small budgets. Fixed digit-permutation
+construction can be expensive in high dimensions; reuse the generator.
 
-## Which sequence
-
-**Sobol unless you have a reason.** Base 2 in every dimension, no degradation as dimensions
-are added, capped at the 1024 dimensions the embedded Joe & Kuo direction numbers cover
-(`WithDirectionNumbers` takes your own table for more).
-
-**Halton** has no dimension ceiling — primes are sieved on demand, so `NewHalton(5000)`
-works — and its construction is simple enough to reproduce by hand. Above roughly twenty
-dimensions it must be randomized to be usable at all.
-
-Measured on a smooth 39-dimensional product integrand at n=4096, against plain Monte Carlo
-on the same budget: Sobol with Owen scrambling **32x**, Halton with nested scrambling
-**31.9x**, Sobol with a digital shift **29.5x**, Halton with random-digit scrambling
-**17.7x**. Those are ten-stream figures and the ordering moves at forty streams;
-[Choosing a sequence](docs/choosing-a-sequence.md) has the full table, the caveats, and the
-two Sobol balance properties that make a correct sequence look broken when you test it.
-
-At 40 points rather than 4096 — the regime a seeded population actually uses — the advantage
-survives but shrinks: 3.4x to 5.2x over Monte Carlo at 30 dimensions, and the gap between the
-two best schemes closes to a tie. See [the small-sample regime](docs/small-sample-regime.md).
+[Performance](docs/performance.md) is the canonical current measurement report:
+one controlled machine/toolchain, repeated timings and allocations, and a
+40-stream smooth-product integration comparison at 39 dimensions and 4096
+points. It includes raw data, configuration, seeds, uncertainty estimates, and
+reproduction commands. These observations do not establish a universal ranking.
+[Choosing a sequence](docs/choosing-a-sequence.md) explains Sobol alignment and
+projection guarantees; [small budgets](docs/small-sample-regime.md) describes
+the separate 40/160-point fixtures.
 
 ## Randomization
 
-Each option applies to one generator and is refused by name by the other. They are mutually
-exclusive: a generator has one randomization or none. All four keep the low-discrepancy
-structure intact and make the generator an RQMC sequence, so averaging over seeds yields an
-error estimate; fix the seed and a run is reproducible.
+The options are mutually exclusive and accepted only by their named generator.
+They preserve the construction's digit structure within the supported depth.
 
-| option                 | generator | what it does                                                              |
-| ---------------------- | --------- | ------------------------------------------------------------------------- |
-| `WithScrambling`       | Halton    | One digit permutation per dimension (Braaten & Weller 1979)               |
-| `WithNestedScrambling` | Halton    | Uniform digit permutation per node, conditioned on the digits above it    |
-| `WithDigitalShift`     | Sobol     | One random word per dimension, XORed into every point                     |
-| `WithOwenScrambling`   | Sobol     | Hash-based Owen scrambling: an independent flip at every node of the tree |
+| Option                 | Generator | Construction                                                               |
+| ---------------------- | --------- | -------------------------------------------------------------------------- |
+| `WithScrambling`       | Halton    | One seeded digit permutation per dimension, reused at every digit position |
+| `WithNestedScrambling` | Halton    | Seeded node permutations conditioned on the preceding digits               |
+| `WithDigitalShift`     | Sobol     | One seeded XOR word per dimension                                          |
+| `WithOwenScrambling`   | Sobol     | Hash-based nested bit flips                                                |
 
-**Above ~20 Halton dimensions, scrambling is not optional.** The _d_-th coordinate is the
-radical inverse in base _p_d_, and for a large base the first _p_d_ points of it are a ramp
-rather than a sample — two adjacent high-dimensional coordinates ramp together, measuring a
-worst adjacent-pair correlation of 0.81 at 39 dimensions and 600 points. Either scrambling
-scheme takes that to 0.14–0.16 over thirty seeds.
+Fixed digit scrambling does not give uniform point marginals: its first base-2
+point is 0.5 for every seed. Digital shifting and nested schemes use finite
+precision and seeded pseudorandomness. Seed variability does not measure bias
+it cannot detect. [Randomization](docs/randomization.md) distinguishes the
+ideal mathematical constructions from these implementations.
 
-[Randomization](docs/randomization.md) has the correlation tables, what each option costs per
-point, why nested scrambling moved from affine to uniform permutations, and how far the
-hash-based Owen scramble is from an exact one.
+## Starting windows and leaping
 
-## Use a burn-in
+The first Halton point is `(1/2, 1/3, 1/5, …)`. `WithSkip(64)` omits the first
+64 raw points; this does not guarantee improved accuracy or remove high-base
+patterns. When Sobol's net balance matters, use a complete power-of-two block
+aligned in raw indices. This API omits the origin; later aligned blocks are
+available through skip, as explained in [API design](docs/api-design.md).
 
-The first Halton point is `(1/2, 1/3, 1/5, 1/7, …)`, which sits near a corner of the box in
-every coordinate with a large base. `WithSkip(64)` discards the first 64 points. It is
-cheap and it is the standard remedy.
-
-## Leaping
-
-`WithLeap(n)` takes every _n_-th point instead of every point: point _i_ becomes raw index
-`skip + 1 + i*n`. It is the only deterministic remedy for the Halton defect — no seed, so a
-leaped run is plain QMC — and it is the most accurate option in the package for integration:
-**54.3x** Monte Carlo at 39 dimensions and 4096 points, against nested scrambling's 41.1x.
-
-**A leap must be coprime to every base in use**, and both constructors refuse one that is
-not, by name. If a base _p_ divides the leap, that coordinate is confined to a single strip
-of width `1/p` while still producing a plausible spread of values inside it. Pick a prime
-above the largest base — above 167 at 39 dimensions. On Sobol every base is 2, so the leap
-must be odd; the reason there is _not_ the base-2 restatement it looks like.
-
-The gain is in the average, not the tail: worst adjacent-pair |r| over thirty leaps runs
-median 0.097, p90 0.23, worst 0.32, against `WithScrambling`'s 0.093/0.13/0.16. Leaping suits
-integration; it does not suit a parameter sweep. [Leaping](docs/leaping.md) has the
-measurements, the Gray-code parity argument for Sobol, and the cost.
+`WithLeap(n)` selects raw index `skip + 1 + i*n`. Halton requires a leap
+coprime to every prime base in use; Sobol requires an odd leap. Both constructors
+validate this. Leaping is deterministic and changes the sampled window.
+On Sobol, a leap greater than one gives up the general aligned-block guarantee
+and the optimized stateful recurrence. [Leaping](docs/leaping.md) describes
+the validation and separately scoped quality fixtures. Measure the actual
+application before choosing a leap.
 
 ## Discrepancy
 
-Two ways to measure how evenly a point set fills the cube, failing in opposite directions.
-`Draw(seq, n)` collects points into a matrix for either.
+`Draw(seq, n)` collects indexed points without moving the cursor.
+`StarDiscrepancy` returns the exact maximum absolute difference between an
+origin-anchored box's volume and its empirical point fraction. One-point and
+one-dimensional sets have cheap paths. Generic multipoint enumeration refuses
+more than six dimensions or a conservative budget of 30 million search leaves;
+the budget is a work limit, not a wall-clock guarantee.
 
-```go
-g, err := qmc.NewHalton(3, qmc.WithSkip(64), qmc.WithScrambling(seed))
-if err != nil {
-    return err
-}
+`CenteredL2Discrepancy` returns Hickernell's centered L2 norm. Its cost is
+O(N log N) in one dimension and O(N²s) otherwise. It rejects arithmetic outside
+its supported float64 range. For N ideal independent uniform points,
 
-d, err := qmc.StarDiscrepancy(qmc.Draw(g, 512))
-if err != nil {
-    return err // above 6 dimensions, or past the work budget, this is where you find out
-}
-
-fmt.Printf("D*_512 = %.6f\n", d)
+```text
+E[CD2²] = ((5/4)^s - (13/12)^s) / N
 ```
 
-`StarDiscrepancy` is the exact `D*_N` — a supremum, not a sample and not a lower bound.
-Computing it is NP-hard in the dimension, so it **refuses** above 6 dimensions or above a
-calibrated budget of 3e7 search-tree leaves (about 0.8 seconds) and returns an error rather
-than a partial answer or a hang.
+The square root is the **uniform-point RMS baseline**, `sqrt(E[CD2²])`, rather
+than the mean `E[CD2]`. A ratio near that baseline indicates little contrast
+for this statistic on the measured sets; it does not establish independence,
+integration accuracy, or a universal dimension at which CD2 becomes useless.
+[Discrepancy](docs/discrepancy.md) explains precision, limits, and interpretation.
 
-`CenteredL2Discrepancy` is Hickernell's CD2 in closed form, O(N²s) in any dimension. It is
-cheap everywhere and **stops meaning anything in high dimensions**: at 39 dimensions a good
-point set and a random one differ by 1.02x over the very same points whose integration error
-differs by 16.4x. The self-check: compare your number against
-`sqrt(((5/4)^s - (13/12)^s)/N)`, the exact expectation for independent uniform points. If it
-is not several times below that, the statistic is telling you about your marginals and
-nothing else.
+## Web demo and introspection
 
-[Discrepancy](docs/discrepancy.md) has both measurement tables, the affordable point counts
-per dimension, and why CD2 saturates.
-
-## Web demo
-
-[`examples/wasm-demo`](examples/wasm-demo) is a browser demo, published at
-<https://cwbudde.github.io/qmc/>. Everything it shows is computed by this library compiled
-to `js/wasm` — there is no JavaScript reimplementation of the sequence. It has two pages: a
-**Point Lab** (scatter explorer plus digit inspector) and a **Discrepancy Bench**
-(correlation heatmap, convergence chart, and a discrepancy sweep against a pseudorandom
-baseline — where CD2's saturation is visible as three curves lying on top of one another).
+The [demo](examples/wasm-demo/README.md) has a Point Lab and a Discrepancy Bench.
+Computation runs locally in cancellable Go/WASM workers. Run it with:
 
 ```bash
 just run-wasm-demo
 ```
 
-## Introspection
+Halton's `Bases()` returns a copy of its prime bases. `Permutation(d)` returns
+a copy of the fixed digit permutation, or nil for an invalid dimension, plain
+Halton, or nested scrambling. A nested scramble has different permutations at
+different nodes; its bounded internal root cache is not a single permutation
+for the entire dimension.
 
-These are Halton-only; Sobol has neither prime bases nor a permutation table.
+## Documentation and contributing
 
-`Bases()` returns the prime base of each dimension, in order — the _d_-th base is the _d_-th
-prime, so `Bases()[38]` is 167. `Permutation(d)` returns the random-digit scrambling
-permutation of `{0…base-1}` applied to dimension _d_, or `nil` for an unscrambled generator,
-a nested-scrambled one (which has no table to hand out) or an out-of-range _d_. Both return
-copies, so nothing a caller does to the returned slice can perturb the sequence.
-
-```go
-fmt.Printf("dimension 38 uses base %d\n", g.Bases()[38])
-```
-
-## Documentation
-
-The [`docs/`](docs) directory carries the long form: the measurements behind every figure
-above, the caveats that only matter once you are relying on a number, and the reasoning
-behind choices that are not obvious from the code. [`docs/README.md`](docs/README.md) is the
-index. Open work is recorded at the end of the page it belongs to, so a gap sits next to the
-reasoning that explains it.
+The [documentation index](docs/README.md) links the mathematical contracts,
+measurement evidence, tooling, and design decisions.
+[CONTRIBUTING.md](CONTRIBUTING.md) describes setup and verification.
+[PLAN.md](PLAN.md) tracks review remediation and its completion evidence.
 
 ## License
 
-MIT.
-
-The Sobol direction numbers in [`third_party/joe-kuo`](third_party/joe-kuo) are Frances Y.
-Kuo and Stephen Joe's, redistributed under their BSD-3 notice, which is kept alongside them.
+MIT. The [Joe–Kuo direction numbers](third_party/joe-kuo) retain their BSD-3
+notice. The browser distribution includes complete project, Joe–Kuo, and Go
+toolchain notices, linked from **Credits and licenses** on both pages.

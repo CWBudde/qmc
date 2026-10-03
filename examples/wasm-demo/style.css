@@ -46,10 +46,8 @@
   --bad: #ff5d8f;
 
   /* ---- type ---- */
-  --font-display:
-    "Archivo", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
-  --font-mono:
-    "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --font-display: system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
 
   /* ---- rhythm ---- */
   --gutter: 24px;
@@ -176,7 +174,7 @@ input[type="range"] {
 }
 
 :focus-visible {
-  outline: 1px solid var(--action);
+  outline: 2px solid var(--action);
   outline-offset: 2px;
 }
 
@@ -957,6 +955,26 @@ canvas {
   gap: 10px;
 }
 
+.corr-values-wrap {
+  max-height: 320px;
+  overflow: auto;
+}
+
+#corrTable caption {
+  text-align: left;
+  padding: 8px;
+}
+
+#corrTable td:focus-visible {
+  outline-offset: -2px;
+  background: var(--void);
+  color: var(--lume);
+}
+
+summary {
+  cursor: pointer;
+}
+
 .heatmap-wrap canvas#heatmap {
   aspect-ratio: 1 / 1;
   max-height: 62vh;
@@ -1067,6 +1085,10 @@ canvas#convChart {
   display: inline-flex;
   align-items: center;
   gap: 7px;
+}
+
+.chart-legend span[hidden] {
+  display: none;
 }
 
 .chart-legend i {

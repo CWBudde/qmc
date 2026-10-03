@@ -7,25 +7,9 @@ import (
 	"github.com/cwbudde/qmc"
 )
 
-// Benchmarks for the calls a caller makes in an inner loop.
-//
-// The justfile ships a `bench` recipe (`go test -bench=. -benchmem ./...`).
-// Until this file existed that recipe matched nothing and reported success, so
-// "benchmarks pass" meant only that no benchmarks ran. These give it something
-// to measure.
-//
-// The allocation counts are the load-bearing part, which is why every
-// benchmark calls b.ReportAllocs. The package's whole reason for offering
-// NextInto and AtInto alongside Next is that an optimizer sampling a few
-// hundred thousand points cannot afford one slice allocation per point. If a
-// refactor ever made the *Into paths allocate, nothing else in the suite would
-// notice — the values would still be correct — but the API would have lost the
-// only thing that distinguishes it from Next.
-//
-// Reference figures on the machine these were written on, at 39 dimensions:
-// Next 1074 ns/op with 320 B/op in 1 alloc, AtInto 800 ns/op with 0 allocs,
-// AtInto scrambled 1279 ns/op with 0 allocs. Scrambling costs roughly 60%
-// because the digit loop gains a permutation lookup and the geometric tail.
+// Benchmarks report throughput and allocations for the stated configurations.
+// Use docs/performance.md's fixed-workload harness for comparable baselines;
+// these adaptive index ranges can vary with benchmark calibration.
 const benchDims = 39
 
 // sink keeps the compiler from eliminating the work. The benchmarked calls
@@ -140,20 +124,8 @@ func BenchmarkNewHaltonHighDimsScrambled(b *testing.B) {
 	}
 }
 
-// BenchmarkAtIntoLeaped measures what WithLeap actually costs, which is not
-// what it looks like it should cost.
-//
-// The implementation is one multiply in fill, and a multiply amortised over 39
-// coordinates should be unmeasurable. Measured at a leap of 173 it is 634
-// ns/op against AtInto's 512 — about 24%. The multiply is not where that goes:
-// a leap reaches raw index skip+1+i*leap instead of skip+1+i, so at the same
-// point count it is working on indices 173 times larger, and a radical inverse
-// costs one loop iteration per digit. Dimension 0 gains about 7.4 base-2 digits
-// and dimension 38 about one base-167 digit.
-//
-// So the cost of leaping is proportional to log(leap), not to the multiply, and
-// it is paid by every coordinate. Worth knowing before choosing a large leap
-// for its own sake.
+// BenchmarkAtIntoLeaped includes the digit work from larger raw indices.
+// Leaping can increase radical-inverse digit counts as well as index arithmetic.
 func BenchmarkAtIntoLeaped(b *testing.B) {
 	g, err := qmc.NewHalton(benchDims, qmc.WithSkip(64), qmc.WithLeap(173))
 	if err != nil {
@@ -171,25 +143,9 @@ func BenchmarkAtIntoLeaped(b *testing.B) {
 	}
 }
 
-// Discrepancy benchmarks.
-//
-// These are not inner-loop calls — a caller measures a point set once — but
-// they are the only benchmarks in this package whose numbers become part of
-// the API. starBoxBudget is a wall-clock promise expressed in leaf counts, and
-// the only honest way to set it is to divide a measured time by the
-// C(N+s,s) leaves that shape actually has. BenchmarkStarDiscrepancy is where
-// that division is done; see the constant's comment for the arithmetic.
-//
-// The two shapes are chosen to bracket the tree: 1024 points in 2 dimensions
-// is wide and shallow (5.26e5 leaves, dominated by the per-node sort), 160
-// points in 4 dimensions is narrow and deep (2.91e7 leaves, dominated by the
-// leaves themselves). They come out at 27.7 and 26.3 nanoseconds per leaf, so
-// the per-leaf cost is flat across shapes — which is the fact that makes a
-// leaf count usable as a wall-clock budget at all, and would stop being true
-// if the pruner or the sort were changed.
-//
-// The 4-dimensional shape sits just under starBoxBudget on purpose. Raise it
-// much and the benchmark trips the refusal it is calibrating.
+// BenchmarkStarDiscrepancy exercises wide/shallow and narrow/deep searches.
+// The generic leaf gate bounds accepted work rather than promising wall clock;
+// measurements and workload details are in docs/discrepancy.md.
 func BenchmarkStarDiscrepancy(b *testing.B) {
 	for _, c := range []struct {
 		name string

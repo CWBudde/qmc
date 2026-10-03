@@ -1,26 +1,28 @@
 # qmc documentation
 
-The [README](../README.md) is the overview: what the package is, how to call it, and which
-sequence to reach for. These pages carry the long form — the measurements behind each claim,
-the caveats that only matter once you are relying on a number, and the reasoning behind the
-choices that are not obvious from the code.
+The [README](../README.md) introduces the library.
+[CONTRIBUTING.md](../CONTRIBUTING.md) explains setup and checks.
+[PLAN.md](../PLAN.md) is the authoritative remediation checklist: task status,
+acceptance criteria, verification evidence, and documented deferrals live there.
+Topic pages explain behavior and decisions; they do not maintain competing
+open-work lists. New findings should receive a plan entry and a link from the
+relevant topic.
 
-Everything here was measured rather than asserted. Where a figure appears, the test that
-produces it is named, so it can be re-run rather than trusted.
+| Page                                          | What it covers                                                                     | Related review tasks                |
+| --------------------------------------------- | ---------------------------------------------------------------------------------- | ----------------------------------- |
+| [Choosing a sequence](choosing-a-sequence.md) | Dimensions, sample windows, Sobol alignment and projection quality                 | SCI-01, API-01                      |
+| [Randomization](randomization.md)             | Fixed, nested, digital-shift and hash-based schemes; finite randomness assumptions | SCI-01, PERF-01                     |
+| [Leaping](leaping.md)                         | Coprimality validation, deterministic windows and recurrence tradeoffs             | CORE-01, API-01                     |
+| [Discrepancy](discrepancy.md)                 | Exact star limits, centered L2 formulas, RMS baseline and numerical precision      | CORE-05, CORE-06, CORE-08, DOC-01   |
+| [Small budgets](small-sample-regime.md)       | Reproducible 40/160-point integration and discrepancy fixtures                     | TEST-01, TEST-02, DOC-01            |
+| [API design](api-design.md)                   | The six-method interface, option ownership, panic boundaries and aligned blocks    | CORE-03, CORE-07, API-01            |
+| [Testing methodology](testing-methodology.md) | Independent references, negative controls, uncertainty and verification budgets    | CORE-04, TEST-01 through TEST-03    |
+| [Performance](performance.md)                 | Canonical current measurements, raw evidence and optimization decisions            | PERF-01                             |
+| [Toolchain and CI](toolchain.md)              | Pinned setup, both modules, workflow security, artifacts and releases              | TOOL-01 through TOOL-04, SHIP-01/02 |
+| [WebAssembly demo](wasm-demo.md)              | Worker ownership, accessibility, browser checks and rendering decisions            | DEMO-01 through DEMO-10             |
 
-**Open work lives at the end of the page it belongs to**, under a "still open" or "known
-gaps" heading, so a gap sits next to the reasoning that explains it. The right-hand column
-says which pages currently have one.
-
-| page                                              | what it answers                                                                                                                                             | open work |
-| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| [Choosing a sequence](choosing-a-sequence.md)     | Sobol or Halton, the dimension ceilings, and the two Sobol balance properties that make a correct sequence look broken                                      | —         |
-| [Randomization](randomization.md)                 | The four options, what each costs, the high-dimensional Halton defect they cure, and how far the hash-based Owen scramble is from an exact one              | —         |
-| [Leaping](leaping.md)                             | `WithLeap`, why a shared factor is refused rather than documented, and why Sobol's version of the trap is not the base-2 restatement it looks like          | —         |
-| [Discrepancy](discrepancy.md)                     | `StarDiscrepancy`'s exactness and its two-gate refusal; `CenteredL2Discrepancy`'s closed form and the saturation that makes it useless above ~20 dimensions | yes       |
-| [The small-sample regime](small-sample-regime.md) | What happens at 40 points — the regime a seeded population actually uses, and the one the rest of the suite never touches                                   | —         |
-| [API design](api-design.md)                       | Why `Sequence` is six methods, why options are fixed at construction, and why the package panics where it does                                              | yes       |
-| [Testing methodology](testing-methodology.md)     | Why the gates assert ratios rather than constants, how many seeds a statistic needs, and what a stratification test cannot police                           | yes       |
-| [Performance](performance.md)                     | Benchmark figures and the caveats attached to them, construction cost, and the WebAssembly demo's cost model                                                | yes       |
-| [Toolchain and CI](toolchain.md)                  | What runs where, the format check that can pass without checking anything, and which absences are deliberate                                                | yes       |
-| [The WebAssembly demo](wasm-demo.md)              | What the demo asks of the library and why, and the list of known problems an untested demo has accumulated                                                  | yes       |
+Mathematical identities and API limits are distinct from measured quality and
+timing. Published comparisons identify their workload and reproduction method.
+The canonical performance report contains environment metadata and raw data;
+older changelog entries describe their historical release, rather than current
+performance guarantees.

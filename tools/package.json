@@ -1,0 +1,9 @@
+{
+  "name": "qmc-development-formatters",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Pinned development tooling; not a runtime library dependency",
+  "dependencies": {
+    "prettier": "3.5.3"
+  }
+}

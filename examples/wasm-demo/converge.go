@@ -20,13 +20,9 @@ const (
 
 // gaussianSigma is the width of the gaussian integrand's per-dimension bump.
 //
-// It is a compromise. Much narrower and a few hundred points miss the peak
-// entirely in every dimension at once, so both estimators return near zero and
-// the chart shows two flat lines that say nothing about sampling quality. Much
-// wider and the integrand is effectively constant, which is what "sum" is
-// already for. At 0.35 the bump covers most of the unit interval but still has
-// real curvature, so QMC's better coverage shows up as a visibly steeper error
-// curve.
+// This width gives a smooth, separable function with an analytic integral.
+// Narrower bumps can be missed at small sampling budgets; accuracy and observed
+// convergence depend on the generator, dimensions, seed, and point count.
 const gaussianSigma = 0.35
 
 // An integrand is a test function on the unit cube whose integral is known in
@@ -73,6 +69,7 @@ var integrands = map[string]integrand{
 		description: "prod (|4x-2| + i)/(1 + i); exact 1 in every dimension. The standard QMC benchmark, weighted so low dimensions dominate.",
 		fn: func(point []float64) float64 {
 			product := 1.0
+
 			for i, x := range point {
 				a := float64(i + 1)
 				product *= (math.Abs(4*x-2) + a) / (1 + a)
@@ -108,6 +105,7 @@ var integrands = map[string]integrand{
 		description: "prod exp(-(x-0.5)^2/(2s^2)) with s = 0.35; exact value is the truncated-gaussian 1-D integral raised to the d-th power.",
 		fn: func(point []float64) float64 {
 			product := 1.0
+
 			for _, x := range point {
 				d := x - 0.5
 				product *= math.Exp(-(d * d) / (2 * gaussianSigma * gaussianSigma))
@@ -122,18 +120,12 @@ var integrands = map[string]integrand{
 		},
 	},
 
-	// The mean of the coordinates. Every x_i has mean 1/2, so the average of d
-	// of them has mean 1/2 too, in any dimension.
-	//
-	// This is the control. It is linear, perfectly smooth and of the lowest
-	// possible effective dimension, which is the regime where a plain Monte
-	// Carlo estimator is at its least embarrassing — the two curves here run
-	// much closer together than on the product integrand, and that contrast is
-	// the point of including it.
+	// The mean of the coordinates is additive and linear. Its uniform-cube
+	// integral is 1/2 in every dimension; every selected coordinate contributes.
 	"sum": {
 		key:         "sum",
 		label:       "Mean of coordinates",
-		description: "(1/d) * sum x_i; exact 0.5. A trivially smooth control where QMC's advantage is smallest.",
+		description: "(1/d) * sum x_i; exact 0.5. An additive linear integrand involving every selected coordinate. Compare its measured errors with the nonlinear examples.",
 		fn: func(point []float64) float64 {
 			if len(point) == 0 {
 				return 0
@@ -154,18 +146,10 @@ var integrands = map[string]integrand{
 // integration error at sample size n, for the selected sequence and for a
 // pseudo-random sampler, over the same integrand and the same n.
 //
-// One n per call is deliberate, and it is the whole reason this export is
-// shaped the way it is. A call into wasm is synchronous: it occupies the
-// browser's single JavaScript thread for its entire duration, and nothing else
-// can be dispatched while it runs — not a click, not a timer, not the page's
-// own "stop" flag. A sweep computed entirely inside Go would therefore be
-// uninterruptible, and at the top of the range (200,000 points in 32
-// dimensions, twice) that is long enough to look like a hung tab.
-//
-// So the sweep loop lives in JavaScript, which awaits a turn of the event loop
-// between calls. That gap is not an implementation detail: it IS the
-// cancellation mechanism, and the only one available. Batching the n-sweep back
-// into Go would remove it.
+// One n per call gives the UI one completed rung at a time. This export remains
+// synchronous in its calling realm; the UI runs it in a dedicated worker,
+// which Stop can terminate even during a call. Calling it directly from the
+// console still blocks that realm until the computation returns.
 func jsConverge(opts js.Value) any {
 	key := readString(opts, "integrand", "product")
 
@@ -191,9 +175,9 @@ func jsConverge(opts js.Value) any {
 
 	exact := spec.exact(dims)
 
-	// One buffer, reused for all 2n evaluations. At n = 200,000 and 32
-	// dimensions the allocating form would churn 51 MB of float64 slices
-	// through a 32-bit heap for no reason.
+	// Reuse one coordinate buffer for all 2n evaluations. Generator construction
+	// and some configurations' indexed access can still allocate their own state
+	// or scratch storage; this is not a whole-call allocation guarantee.
 	point := make([]float64, dims)
 
 	qmcTotal := 0.0

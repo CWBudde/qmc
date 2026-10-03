@@ -7,6 +7,166 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation and statistical labels
+
+- Distinguish the analytic uniform-point RMS discrepancy baseline
+  `sqrt(E[CD2²])` from mean CD2 across source, metadata, browser labels and docs.
+  The baseline formula and generated points are unchanged; its control test
+  now checks the sampled squared statistic against the squared expectation.
+- Consolidate current cost/accuracy comparisons into the reproducible performance
+  report, remove unsupported historical figures from current guidance, and scope
+  independence, projection, saturation and quality claims to their assumptions.
+- Star-discrepancy refusal wording now describes implementation work limits and
+  the measured CD2 caveat without claiming a universal computability ceiling.
+- Add contributor setup/verification/release instructions and make PLAN.md the
+  authoritative remediation checklist linked from the documentation index.
+
+### API contracts
+
+- Document private option settings, reader ownership, and the separate
+  digit-reversal panic boundary without changing public method signatures.
+- Verify later aligned Sobol blocks and constructor-supported demo menus;
+  remove the demo's copied library table ceiling.
+
+### Performance
+
+- Cache a bounded prefix of nested Halton root permutations at construction,
+  preserving exact seeded coordinates and concurrent indexed access. Digit
+  tables use at most 64 KiB; constructor memory and work increase in exchange
+  for lower per-point cost. Deeper-node scratch allocation rules are unchanged.
+- Add reproducible, fixed-window throughput/construction/integration benchmarks
+  and separate compatibility experiments for arithmetic, bulk fills, and caches.
+
+### Demo maintenance
+
+- Share the Point Lab and Bench WASM progress loader while retaining their
+  runtime recovery behavior; cover reader and instantiation fallbacks offline.
+- Check digit-inspector descriptions against independent library construction,
+  keep DOM contracts current, and record measured hover-rendering costs.
+
+### Release verification
+
+- Pin workflow actions to upstream commit SHAs, use read-only defaults and
+  deploy-only Pages/OIDC writes, and disable persisted checkout credentials.
+  Archive verified regular-file Pages payloads with a directly pinned uploader.
+- Local and CI release validation now share strict semantic version, exact
+  changelog, clean-source and reviewed-commit rules. Commands take a full reviewed
+  SHA, repeat identity checks after verification, and annotated local tags record
+  that review attestation. Version arguments are passed literally, fixing shell
+  evaluation of specially crafted input in the previous recipe.
+- Shared release gates require both modules, formatting/lint, race contracts,
+  full ordinary statistics, WASM and browser/artifact/notice checks with a portable
+  total deadline. Added offline policy, workflow, timeout, and archive regressions.
+
+### Verification jobs
+
+- Added bounded fast, routine-race, full-statistical, and optional full-statistical
+  race commands. Short mode now skips costly discrepancy and high-dimensional
+  integration sweeps. PR checks use the routine commands; scheduled/manual jobs
+  run full statistics on amd64 and 386, and release validation runs routine race
+  plus full ordinary tests. Routine validation also requires real-browser checks.
+
+### Demo distribution
+
+- Build complete static sites in fresh staging directories and publish them
+  through atomic directory replacement. Every resource belongs to one content-
+  addressed build namespace, including the compiler-matched WASM runtime.
+  Exact manifests reject caller edits and unrelated output; obsolete assets
+  disappear on replacement. Existing unmanifested builds must be moved aside.
+- Both demo pages link a static credits page with the complete project MIT,
+  Joe–Kuo, and compiler-matched Go LICENSE/PATENTS notices. Artifact checks
+  require nonempty notices and reachable links; Chrome verifies all downloads.
+  Intact older managed builds can upgrade to the notice-bearing distribution.
+
+### Statistical verification
+
+- Relaxed the large-budget exact-winner assertion to a documented near-tie
+  margin. RMS, ratio, range, and correlation checks now reject nonfinite values;
+  added defensive-base/index and digit-reversal boundary regressions.
+
+- Broadened integration validation to seven independent references and three
+  budgets with forty streams, aligned Sobol blocks, seeded Monte Carlo, and
+  a plain-Halton negative control. Logs include estimated RMS-summary uncertainty.
+- Product integration comparisons now use forty streams; correlation summaries
+  use thirty seeds and report per-seed-worst median, p90, and maximum.
+
+### Demo corrections
+
+- Analysis control changes now cancel the affected sweep and clear its results.
+  Stop preserves partial results with their configuration; restarting or switching
+  panels restores transport controls without mixing runs. Added a bounded Chrome
+  regression for sweep control changes and metric availability transitions.
+- Gaussian explanatory values now follow the selected dimensions through
+  `info({dims})`, agreeing with `converge().exact`. Unrandomized source descriptions
+  distinguish Halton's high-prime ramps from Sobol; stale seed and cost comparisons
+  were removed from the demo in favor of current results and reproduction docs.
+- Typed output buffers are reused only when their kinds, backing buffer,
+  offsets, and capacities match. Invalid, detached, shared, or undersized pairs
+  receive fresh buffers. The bridge checks the byte-copy count.
+- Missing or malformed top-level demo options now follow the documented
+  defaults. Recovered callback panics remain request failures; actual runtime
+  termination disables controls and exposes Reload WebAssembly on both pages.
+  Added a test-only Go-exit fixture and verified recovery/reload in Chrome.
+- Both demo pages and canvas labels now use system fonts, removing Google Fonts
+  requests. Browser regressions enforce same-origin resources.
+- `just test-browser` now verifies both pages, source switching, sweep controls,
+  numerical notes, typed transfers, error recovery, and loading failures with
+  bounded Chrome/server lifetimes. Unexpected browser errors fail the gate;
+  PR validation and Pages uploads require it.
+- Point Lab cancels animation frames when paused and pauses on tab hiding.
+  Play under reduced motion reveals the points without animation. Chrome checks
+  verify idle callback counts, resumed playback, and real tab visibility changes.
+
+### Scientific contract corrections
+
+- Fixed digit scrambling does not guarantee uniform marginals or unbiased
+  integration; its first base-2 point is 0.5 for every seed. Added a public-API
+  regression showing zero seed variance despite bias when integrating `x²`.
+- Documented finite-grid, truncated-tail, and seeded-hash limitations of the
+  other randomizations. Corrected net occupancy/projection guarantees and
+  scoped convergence claims to their assumptions and measured workloads.
+  Existing seeded outputs are unchanged.
+
+### Boundary corrections
+
+- Halton and Sobol now reject skips with no representable first raw index.
+  This fixes Halton's negative-numerator leap check and Sobol's inconsistent
+  indexed/stateful access on 386. Sobol now returns its final admissible point
+  normally, then panics on the next draw. Earlier valid-point outputs are unchanged.
+- Prime sieve expansion now uses a positive integer bound and checks the initial
+  dimension multiplier before allocation. Impossible bounds return constructor
+  errors; the previously failing 637235-dimension Halton construction succeeds.
+- Custom direction tables now reject nonzero degree-one coefficients and
+  malformed headers rather than silently masking/truncating them. The optional
+  header is `d s a m_i` on the first nonempty line; headerless numeric rows and
+  blank lines remain supported. Valid table outputs are unchanged.
+
+### Allocation contract corrections
+
+- Clarified that `Into` methods avoid the result slice allocation but nested
+  Halton allocates scratch above prime base 512 (starting at dimension 98).
+  Added allocation regressions and a threshold benchmark; behavior is unchanged.
+
+### Concurrency corrections
+
+- `WithSkip` and `WithLeap` normalize arguments before creating their closures,
+  fixing races when clamped options are reused by concurrent constructors.
+  Clarified that direction-table readers are consumed and require separate
+  readers/options for concurrent construction. Seeded outputs are unchanged.
+
+### Numerical corrections
+
+- One-dimensional CD2 now uses a stable empirical-CDF formula, avoiding
+  cancellation on midpoint grids and reducing work to O(N log N). General CD2
+  uses compensated accumulation; final cancellation still limits accuracy.
+  Results may change by rounding amounts. Star discrepancy uses closed forms
+  for one-point and one-dimensional sets before generic enumeration limits.
+
+- Centered L2 discrepancy now rejects nonfinite intermediate or final arithmetic
+  with an error and validates scratch entry/byte counts before allocation. Valid
+  sets at extreme dimensions no longer succeed with `Inf` or `NaN`; a finite
+  norm can still be refused if its squared terms exceed the direct float64 range.
+
 ### Added
 
 - `StarDiscrepancy(points)`, the exact `D*_N` — a supremum over origin-anchored

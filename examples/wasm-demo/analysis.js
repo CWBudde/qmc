@@ -3,21 +3,20 @@
  *
  * Two invariants worth stating up front, because both are easy to break:
  *
- *   Stop. A synchronous call into Go blocks the event loop for its whole
- *   duration, so a click on Stop cannot be dispatched while one is running.
- *   The sweep therefore asks Go for exactly one N per call and awaits a
- *   zero-delay timeout between calls. That gap is the entire cancellation
- *   mechanism; remove the yield and Stop stops working.
+ *   Stop terminates the sweep worker, including a Go call in progress. Each
+ *   completed rung is kept. Correlation uses a separate worker so a heatmap
+ *   update cannot replace a sweep request.
  *
  *   runId. Every sweep carries a monotonic id, and each step re-checks it
- *   after the yield. A sweep restarted while an older one is mid-flight must
+ *   after each asynchronous call. A sweep restarted while an older one is mid-flight must
  *   not append its points to the new chart.
  *
  * As on the Point Lab, no quasi-Monte Carlo logic lives here. Every
  * correlation and every integration error arrives from the Go library as a
  * finished number.
  *
- * No modules; this file is an IIFE and depends only on window.Render.
+ * No modules; the shared rendering, runtime, worker, and accessibility helpers
+ * are loaded before this controller.
  */
 (function () {
   "use strict";
@@ -34,6 +33,11 @@
 
   const heatmap = el("heatmap");
   const heatLegend = el("heatLegend");
+  const heatSummary = el("heatSummary");
+  const corrTable = el("corrTable");
+  const corrCaption = el("corrCaption");
+  const corrHead = el("corrHead");
+  const corrBody = el("corrBody");
   const cellReadout = el("cellReadout");
   const worstAdjacent = el("worstAdjacent");
   const worstPairLabel = el("worstPairLabel");
@@ -72,6 +76,7 @@
   const progressText = el("progressText");
   const convChart = el("convChart");
   const convRows = el("convRows");
+  const convConfig = el("convConfig");
 
   const discMetric = el("discMetric");
   const discMetricNote = el("discMetricNote");
@@ -92,6 +97,7 @@
   const discProgressText = el("discProgressText");
   const discChart = el("discChart");
   const discRows = el("discRows");
+  const discConfig = el("discConfig");
   const discCeilingNote = el("discCeilingNote");
   const discVerdict = el("discVerdict");
 
@@ -109,32 +115,25 @@
     analytic: el("dAnalytic"),
     ceiling: el("dCeiling"),
   };
+  const analyticLegend = document.querySelector("[data-analytic-reference]");
+
+  function updateAnalyticReference(entry) {
+    const available = entry?.analyticKind === "rms";
+    const label = entry?.analyticLabel || "No analytic random baseline";
+    discReadout.analytic.previousElementSibling.textContent = label;
+    discReadout.analytic.parentElement.hidden = !available;
+    analyticLegend.hidden = !available;
+    analyticLegend.replaceChildren(
+      document.createElement("i"),
+      document.createTextNode(`${label} — no markers`),
+    );
+  }
 
   const reducedMotion =
     window.matchMedia &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   const LIVE_THROTTLE_MS = 700;
-
-  // The figures the library's README documents, so the big readout can be read
-  // against something instead of floating free.
-  // The figures are Halton's, at one configuration, with random-digit
-  // scrambling. Quoting them beside a Sobol run or a nested one would compare
-  // two different measurements, so the readout below checks the source and the
-  // randomization as well as the point set.
-  const DOCUMENTED = {
-    source: "halton",
-    dims: 39,
-    count: 600,
-    skip: 64,
-
-    // The README's figures are unleaped. A leap is a different experiment —
-    // the same generator sampled on a stride — so it disqualifies the
-    // comparison exactly the way a different burn-in does.
-    leap: 1,
-    plain: 0.81,
-    scrambled: 0.14,
-  };
 
   // Sweep ceilings. Each is a plausible sampling budget rather than a round
   // binary number for its own sake; the sweep walks up to the chosen one.
@@ -153,7 +152,10 @@
     matrix: null,
     corr: null,
     hover: null,
-    pending: false,
+    focusCell: { i: 0, j: 0 },
+    corrTimer: null,
+    fullCorrTimer: null,
+    corrRunId: 0,
     runId: 0,
 
     // The one sweep now walking its ladder, of either panel, or null. Both
@@ -166,102 +168,56 @@
     metrics: null,
     qmc: [],
     mc: [],
+    convConfig: null,
+    discConfig: null,
     disc: { seq: [], rnd: [], analytic: [] },
-    lastAnnounce: 0,
   };
-
-  const sinks = { correlate: {} };
 
   function setStatus(message, tone) {
     statusEl.textContent = message;
     statusEl.dataset.state = tone || "";
   }
 
-  function announce(message) {
-    const now = Date.now();
-
-    if (now - state.lastAnnounce < LIVE_THROTTLE_MS) {
-      return;
-    }
-
-    state.lastAnnounce = now;
-    liveRegion.textContent = message;
-  }
+  const announce = Accessibility.announcer(liveRegion, LIVE_THROTTLE_MS);
 
   // --- the wasm call wrapper ---------------------------------------------
 
   // Identical in contract to the Point Lab's: a missing export, a thrown error
   // and an {error} result all collapse to "message on the status line, return
   // null". Nothing from wasm is permitted to throw into a draw call.
+  const runtime = WasmRuntime.create({
+    onError: (message) => setStatus(message, "error"),
+    onTerminal: (message) => {
+      state.dead = true;
+      state.ready = false;
+      state.corrRunId += 1;
+      corrCompute.dispose();
+      sweepCompute.dispose();
+      clearTimeout(state.corrTimer);
+      clearTimeout(state.fullCorrTimer);
+      state.runId += 1;
+      if (state.sweep) finishSweep(state.sweep, "runtime terminated");
+      for (const input of document.querySelectorAll("input, select, button")) {
+        input.disabled = input.id !== "reloadWasm";
+      }
+      el("reloadWasm").hidden = false;
+      rack.dataset.boot = "failed";
+      bootRing.dataset.state = "error";
+      setStatus(message, "error");
+    },
+  });
+
+  el("reloadWasm").addEventListener("click", () => window.location.reload());
+
+  const computeOptions = {
+    onError: (message) => setStatus(message, "error"),
+    onTerminal: (message) => runtime.terminate(message),
+  };
+  const corrCompute = QMCCompute.create(computeOptions);
+  const sweepCompute = QMCCompute.create(computeOptions);
+
   function call(name, opts, callOpts) {
-    const silent = callOpts && callOpts.silent;
-
-    // A panic aborts the instance. Once one is reported the module is rubble,
-    // so the gate stays shut until the page is reloaded.
-    if (state.dead) {
-      return null;
-    }
-
-    const api = globalThis.qmc;
-
-    if (!api || typeof api[name] !== "function") {
-      if (!silent) {
-        setStatus(`export "${name}" is unavailable`, "error");
-      }
-
-      return null;
-    }
-
-    let result;
-
-    try {
-      result = api[name](opts);
-    } catch (err) {
-      console.error(err);
-
-      if (!silent) {
-        setStatus(`${name} failed: ${err && err.message}`, "error");
-      }
-
-      return null;
-    }
-
-    if (result && result.error) {
-      console.error(result.error);
-
-      if (result.panic) {
-        state.dead = true;
-        setStatus(
-          `${name} panicked: ${result.error} — the WebAssembly instance is dead. Reload the page.`,
-          "error",
-        );
-
-        return null;
-      }
-
-      if (!silent) {
-        setStatus(result.error, "error");
-      }
-
-      return null;
-    }
-
-    return result;
-  }
-
-  // cacheSinks re-wraps the whole ArrayBuffer rather than storing the returned
-  // view, because that view may be a subarray of a larger buffer.
-  function cacheSinks(store, result, keys) {
-    for (const key of keys) {
-      const view = result[key];
-
-      if (view && view.buffer) {
-        store[key] = {
-          f32: new Float32Array(view.buffer),
-          u8: new Uint8Array(view.buffer),
-        };
-      }
-    }
+    return runtime.call(name, opts, callOpts);
   }
 
   // --- helpers -----------------------------------------------------------
@@ -621,9 +577,8 @@
   }
 
   // Each source carries its own dimension ceiling, and the discrepancy panel
-  // ranges from 1 rather than from 2: star discrepancy in one dimension has a
-  // closed form the library's tests pin, and it is the one place on this page
-  // where the sequence beats random by a factor of forty.
+  // ranges from 1 rather than from 2. The library's one-dimensional formulas
+  // are cheaper than its general discrepancy evaluation.
   function applyDiscSource() {
     const spec = sourceSpec(discSource);
 
@@ -644,8 +599,8 @@
     const spec = sourceSpec(corrSource);
 
     return spec && spec.primeBases
-      ? "hover a cell for the pair, their bases and r"
-      : "hover a cell for the pair and r";
+      ? "hover a cell or use the keyboard explorer for the pair, their bases and r"
+      : "hover a cell or use the keyboard explorer for the pair and r";
   }
 
   function currentIntegrand() {
@@ -682,7 +637,16 @@
       Math.max(low, Math.min(high, intValue(convDims, low))),
     );
 
-    integrandNote.innerHTML = `<b>${spec.label}.</b> ${spec.description} Exact value over the unit cube: <b>${Render.compact(spec.exact)}</b>. Defined for ${low}–${high} dimensions.`;
+    // Metadata is dimension-dependent (notably the Gaussian integral). Ask Go
+    // after clamping the slider, using the same formula as the measured result.
+    const info = call("info", { dims: intValue(convDims, low) });
+    const selected = info && info.integrands.find((s) => s.key === spec.key);
+    if (!selected) {
+      integrandNote.textContent = "Exact value unavailable.";
+      return;
+    }
+    integrandNote.dataset.exact = String(selected.exact);
+    integrandNote.innerHTML = `<b>${escapeHTML(spec.label)}.</b> ${escapeHTML(spec.description)} Exact value at ${selected.dims} dimensions: <b>${Render.compact(selected.exact)}</b>. Defined for ${low}–${high} dimensions.`;
     syncOutputs();
   }
 
@@ -704,40 +668,49 @@
   // The aside follows the source, because the two sequences fail differently
   // and the same sentence cannot describe both maps. primeBases is the flag
   // that separates them: one base per dimension is exactly what makes a
-  // high-dimensional coordinate ramp, and the ramp is what puts the band on
-  // the diagonal. Sobol is base 2 everywhere and has no band — at the defaults
-  // above, seed 1, its worst adjacent |r| is 0.027 against Halton's 0.808 — so
-  // promising a collapse there would have this text contradicting the picture
-  // next to it.
+  // high-dimensional coordinate ramp. The current map is the measurement;
+  // historical coefficients for another configuration are not UI baselines.
   function correlationAside(entry) {
     const ramps = (sourceSpec(corrSource) || {}).primeBases;
 
     if (entry.key === "none") {
       return ramps
-        ? " The bright band hugging the diagonal is adjacent high-dimensional coordinates walking up their ramps together; pick a randomization and it should collapse."
-        : " There is no band to collapse here: base 2 in every dimension leaves the unrandomized map already near-independent, worst adjacent |r| 0.027 against Halton's 0.808 at the defaults above, seed 1.";
+        ? " Inspect the off-diagonal band at the selected budget, then compare a randomization with the same settings."
+        : " Inspect this direction table at the selected budget. Small pairwise coefficients do not establish independence or integration accuracy.";
     }
 
     return ramps
-      ? " Watch the off-diagonal warmth fall away — and note that it does not fall to exactly zero, because a finite point set never has exactly independent coordinates."
-      : " Expect the map to stay much as it was. Pairwise correlation was never the defect this randomization is for; what it buys is a distribution over seeds, which is what the error curve below is drawn from.";
+      ? " Compare the off-diagonal warmth across several seeds. Correlation is one limited summary of the point set."
+      : " The scramble preserves the net's occupancy constraints. Inspect several seeds and integrands rather than treating pairwise correlation as an accuracy guarantee.";
   }
 
   // --- correlation -------------------------------------------------------
 
-  function scheduleCorrelate() {
-    if (state.pending || !state.ready) {
+  function scheduleCorrelate(preview) {
+    if (!state.ready) {
       return;
     }
 
-    state.pending = true;
-    requestAnimationFrame(() => {
-      state.pending = false;
-      refreshCorrelation();
-    });
+    state.corrRunId += 1;
+    corrCompute.cancel();
+    clearTimeout(state.corrTimer);
+    clearTimeout(state.fullCorrTimer);
+    state.matrix = null;
+    state.corr = null;
+    state.hover = null;
+    updateCorrelationValues();
+    drawHeat();
+    setStatus("Updating correlation…", "loading");
+    const dragging = preview === true;
+    state.corrTimer = setTimeout(
+      () => refreshCorrelation(dragging),
+      dragging ? 80 : 0,
+    );
+    if (dragging)
+      state.fullCorrTimer = setTimeout(() => refreshCorrelation(false), 350);
   }
 
-  function refreshCorrelation() {
+  async function refreshCorrelation(preview = false) {
     if (!state.ready) {
       return;
     }
@@ -751,7 +724,8 @@
       return;
     }
 
-    const result = call("correlate", {
+    const corrRunId = ++state.corrRunId;
+    const request = {
       source: corrSource.value,
       randomization: corrRandom.value,
       dims: intValue(corrDims, 39),
@@ -759,25 +733,33 @@
       skip: intValue(corrSkip, 64),
       leap: corrLeap ? corrLeap.value() : 1,
       seed: intValue(corrSeed, 1),
-      out: sinks.correlate,
-    });
+    };
+    if (preview)
+      request.count = Math.min(
+        request.count,
+        request.randomization === "nested" ? 64 : 256,
+      );
+    const result = await corrCompute.call("correlate", request);
+    if (corrRunId !== state.corrRunId || !state.ready) return;
 
     if (!result) {
       return;
     }
 
-    cacheSinks(sinks.correlate, result, ["matrix"]);
     state.corr = result;
     state.matrix = result.matrix;
     state.hover = null;
 
+    updateCorrelationValues();
     drawHeat();
     updateVerdict(result);
 
-    setStatus(
-      `${result.dims}×${result.dims} correlation over ${result.count.toLocaleString("en-US")} points · ${result.source} · randomization ${result.randomization}`,
-      "ready",
-    );
+    if (!state.sweep && statusEl.dataset.state !== "error") {
+      setStatus(
+        `${preview ? "Preview · " : ""}${result.dims}×${result.dims} correlation over ${result.count.toLocaleString("en-US")} points · ${result.source} · randomization ${result.randomization}`,
+        "ready",
+      );
+    }
     announce(
       `Correlation recomputed. Worst adjacent pair ${coefficient(result.worstAdjacent)}.`,
     );
@@ -785,6 +767,9 @@
 
   function drawHeat() {
     const corr = state.corr;
+    heatSummary.textContent = corr
+      ? `${corr.dims} by ${corr.dims} matrix over ${corr.count.toLocaleString("en-US")} points. ${corr.source}, ${corr.randomization}, skip ${corr.skip}, leap ${corr.leap}, seed ${corr.seed}. Worst adjacent coefficient ${coefficient(corr.worstAdjacent)}. Expand Correlation values and keyboard explorer for every pair.`
+      : "Correlation is being recomputed; no current matrix is displayed.";
 
     state.geo = Render.drawHeatmap(heatmap, {
       matrix: state.matrix,
@@ -794,6 +779,78 @@
     });
 
     Render.drawHeatLegend(heatLegend);
+  }
+
+  function updateCorrelationValues() {
+    const corr = state.corr;
+    const restoreFocus = corrTable.contains(document.activeElement);
+    corrTable.setAttribute("aria-busy", String(!corr));
+    corrCaption.textContent = corr
+      ? `Pearson r, ${corr.dims} dimensions, ${corr.count.toLocaleString("en-US")} points. Row and column headers are dimension indices.`
+      : "Waiting for the current correlation values.";
+    corrHead.replaceChildren();
+    corrBody.replaceChildren();
+    if (!corr) {
+      cellReadout.textContent = "Waiting for the current correlation values.";
+      return;
+    }
+    cellReadout.textContent = idlePrompt();
+    state.focusCell.i = Math.min(state.focusCell.i, corr.dims - 1);
+    state.focusCell.j = Math.min(state.focusCell.j, corr.dims - 1);
+    const header = document.createElement("tr");
+    const corner = document.createElement("th");
+    corner.textContent = "row / column";
+    corner.scope = "col";
+    header.append(corner);
+    for (let j = 0; j < corr.dims; j++) {
+      const th = document.createElement("th");
+      th.scope = "col";
+      th.textContent = String(j);
+      header.append(th);
+    }
+    corrHead.append(header);
+    const rows = document.createDocumentFragment();
+    for (let i = 0; i < corr.dims; i++) {
+      const row = document.createElement("tr");
+      const th = document.createElement("th");
+      th.scope = "row";
+      th.textContent = String(i);
+      row.append(th);
+      for (let j = 0; j < corr.dims; j++) {
+        const td = document.createElement("td");
+        const value = state.matrix[i * corr.dims + j];
+        td.role = "gridcell";
+        td.dataset.i = String(i);
+        td.dataset.j = String(j);
+        td.tabIndex =
+          i === state.focusCell.i && j === state.focusCell.j ? 0 : -1;
+        td.textContent = finite(value) ? value.toFixed(4) : "unavailable";
+        td.setAttribute(
+          "aria-label",
+          `Dimension ${i} versus dimension ${j}${pairBases(corr, [i, j])}, correlation ${td.textContent}`,
+        );
+        row.append(td);
+      }
+      rows.append(row);
+    }
+    corrBody.append(rows);
+    if (restoreFocus) focusCorrelationCell(state.focusCell);
+  }
+
+  function focusCorrelationCell(cell) {
+    const next = corrBody.querySelector(
+      `[data-i="${cell.i}"][data-j="${cell.j}"]`,
+    );
+    if (next) next.focus();
+  }
+
+  function inspectCell(cell) {
+    const corr = state.corr;
+    if (!corr) return;
+    state.hover = cell;
+    drawHeat();
+    const r = state.matrix[cell.i * corr.dims + cell.j];
+    cellReadout.textContent = `dim ${cell.i} × dim ${cell.j}${pairBases(corr, [cell.i, cell.j])}, r = ${finite(r) ? r.toFixed(4) : "unavailable"}${cell.i === cell.j ? " (against itself)" : ""}`;
   }
 
   function updateVerdict(result) {
@@ -813,23 +870,7 @@
         ? `dimensions ${pair[0]} and ${pair[1]}${pairBases(result, pair)}`
         : "—";
 
-    // The README's pair of figures is a Halton measurement with random-digit
-    // scrambling. Comparing a Sobol run or a nested one against it would put
-    // two different experiments in the same sentence, so the comparison is
-    // only offered when every part of the configuration matches.
-    const scrambled = result.randomization === "scramble";
-    const target = scrambled ? DOCUMENTED.scrambled : DOCUMENTED.plain;
-    const sameSetup =
-      result.source === DOCUMENTED.source &&
-      (scrambled || result.randomization === "none") &&
-      result.dims === DOCUMENTED.dims &&
-      result.count === DOCUMENTED.count &&
-      result.skip === DOCUMENTED.skip &&
-      result.leap === DOCUMENTED.leap;
-
-    docReference.innerHTML = sameSetup
-      ? `At this exact configuration the README quotes <b>${target.toFixed(2)}</b> ${scrambled ? "(worst of five seeds)" : ""}. You are seeing <b>${coefficient(worst)}</b> at seed ${result.seed}.`
-      : `The README's figures — <b>0.81</b> unscrambled, <b>0.14</b> scrambled — are measured on Halton at 39 dimensions, 600 points, burn-in 64, no leap. This is ${result.source} with randomization ${result.randomization}, ${result.dims} dimensions, ${result.count.toLocaleString("en-US")} points, burn-in ${result.skip}, leap ${result.leap}, so the numbers are not directly comparable.`;
+    docReference.textContent = `This ${result.source} measurement uses ${result.randomization}, ${result.dims} dimensions, ${result.count.toLocaleString("en-US")} points, skip ${result.skip}, leap ${result.leap}, and seed ${result.seed}. It is one point set, not a summary over seeds. The library's correlation regressions use thirty seeds; their configuration and reproduction commands are in the testing documentation.`;
   }
 
   // A source without prime bases sends bases: null, so the clause naming them
@@ -870,6 +911,50 @@
   }
 
   function wireHeatmapHover() {
+    corrBody.addEventListener("focusin", (event) => {
+      const td = event.target.closest('[role="gridcell"]');
+      if (!td || !state.corr) return;
+      const previous = corrBody.querySelector('[tabindex="0"]');
+      if (previous) previous.tabIndex = -1;
+      td.tabIndex = 0;
+      state.focusCell = { i: Number(td.dataset.i), j: Number(td.dataset.j) };
+      inspectCell(state.focusCell);
+    });
+    corrBody.addEventListener("click", (event) => {
+      const td = event.target.closest('[role="gridcell"]');
+      if (td) td.focus();
+    });
+    corrBody.addEventListener("keydown", (event) => {
+      if (!state.corr || !event.target.matches('[role="gridcell"]')) return;
+      const cell = { ...state.focusCell };
+      const last = state.corr.dims - 1;
+      switch (event.key) {
+        case "ArrowRight":
+          cell.j = Math.min(last, cell.j + 1);
+          break;
+        case "ArrowLeft":
+          cell.j = Math.max(0, cell.j - 1);
+          break;
+        case "ArrowDown":
+          cell.i = Math.min(last, cell.i + 1);
+          break;
+        case "ArrowUp":
+          cell.i = Math.max(0, cell.i - 1);
+          break;
+        case "Home":
+          cell.j = 0;
+          if (event.ctrlKey) cell.i = 0;
+          break;
+        case "End":
+          cell.j = last;
+          if (event.ctrlKey) cell.i = last;
+          break;
+        default:
+          return;
+      }
+      event.preventDefault();
+      focusCorrelationCell(cell);
+    });
     heatmap.addEventListener("mousemove", (event) => {
       const cell = cellAt(event);
       const corr = state.corr;
@@ -884,15 +969,7 @@
         return;
       }
 
-      state.hover = cell;
-      drawHeat();
-
-      const r = state.matrix[cell.i * corr.dims + cell.j];
-
-      cellReadout.innerHTML =
-        cell.i === cell.j
-          ? `<b>dim ${cell.i}</b> against itself${corr.bases ? ` — base ${basisOf(corr, cell.i)}` : ""}, r = 1 by construction`
-          : `<b>dim ${cell.i} × dim ${cell.j}</b>${pairBases(corr, [cell.i, cell.j])}, r = <b>${r.toFixed(4)}</b>`;
+      inspectCell(cell);
     });
 
     heatmap.addEventListener("mouseleave", () => {
@@ -900,6 +977,10 @@
         return;
       }
 
+      if (corrBody.contains(document.activeElement)) {
+        inspectCell(state.focusCell);
+        return;
+      }
       state.hover = null;
       drawHeat();
       cellReadout.textContent = idlePrompt();
@@ -910,7 +991,7 @@
 
   // A geometric ladder at √2 per step: dense enough that a slope is readable
   // on log–log axes, sparse enough that the whole sweep is a couple of dozen
-  // blocking calls rather than a couple of hundred.
+  // worker calls rather than a couple of hundred.
   //
   // The floor is a parameter because the discrepancy panel's ceiling can be
   // below the convergence panel's first rung: star discrepancy at six
@@ -936,21 +1017,54 @@
   }
 
   function resetSweep() {
+    cancelPanel("converge");
     state.qmc = [];
     state.mc = [];
+    state.convConfig = null;
+    convConfig.textContent = "No results for the current settings.";
     convRows.innerHTML = "";
     readout.exact.textContent = "—";
     readout.qmc.textContent = "—";
     readout.mc.textContent = "—";
     readout.ratio.textContent = "—";
-    progressBar.style.width = "0%";
+    updateProgress(
+      { bar: progressBar, text: progressText },
+      0,
+      1,
+      "idle — press Start for the current settings",
+    );
     drawChart();
+  }
+
+  function cancelPanel(exportName) {
+    if (state.sweep && state.sweep.exportName === exportName) {
+      state.runId += 1;
+      sweepCompute.cancel();
+      finishSweep(state.sweep, "settings changed — results cleared");
+    }
+  }
+
+  function describeConfig(request) {
+    const problem = request.integrand || request.metric;
+    return `${request.source} · ${request.randomization} · ${request.dims} dimensions · skip ${request.skip} · leap ${request.leap} · seed ${request.seed} · ${problem} · ceiling ${request.ceiling.toLocaleString("en-US")}`;
+  }
+
+  function updateProgress(progress, done, total, message) {
+    progress.bar.style.width = `${(done / total) * 100}%`;
+    const indicator = progress.bar.parentElement;
+    indicator.setAttribute("aria-valuemax", String(total));
+    indicator.setAttribute("aria-valuenow", String(done));
+    indicator.setAttribute(
+      "aria-valuetext",
+      `${done} of ${total} rungs completed. ${message}`,
+    );
+    progress.text.textContent = message;
   }
 
   // runSweep is the ladder BOTH panels walk. It was extracted from the
   // convergence sweep rather than copied for it: the yield-and-recheck dance
   // below is subtle enough that two copies would drift, and the second copy is
-  // always the one that forgets to re-check the id before the blocking call.
+  // always the one that forgets to re-check the id after an asynchronous call.
   //
   // job = {
   //   steps          array of N values, in order
@@ -964,13 +1078,8 @@
   //   status         the status line while it runs
   // }
   //
-  // The two sweeps SHARE state.runId, deliberately. The page has one thread
-  // and every rung is a blocking call into Go, so two sweeps could not run
-  // side by side even with separate ids — they would interleave, each freezing
-  // the other's yields, and both progress bars would crawl. Sharing the id
-  // makes "start the other panel" mean "cancel this one", which is what the
-  // machine was going to do anyway; the difference is that the cancelled
-  // panel's transport is restored here instead of being left disabled.
+  // Both panels share a sweep channel and runId: starting the other sweep
+  // cancels this one and restores its controls. Correlation is independent.
   async function runSweep(job) {
     if (!state.ready || state.sweep === job) {
       return;
@@ -987,18 +1096,21 @@
     state.sweep = job;
     job.buttons.start.disabled = true;
     job.buttons.stop.disabled = false;
-    job.progress.bar.style.width = "0%";
+    job.done = 0;
+    updateProgress(job.progress, 0, job.steps.length, "starting");
     setStatus(job.status, "loading");
 
     for (let step = 0; step < job.steps.length; step += 1) {
-      // The guard is checked before the blocking call, not only after it: Stop
-      // and a restart both land in the yield below, and neither should get one
-      // more Go call out of a sweep that is already over.
+      // Check before and after the worker call. Cancellation resolves the old
+      // promise, and a superseded run must not append even a queued response.
       if (runId !== state.runId) {
         return;
       }
 
-      const result = call(job.exportName, job.request(job.steps[step]));
+      const result = await sweepCompute.call(
+        job.exportName,
+        job.request(job.steps[step]),
+      );
 
       if (runId !== state.runId) {
         return;
@@ -1013,13 +1125,17 @@
       job.onResult(result, step);
 
       const done = step + 1;
-      job.progress.bar.style.width = `${(done / job.steps.length) * 100}%`;
-      job.progress.text.textContent = `${job.label(result)} · ${done} / ${job.steps.length}`;
+      job.done = done;
+      updateProgress(
+        job.progress,
+        done,
+        job.steps.length,
+        `${job.label(result)} · ${done} / ${job.steps.length}`,
+      );
       announce(job.announce(result));
 
-      // THE yield. A synchronous Go call cannot be interrupted, so this gap is
-      // the only moment a Stop click or a restart can be dispatched. It is not
-      // a politeness; delete it and the Stop button becomes decorative.
+      // Give DOM updates a turn between completed rungs. Worker termination
+      // handles cancellation during a computation; this yield is not its gate.
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
 
@@ -1037,7 +1153,8 @@
 
     job.buttons.start.disabled = false;
     job.buttons.stop.disabled = true;
-    job.progress.text.textContent = message;
+    updateProgress(job.progress, job.done, job.steps.length, message);
+    announce(message);
 
     if (statusEl.dataset.state !== "error") {
       setStatus(message, "ready");
@@ -1059,10 +1176,10 @@
       return;
     }
 
-    // Bumping the id is what actually cancels: the loop re-reads it after its
-    // next yield, sees a stranger's number, and returns without touching
-    // anything the new sweep owns.
+    // Invalidate queued responses, then terminate an active worker call.
+    // The old loop returns without touching a restarted sweep's results.
     state.runId += 1;
+    sweepCompute.cancel();
     finishSweep(job, "stopped — partial results kept");
     setStatus("Sweep stopped", "ready");
   }
@@ -1082,12 +1199,15 @@
       leap: convLeap ? convLeap.value() : 1,
       seed: intValue(convSeed, 1),
       integrand: integrandSelect.value,
+      ceiling: parseInt(budgetSelect.value, 10) || 16384,
     };
 
     resetSweep();
+    state.convConfig = Object.freeze(request);
+    convConfig.textContent = describeConfig(state.convConfig);
 
     return runSweep({
-      steps: sweepPoints(parseInt(budgetSelect.value, 10) || 16384),
+      steps: sweepPoints(request.ceiling),
       exportName: "converge",
       request: (n) => Object.assign({}, request, { n: n }),
       buttons: { start: startButton, stop: stopButton },
@@ -1133,6 +1253,10 @@
   }
 
   function drawChart() {
+    const last = state.qmc.at(-1);
+    el("convSummary").textContent = last
+      ? `${state.qmc.length} completed convergence rungs. Latest N ${last.x}: absolute QMC error ${sci(last.y)}, Monte Carlo error ${sci(state.mc.at(-1).y)}. Circles show QMC, crosses show Monte Carlo; dotted lines show reference slopes. All measured values are in the Latest N table.`
+      : "No completed convergence rungs. Press Start to measure the current settings.";
     const qmcColor = Render.readVar("--halton", "#46e0c8");
     const mcColor = Render.readVar("--random", "#ffb04a");
     const refColor = Render.readVar("--mark", "#ff5d8f");
@@ -1229,13 +1353,11 @@
   // metric can be computed at the dimension count now on the slider, and how
   // many points it can afford there.
   //
-  // Neither answer is derived here. The star ceiling is a property of the
-  // library's own work budget and the centred-L2 ceiling is a property of a
-  // measured js/wasm cost model, and both live in the Go file that owns them.
+  // Neither answer is derived here. Library acceptance and the demo's retained
+  // work-policy caps both live in the Go file that owns them.
   // When the library refuses, its sentence is printed verbatim: it names the
-  // dimension count, the leaf count, that the ceiling is a property of the
-  // problem rather than a tuning knob, and the affordable point counts per
-  // dimension. No paraphrase of that is worth writing.
+  // dimension count, the leaf count, the implementation's work policy, and
+  // affordable point counts. Keep that diagnostic instead of a second copy.
   function refreshMetrics() {
     const result = call("metrics", {
       source: discSource.value,
@@ -1245,6 +1367,7 @@
     state.metrics = result;
 
     const entry = currentMetric();
+    updateAnalyticReference(entry);
 
     if (!entry) {
       discMetricNote.textContent =
@@ -1272,33 +1395,36 @@
       discStart.disabled = true;
       discReadout.ceiling.textContent = "—";
       discCeilingNote.textContent =
-        "There is no N ceiling to report: this metric cannot be computed at this dimension count at any point count.";
+        "This metric is unavailable at these dimensions for the demo's minimum of two points. Library special cases may support smaller inputs.";
 
       return;
     }
 
     discMetricNote.innerHTML = `<b>${escapeHTML(entry.label)}.</b> ${escapeHTML(entry.description)}`;
     discSuggest.hidden = true;
-    discStart.disabled = !state.ready || state.sweep !== null;
+    discStart.disabled =
+      !state.ready ||
+      (state.sweep !== null && state.sweep.exportName === "discrepancy");
     discReadout.ceiling.textContent = entry.maxPoints.toLocaleString("en-US");
     discCeilingNote.innerHTML = ceilingSentence(entry);
   }
 
-  // The sentence that keeps a moving ceiling from reading as a bug. It is the
-  // only control on either page whose range changes when a different control
-  // moves, and the two metrics move it for entirely different reasons.
+  // Explain the dimension-dependent cap separately from library acceptance.
   function ceilingSentence(entry) {
     const affordable = `<b>${entry.maxPoints.toLocaleString("en-US")}</b> points at <b>${entry.dims}</b> dimensions`;
 
     if (entry.key === "star") {
-      return `<b>The N ceiling moves with the dimension slider.</b> Exact star discrepancy is NP-hard in the dimension, so its ceiling does not fall as dimensions are added — it collapses: ${affordable}, against a few thousand at two. Expect a short ladder, two or three rungs wide, and read the ratio rather than the slope.`;
+      return `<b>The N ceiling moves with the dimension slider.</b> Generic star-discrepancy work grows quickly with dimensions. The library's acceptance check and the demo's work policy permit ${affordable}. Each rung runs in a cancellable worker. Compare the measured sets and retain their configuration; the cap does not promise a duration or improvement.`;
     }
 
-    return `<b>The N ceiling moves with the dimension slider.</b> Centred L2 costs O(N²s) and the library computes one N in a single atomic call, so it cannot be sliced the way the sweep itself is; capping N is the only lever left, and the cap has to fall as dimensions are added — ${affordable}, against a few thousand in two or three. This is a browser-responsiveness limit and not a mathematical one: the library will measure as many points as you have patience for.`;
+    return `<b>The N ceiling moves with the dimension slider.</b> General centred L2 costs O(N²s), with a cheaper one-dimensional path. Each rung runs in a worker; Stop terminates its computation and keeps completed rungs. The cap bounds total work — ${affordable} — rather than guaranteeing a duration on every device.`;
   }
 
   function resetDiscSweep() {
+    cancelPanel("discrepancy");
     state.disc = { seq: [], rnd: [], analytic: [] };
+    state.discConfig = null;
+    discConfig.textContent = "No results for the current settings.";
     discRows.innerHTML = "";
     discReadout.ratio.textContent = "—";
     discReadout.ratio.dataset.tone = "";
@@ -1306,8 +1432,13 @@
     discReadout.random.textContent = "—";
     discReadout.analytic.textContent = "—";
     discVerdict.textContent =
-      "Press Start. The page opens on 39 dimensions and centred L2, which is the configuration in which this statistic says nothing.";
-    discProgressBar.style.width = "0%";
+      "Press Start to compare the selected point sets. At high dimensions centred L2 can distinguish useful sequences from random points only weakly.";
+    updateProgress(
+      { bar: discProgressBar, text: discProgressText },
+      0,
+      1,
+      "idle — press Start for the current settings",
+    );
     drawDiscChart();
   }
 
@@ -1337,9 +1468,12 @@
       skip: intValue(discSkip, 64),
       leap: discLeap ? discLeap.value() : 1,
       seed: intValue(discSeed, 1),
+      ceiling: entry.maxPoints,
     };
 
     resetDiscSweep();
+    state.discConfig = Object.freeze(request);
+    discConfig.textContent = describeConfig(state.discConfig);
 
     return runSweep({
       steps: sweepPoints(entry.maxPoints, DISC_FLOOR),
@@ -1355,8 +1489,8 @@
         state.disc.seq.push({ x: result.n, y: result.value });
         state.disc.rnd.push({ x: result.n, y: result.randomValue });
 
-        // Star has no closed form for the random expectation, so its third
-        // series simply stays empty and the chart draws two.
+        // This demo provides no analytic random reference for star. Centred
+        // L2 uses sqrt(E[CD2²]), the RMS baseline, not mean discrepancy.
         if (result.analytic !== null && result.analytic !== undefined) {
           state.disc.analytic.push({ x: result.n, y: result.analytic });
         }
@@ -1378,25 +1512,27 @@
     discRows.append(row);
   }
 
-  // Both the tone and the sentence are Go's. Whether 1.28 counts as "still
-  // separating them" is a judgement about a measured decay, and the threshold
-  // it was picked from lives beside the measurements in discrepancy.go; a page
-  // that re-decided it here would be a second copy of that judgement, free to
-  // disagree with the constant.
+  // Go supplies the display-policy threshold and factual ratio description.
+  // Neither the tone nor one measured ratio is a statistical significance test.
   function updateDiscReadout(result) {
+    updateAnalyticReference(result);
     discReadout.ratio.textContent = times(result.ratio);
     discReadout.ratio.dataset.tone = result.separates ? "good" : "bad";
     discReadout.value.textContent = sci(result.value);
     discReadout.random.textContent = sci(result.randomValue);
     discReadout.analytic.textContent =
       result.analytic === null || result.analytic === undefined
-        ? "no closed form"
+        ? "not provided"
         : sci(result.analytic);
     discReadout.ceiling.textContent = result.maxPoints.toLocaleString("en-US");
     discVerdict.textContent = result.verdict;
   }
 
   function drawDiscChart() {
+    const last = state.disc.seq.at(-1);
+    el("discSummary").textContent = last
+      ? `${state.disc.seq.length} completed ${state.discConfig.metric} discrepancy rungs. Latest N ${last.x}: sequence ${sci(last.y)}, pseudo-random ${sci(state.disc.rnd.at(-1).y)}. Circles show the sequence and crosses show pseudo-random; the dotted baseline is shown when available. All measured values are in the discrepancy table.`
+      : "No completed discrepancy rungs. Press Start to measure an available metric.";
     const seqColor = Render.readVar("--halton", "#46e0c8");
     const rndColor = Render.readVar("--random", "#ffb04a");
     const refColor = Render.readVar("--mark", "#ff5d8f");
@@ -1426,11 +1562,9 @@
         },
       ],
       {
-        // No reference slopes, deliberately. Neither statistic's theoretical
-        // rate is a power law — the classical star bound carries a (log N)^s —
-        // so a straight 1/N line here would be a decoration that read as a
-        // claim. The analytic random expectation is drawn instead, and that
-        // one is exact.
+        // No universal convergence-rate claim is made for these finite point
+        // sets. When available, the dotted curve is the analytic random RMS
+        // baseline sqrt(E[CD2²]); it is not E[CD2] or a measured third set.
         xLabel: "N — points drawn",
         yLabel: "discrepancy",
         empty: "press Start to sweep N",
@@ -1484,8 +1618,9 @@
           corrLeap.refresh();
         }
 
-        scheduleCorrelate();
+        scheduleCorrelate(true);
       });
+      input.addEventListener("change", () => scheduleCorrelate(false));
     }
 
     corrSeed.addEventListener("change", scheduleCorrelate);
@@ -1512,7 +1647,10 @@
 
         if (input === convDims) {
           convLeap.refresh();
+          applyIntegrand();
         }
+
+        resetSweep();
       });
     }
 
@@ -1529,6 +1667,8 @@
     });
 
     convRandom.addEventListener("change", resetSweep);
+    convSeed.addEventListener("input", resetSweep);
+    budgetSelect.addEventListener("change", resetSweep);
 
     for (const input of [discDims, discSkip]) {
       input.addEventListener("input", () => {
@@ -1560,7 +1700,7 @@
     });
 
     discRandom.addEventListener("change", resetDiscSweep);
-    discSeed.addEventListener("change", resetDiscSweep);
+    discSeed.addEventListener("input", resetDiscSweep);
 
     // Offered, never applied silently — the leap control's rule. The number on
     // screen has to be the number the measurement used.
@@ -1626,83 +1766,21 @@
 
   // --- boot --------------------------------------------------------------
 
-  async function loadWasmWithProgress(onProgress) {
-    if (!WebAssembly.instantiateStreaming) {
-      WebAssembly.instantiateStreaming = async (resp, importObject) => {
-        const source = await (await resp).arrayBuffer();
-
-        return WebAssembly.instantiate(source, importObject);
-      };
-    }
-
-    const go = new Go();
-    const response = await fetch("qmc.wasm");
-
-    if (!response.ok) {
-      throw new Error(`fetch qmc.wasm: ${response.status}`);
-    }
-
-    if (!response.body || !response.body.getReader || reducedMotion) {
-      onProgress(1);
-
-      return {
-        go,
-        result: await WebAssembly.instantiateStreaming(
-          response,
-          go.importObject,
-        ),
-      };
-    }
-
-    const total = Number(response.headers.get("content-length")) || 0;
-    const reader = response.body.getReader();
-    const chunks = [];
-    let received = 0;
-
-    for (;;) {
-      const { done, value } = await reader.read();
-
-      if (done) {
-        break;
-      }
-
-      chunks.push(value);
-      received += value.length;
-
-      if (total > 0) {
-        onProgress(Math.min(0.98, received / total));
-      }
-    }
-
-    onProgress(1);
-
-    const bytes = new Uint8Array(received);
-    let offset = 0;
-
-    for (const chunk of chunks) {
-      bytes.set(chunk, offset);
-      offset += chunk.length;
-    }
-
-    return {
-      go,
-      result: await WebAssembly.instantiate(bytes, go.importObject),
-    };
-  }
-
   async function initWasm() {
     setStatus("Loading WebAssembly…", "loading");
 
-    const { go, result } = await loadWasmWithProgress((progress) => {
+    const { go, result } = await WasmRuntime.load((progress) => {
       Render.ring(bootRing, progress);
-    });
+    }, reducedMotion);
 
     // Deliberately not awaited: the demo's main() ends in select{} so this
     // promise never resolves. Awaiting it would hang the page forever.
-    go.run(result.instance);
+    runtime.start(go, result.instance);
 
     // Give the Go side one turn of the event loop to publish globalThis.qmc.
     await new Promise((resolve) => setTimeout(resolve, 0));
+
+    if (state.dead) return;
 
     const info = call("info", undefined);
 
@@ -1737,10 +1815,8 @@
   }
 
   initWasm().catch((err) => {
-    console.error(err);
-    setStatus(
-      "WebAssembly failed to load. Serve this page over HTTP — a file:// URL cannot fetch a .wasm — and check that qmc.wasm is sent with Content-Type: application/wasm.",
-      "error",
+    runtime.terminate(
+      `WebAssembly failed to load: ${err.message || err}. Serve the page over HTTP and check its assets.`,
     );
   });
 })();

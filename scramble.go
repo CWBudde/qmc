@@ -1,24 +1,12 @@
 package qmc
 
-// This file implements random-digit scrambling, the cheapest randomization
-// that repairs the failure mode plain Halton has in high dimensions.
-//
-// Plain Halton places its d-th coordinate by the radical inverse in base p_d.
-// For a large base the first p_d points of that coordinate are simply
-// 0, 1/p_d, 2/p_d, ... — a linear ramp, not a sample. Two adjacent
-// high-dimensional coordinates therefore ramp together and correlate almost
-// perfectly until the sample count passes the product of their bases. Measured
-// on 39 dimensions and 600 points after skipping 64, coordinates 34 and 35
-// correlate at 0.81.
-//
-// Random-digit scrambling draws one uniform permutation of the digit alphabet
-// {0..b-1} per dimension and maps every digit of that dimension's radical
-// inverse through it. The permutation is independent across dimensions but
-// reused across the digit positions within a dimension. The sequence keeps its
-// low-discrepancy structure — a permutation maps each elementary interval onto
-// another elementary interval of the same size — but the ramps are destroyed.
-// The same measurement over five seeds gives a worst adjacent-pair correlation
-// of 0.14.
+// This file implements seeded random-digit scrambling for Halton sequences.
+// One digit permutation per dimension is reused at every digit position.
+// This preserves elementary-interval structure to the represented digit depth.
+// Fisher-Yates is uniform under independent uniform random-word draws; the
+// finite seeded implementation does not prove independent permutations across
+// dimensions or exact uniform point marginals. See docs/randomization.md.
+// Correlation and cost measurements are recorded there and in docs/performance.md.
 //
 // Reference: Braaten, E. and Weller, G. (1979), "An improved low-discrepancy
 // sequence for multidimensional quasi-Monte Carlo integration".
@@ -37,10 +25,10 @@ func (s *splitMix64) next() uint64 {
 	return z ^ (z >> 31)
 }
 
-// newPermutation returns a uniform random permutation of {0..base-1} derived
-// from seed and dim. Dimensions are mixed into the stream seed rather than
-// drawn from one shared stream so that a generator built for 5 dimensions and
-// one built for 39 agree on the permutations of their first 5.
+// newPermutation returns a seeded pseudorandom permutation of {0..base-1} derived
+// from seed and dim. Per-dimension keying isolates each dimension's stream
+// from the variable number of shuffle/rejection draws used by other dimensions.
+// The key does not depend on the total requested dimension count.
 func newPermutation(base int, seed uint64, dim int) []int32 {
 	rng := splitMix64(seed ^ (uint64(dim)+1)*0x2545F4914F6CDD1D)
 	// Warm up: the first output of splitmix64 from a low-entropy state is
@@ -62,7 +50,8 @@ func newPermutation(base int, seed uint64, dim int) []int32 {
 	return perm
 }
 
-// uniformBelow returns a uniform value in [0, n) without modulo bias.
+// uniformBelow avoids modulo bias in [0,n) under the uniform-word model.
+// Rejection sampling does not establish independence of the seeded words.
 func uniformBelow(rng *splitMix64, n uint64) uint64 {
 	if n <= 1 {
 		return 0

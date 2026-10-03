@@ -51,10 +51,10 @@ func jsPoints(opts js.Value) any {
 
 	var bases []int
 
-	// One buffer for every point. AtInto and the rand loop both write into it
-	// in place, so a 20,000-point redraw allocates exactly the output array
-	// and nothing else — which matters on a heap the browser may refuse to
-	// grow.
+	// Reuse one coordinate buffer across points. The output, generator state,
+	// metadata and JS transfer also allocate; larger nested bases may require
+	// per-coordinate scratch allocations. This avoids a point slice per draw,
+	// without promising a fixed total allocation count.
 	point := make([]float64, dims)
 
 	if spec.construct == nil {
@@ -107,8 +107,8 @@ func jsPoints(opts js.Value) any {
 		"source":        source,
 
 		// The prime base is what explains the shape on screen — dimension 38's
-		// base 167 is why its first 167 unscrambled points march up a ramp in
-		// steps of 1/167 — so the page can label the axes with it. A
+		// base 167 explains the leading digit's 1/167 steps and wraparound,
+		// while higher digits change more slowly. A
 		// pseudo-random draw has no bases at all, and reporting a plausible
 		// number there would invite exactly the wrong reading, so both are
 		// null. Sobol is null for the same reason and not because the answer

@@ -9,12 +9,6 @@
       content="A randomized Halton or Sobol sequence and a pseudo-random one, side by side in your browser. Go compiled to WebAssembly, no sequence logic in JavaScript."
     />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
-      rel="stylesheet"
-    />
     <link rel="stylesheet" href="style.css" />
 
     <!--
@@ -30,6 +24,7 @@
                         wasm streams in, then data-state="ready"
         #liveRegion     aria-live="polite" announcements, throttled
         #buildInfo      footer "go1.x · js/wasm"
+        #reloadWasm     recovery button shown after terminal runtime failure
 
       Stage:
         #haltonCanvas   left scatter — the selected sequence's projection
@@ -38,6 +33,7 @@
         #seqLegend      the left legend entry, set from the source label
         #haltonMeta     "base 163 × 167" caption (the default axes 37 × 38)
         #randomMeta     "uniform × uniform" caption
+        #scatterSummary dynamic description shared by the two accessible images
 
       Transport (reveals the point set in sequence order):
         #play           play/pause toggle, gets aria-pressed
@@ -100,28 +96,40 @@
           <p class="lede">
             Halton places its <i>d</i>-th coordinate by the radical inverse in
             base <i>p<sub>d</sub></i
-            >, the <i>d</i>-th prime. For a large base the first
-            <i>p<sub>d</sub></i> points of that coordinate are just
-            <b>0, 1/p, 2/p, …</b> — a ramp, not a sample. Two adjacent
-            high-dimensional coordinates ramp together, and the pair collapses
-            onto a diagonal.
+            >, the <i>d</i>-th prime. At small raw indices, a large-base
+            coordinate moves in steps near <b>1/p</b> before its leading-digit
+            cycle wraps. Adjacent high-prime coordinates can move together,
+            producing correlated patterns while higher digits remain poorly
+            explored.
           </p>
           <p class="lede">
             The left panel starts on dimensions 37 and 38 of a 39-dimensional
-            Halton sequence with no randomization, which is exactly that
-            failure. <b>Pick a randomization</b> and the diagonal dissolves into
-            a filled square — or switch the sequence to <b>Sobol</b>, which is
-            base 2 in every dimension and has no ramp to begin with. Every
-            coordinate below is computed by <b>github.com/cwbudde/qmc</b>
-            compiled to WebAssembly and running in this tab; JavaScript draws
-            the pixels and nothing else.
+            Halton sequence with no randomization, which illustrates that
+            pattern. <b>Compare randomizations</b> at the same budget and across
+            several seeds — or switch the sequence to <b>Sobol</b>, which is
+            base 2 in every dimension and has no high-prime ramp. Its projection
+            quality still depends on the direction table and sampled block.
+            Every coordinate below is computed by <b>github.com/cwbudde/qmc</b>
+            compiled to WebAssembly in this tab's worker; JavaScript coordinates
+            requests, controls and rendering.
           </p>
         </div>
       </header>
 
+      <noscript>
+        <p class="callout">
+          This interactive demo requires JavaScript and WebAssembly. Enable
+          JavaScript in a WebAssembly-capable browser to run the calculations.
+          The
+          <a href="https://github.com/CWBudde/qmc">source and documentation</a>
+          remain available without JavaScript.
+        </p>
+      </noscript>
+
       <div class="status" id="status" data-state="loading">
         Loading WebAssembly…
       </div>
+      <button id="reloadWasm" hidden>Reload WebAssembly</button>
 
       <div class="stage">
         <div class="plot plot--halton">
@@ -134,6 +142,7 @@
             id="haltonCanvas"
             role="img"
             aria-label="The selected sequence projected onto two dimensions"
+            aria-describedby="scatterSummary"
           ></canvas>
         </div>
 
@@ -147,6 +156,7 @@
             id="randomCanvas"
             role="img"
             aria-label="Independent pseudo-random points on the same axes"
+            aria-describedby="scatterSummary"
           ></canvas>
         </div>
       </div>
@@ -165,6 +175,7 @@
         />
         <span class="frame-readout mono" id="revealReadout">— / —</span>
       </div>
+      <p class="field-note" id="scatterSummary">Point sets are loading.</p>
 
       <div class="legend">
         <span class="halton"
@@ -399,17 +410,26 @@
         </p>
       </div>
 
-      <p class="sr-only" id="liveRegion" aria-live="polite"></p>
+      <p
+        class="sr-only"
+        id="liveRegion"
+        aria-live="polite"
+        aria-atomic="true"
+      ></p>
 
       <footer class="rack-footer mono">
         <span>github.com/cwbudde/qmc</span>
         <span id="buildInfo">—</span>
         <span>halton · sobol</span>
+        <a href="credits.html">Credits and licenses</a>
       </footer>
     </div>
 
     <script src="wasm_exec.js"></script>
     <script src="render.js"></script>
+    <script src="runtime.js"></script>
+    <script src="compute.js"></script>
+    <script src="accessibility.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

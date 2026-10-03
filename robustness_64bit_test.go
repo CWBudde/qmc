@@ -26,7 +26,7 @@ func TestUnscrambledStaysBelowOne(t *testing.T) {
 	}
 	for _, tc := range cases {
 		got := radicalInverse(tc.index, tc.base)
-		if got < 0 || got >= 1 {
+		if !(got >= 0 && got < 1) {
 			t.Fatalf("radicalInverse(%d, %d) = %v, want [0,1)", tc.index, tc.base, got)
 		}
 
@@ -48,7 +48,7 @@ func TestScrambledRefusesToAlias(t *testing.T) {
 	const base = 48611
 
 	perm := newPermutation(base, 1, 0)
-	if got := scrambledRadicalInverse(12345, base, perm); got < 0 || got >= 1 {
+	if got := scrambledRadicalInverse(12345, base, perm); !(got >= 0 && got < 1) {
 		t.Fatalf("a reachable index must still work, got %v", got)
 	}
 

@@ -1,13 +1,12 @@
 # Discrepancy
 
-Two ways to measure how evenly a point set fills the cube, and they fail in opposite
-directions: one is exact and cannot be computed above a handful of dimensions, the other is
-cheap in any dimension and stops meaning anything in high ones.
+Star discrepancy measures the largest origin-anchored box deviation. Centered
+L2 discrepancy integrates squared deviations across coordinate projections
+before taking a square root. Both describe point sets; neither
+determines integration accuracy without considering the integrand.
 
-`Draw(seq, n)` collects `n` points into a matrix for either of them. It is built on `AtInto`,
-so it leaves the generator's cursor where it was and the same matrix drawn twice is the same
-matrix; the rows alias one backing array, which is two allocations and the difference between
-a cache-resident inner loop and a scattered one.
+`Draw(seq, n)` collects points through AtInto, preserving the generator's cursor.
+Its rows share contiguous data and each row's capacity ends at its own boundary.
 
 ```go
 g, err := qmc.NewHalton(3, qmc.WithSkip(64), qmc.WithScrambling(seed))
@@ -17,129 +16,141 @@ if err != nil {
 
 d, err := qmc.StarDiscrepancy(qmc.Draw(g, 512))
 if err != nil {
-    return err // above 6 dimensions, or past the work budget, this is where you find out
+    return err // this multipoint case may exceed the dimension or work budget
 }
-
 fmt.Printf("D*_512 = %.6f\n", d)
 ```
 
-## `StarDiscrepancy` — exact, and it refuses
+## Exact star discrepancy and work limits
 
-It returns the exact `D*_N`: the largest relative error any origin-anchored box makes about
-how much of the cube it covers, which is the quantity the Koksma-Hlawka bound multiplies by
-an integrand's variation. It is a supremum, not a sample and not a lower bound.
+`StarDiscrepancy` returns the exact `D*_N` to float64 arithmetic, rather than
+a sampled lower bound. Both strict and inclusive counts are needed to find the
+supremum over origin-anchored boxes. The Koksma–Hlawka bound relates star
+discrepancy to integration error for functions of bounded Hardy–Krause variation;
+a small discrepancy does not bound arbitrary integrands without that assumption.
 
-Both halves are enumerated over the same grid — the overshoot with the corner counted
-strictly, the undershoot with it counted inclusively. Taking only one returns a lower bound
-that happens to be right in exactly the small cases anyone would hand-check, which is why the
-test checks it against a brute-force enumeration instead of against intuition.
+The function handles a single point in O(s) and a one-dimensional set by sorting
+a copy in O(N log N) before applying generic gates. These paths can support
+cases outside the multipoint enumeration limits. Higher-dimensional multipoint
+sets are refused above six dimensions or a conservative budget of `3e7`
+search-tree leaves. Candidate reduction bounds the enumeration by
+`C(N+s,s)` rather than the full `(N+1)^s` grid.
 
-Scrambled Halton against `math/rand`, ten seeds each; lower is better:
+The leaf budget is a retained conservative work policy. Historical timing
+samples lack complete reproduction metadata and do not calibrate a current
+wall-clock guarantee, particularly under WebAssembly. Exact computation is
+NP-hard in dimension; see Gnewuch, Srivastav and Winker, Journal of Complexity
+25(2), 2009. Refusals return an error rather than a partial discrepancy.
 
-| s   | N   | scrambled Halton | `math/rand` | ratio      |
-| --- | --- | ---------------- | ----------- | ---------- |
-| 1   | 512 | 0.001953         | 0.039848    | **20.40x** |
-| 2   | 64  | 0.045907         | 0.148041    | 3.22x      |
-| 2   | 512 | 0.009727         | 0.053237    | **5.47x**  |
-| 3   | 512 | 0.017966         | 0.069954    | 3.89x      |
-| 4   | 160 | 0.055348         | 0.128141    | 2.32x      |
+`TestStarDiscrepancyAgreesWithBruteForceEnumeration` checks the independent
+strict/inclusive reference. Single-point and one-dimensional closed-form tests
+cover the cheap paths; `TestStarDiscrepancyRefusesWhatItCannotAfford` covers
+multipoint refusals. `TestQMCBeatsPseudorandomOnStarDiscrepancy` is a separate
+three-dimensional quality fixture: 512 points, skip 64, scrambling seeds 1..3,
+against consecutive random sets from a source seeded 20240825. Its margin
+belongs to that fixture, not a general discrepancy ratio.
 
-The ratio decays with the dimension count and improves with the point count, which is the
-shape the theory predicts.
+### Approximate star discrepancy decision
 
-### The refusal sees N as well as s
+DOC-02's reconciliation in [PLAN.md](../PLAN.md) retains the exact API,
+consistent with CORE-06's work limits and API-01's small public surface.
+A sampled lower bound or randomized estimator could serve multipoint sets above
+the enumeration budget, but would need a separate result/accuracy contract,
+randomness policy, and independent reference validation. No demonstrated caller
+currently requires that surface, so it is deferred rather than silently returned
+under the exact function's name. Revisit the decision with a concrete workload.
 
-Restricting each dimension's candidates to the surviving points' own coordinates is exact and
-turns the naive (N+1)^s grid into C(N+s,s) ≈ N^s/s! leaves, but the problem is NP-hard in the
-dimension (Gnewuch, Srivastav & Winker, _Journal of Complexity_ 25(2), 2009), so no amount of
-tuning moves the limit far. The ceiling is arithmetic, not an unfinished optimisation.
+## Centered L2 discrepancy
 
-A dimension ceiling alone would not have been a gate — 5 dimensions and 3000 points is inside
-6 dimensions and is 2.0e15 leaves — so there is a **work budget of 3e7 leaves** beside it.
+`CenteredL2Discrepancy` evaluates Hickernell's CD2 closed form in O(N²s) for
+general dimensions and returns its square root. Its defining integral includes
+the coordinate projections, not just the full-dimensional boxes.
+`TestCenteredL2MatchesItsDefiningIntegral` integrates that definition
+independently; single-point, reflection, and point-order tests check other
+invariants. General workloads still have quadratic pair cost.
 
-The budget is calibrated, not asserted. `BenchmarkStarDiscrepancy` walks the two shapes that
-bracket the tree: 1024 points in 2 dimensions (wide and shallow, 5.26e5 leaves, 14.6 ms) and
-160 points in 4 dimensions (narrow and deep, 2.91e7 leaves, 764 ms). Those are 27.7 and 26.3
-ns per leaf — **flat across shapes**, which is the only thing that makes a leaf count a usable
-proxy for wall clock. So 3e7 leaves is about 0.8 seconds. That is the line: a wait, not a
-hang, because a caller cannot tell a hang apart from a slow machine.
+### Arithmetic range and precision
 
-Affordable point counts are **7744 at 2 dimensions, 562 at 3, 161 at 4, 78 at 5 and 49 at 6**
-— which is why the s=4 row above stops at 160. The refusal names them, names which of the two
-gates tripped, and points at `CenteredL2Discrepancy` _with_ its caveat attached rather than
-bare.
+Scratch entry and byte counts are checked before allocation. Nonfinite products,
+sums, or squared results return an error. The implementation uses direct float64
+terms: even when a norm would fit, its squared terms may overflow. A single
+origin at 1000 dimensions is supported; 2000 dimensions is a regression for a
+finite norm whose intermediate squared product exceeds that range. Larger
+nonfinite cases are also refused.
 
-## `CenteredL2Discrepancy` — cheap, and it saturates
+Scaled arithmetic is deferred because it would need to handle cancellation
+between differently scaled terms and pass independent reference checks. There
+is no fixed dimension-only ceiling; arithmetic range also depends on the
+coordinates and point count.
 
-Hickernell's CD2 in closed form, O(N²s) in any dimension, returning the square root: 24.5 ms
-at 39 dimensions and N=1024, 484 ms at N=4096. It averages over the same family of boxes
-instead of taking a supremum.
-
-The two easy mistakes in the construction — anchoring the boxes at the cube's centre rather
-than at the nearest corner, and summing over the full-dimensional projection rather than all
-2^s − 1 of them — both leave a plausible-looking number, so the test integrates the definition
-numerically rather than trusting the formula.
-
-### Read this before believing a CD2 number
-
-For N independent uniform points the expectation is exactly
+For one dimension, sorted coordinates give the stable identity
 
 ```
-E[CD2²] = ((5/4)^s − (13/12)^s) / N
+CD2² = 1/(12N²) + mean((x_(i) - (i-1/2)/N)²),   i = 1..N
 ```
 
-which is 2.4198 at 39 dimensions and N=1024, and matches the measured random figure of 2.4046
-to 0.6%. It grows fast enough with _s_ that a good point set and a random one converge onto it
-together. Measured at N=1024 over ten seeds:
+The terms are nonnegative and the caller's input is not reordered. Midpoint-grid
+references through N=16384 test the independent value `1/(sqrt(12)*N)`.
 
-| s   | CD2 Halton | CD2 random | analytic | random ÷ Halton | diagonal share |
-| --- | ---------- | ---------- | -------- | --------------- | -------------- |
-| 2   | 0.001370   | 0.017054   | 0.019488 | **12.45x**      | 402%           |
-| 5   | 0.006376   | 0.040198   | 0.039026 | 6.30x           | 196%           |
-| 10  | 0.033736   | 0.080573   | 0.083190 | 2.39x           | 131%           |
-| 15  | 0.097509   | 0.159105   | 0.156561 | 1.63x           | 113%           |
-| 20  | 0.220000   | 0.280846   | 0.282599 | 1.28x           | 106%           |
-| 30  | 0.818767   | 0.885773   | 0.882090 | 1.08x           | 101%           |
-| 39  | 2.365729   | 2.404613   | 2.419777 | **1.02x**       | 100.4%         |
+General CD2 uses compensated accumulation but still subtracts near-equal terms.
+Product rounding and final cancellation can dominate for sets with squared
+discrepancy of order `N^-2`. A random-set `N^-1` error model does not establish
+an unconditional significant-digit guarantee. A tiny negative squared value is
+clamped to zero, so zero may represent a numerical floor. Exact rational
+tensor-grid and defining-integral references check the supported cases.
+The [performance report](performance.md) separates generation measurements from
+discrepancy costs and does not establish a universal discrepancy timing.
 
-**The last row is not a verdict on the sequence**, and taking it as one would contradict the
-integration table. Over the very same 39-dimensional 1024-point sets, RMS integration error is
-8.06e-04 for QMC against 1.32e-02 for Monte Carlo — **16.4x**. The statistic, not the point
-set, is what has stopped working.
+### The independent-uniform reference
 
-**The statistic becomes its own diagonal.** The last column says why: at 39 dimensions the
-`i = j` terms of the double sum account for 100.4% of the expectation on their own, and the
-diagonal depends only on each coordinate's marginal spread, not at all on how the points sit
-relative to one another. Everything CD2 was meant to measure lives in a residual smaller than
-the rounding of the terms around it.
+For N independent uniform points,
 
-**It is a decay, not a cliff** — 12.5x at 2 dimensions, 2.4x at 10, 1.28x at 20, 1.02x at 39.
-Informative below roughly ten dimensions, weak by twenty, dead by thirty, and no dimension at
-which a refusal would be honest. That is why this function returns a number where
-`StarDiscrepancy` returns an error.
+```
+E[CD2²] = ((5/4)^s - (13/12)^s) / N
+```
 
-**The self-check.** Compare your number against `sqrt(((5/4)^s − (13/12)^s)/N)`. If it is not
-several times below that, the statistic is telling you about your marginals and nothing else,
-and you want an integration test or `StarDiscrepancy` in a projection instead.
+Thus `sqrt(E[CD2²])` is the RMS of CD2, not its mean. By Jensen's inequality,
+`E[CD2] <= sqrt(E[CD2²])`. A sample mean of CD2 may be close to the RMS when
+the distribution is concentrated; closeness is empirical.
+`TestCenteredL2MatchesTheRandomExpectation` checks the correct squared
+quantity by averaging CD2² over random sets from a source seeded 20240828,
+at its specified dimension/count/replicate cases.
 
-## In the browser demo
+### High-dimensional discrimination
 
-The Discrepancy Bench sweeps either statistic against n beside a pseudorandom baseline and,
-for CD2, the analytic curve. At 39 dimensions all three lie on top of one another at a ratio
-of 1.02x — the saturation argument as a picture rather than as a caveat. At 4 dimensions star
-separates the same two point sets by 1.71x over six rungs.
+`TestCenteredL2SaturatesAtThirtyNineDimensions` uses 39 dimensions, 1024 points,
+skip 64, and fixed-scrambling seeds 1..10. Its random sets use consecutive draws
+from a source seeded 20240827. It requires the mean CD2 values to remain within
+a broad separation margin while the same sets' RMS integration errors differ
+on the smooth product. Its comparison of mean random CD2 with the RMS reference
+is a finite-fixture proximity check, not an exact expectation identity.
 
-Star's availability is asked of the library and its refusal rendered verbatim, with the
-largest admissible dimension count offered as the fix. The browser needs a second ceiling
-below the library's, and the obvious cost model is wrong: measured under `js/wasm` the cost
-per pair is **affine** in the dimension count, `N(N−1)/2 * (5.7s + 7.5)` ns, so a purely
-proportional model would have been three times too generous at one dimension. Star at the
-library's own budget freezes the tab for up to 5.6 seconds, so the panel affords 224 points at
-3 dimensions and 32 at 6.
+The statistic's rapidly growing diagonal contribution can make relative
+separation small in this regime. Each diagonal term includes products across
+coordinates of a point; it is not determined solely by independent
+one-dimensional marginals. Residual terms still describe relationships between
+points, and a small relative difference does not imply they are below arithmetic
+roundoff. There is no universal dimension where CD2 becomes meaningless.
 
-## Still open
+Use the independent-uniform RMS reference as a scale comparison. Values close
+to that scale need additional evidence about the intended workload; they do not
+prove that only marginal spread is being measured. Consider integration against
+independent references and manageable projections. Neither these quality
+fixtures nor the [canonical integration comparison](performance.md) proves a
+ranking for arbitrary functions.
 
-There is no lower-bound or randomized estimator for the star discrepancy above 6 dimensions,
-which is the only way that quantity is reachable at the dimension counts this package is aimed
-at. It would be an approximation with its own error to characterise, and nothing in the package
-needs it yet.
+## Browser and reproducible checks
+
+The demo runs bounded computations in workers, renders library refusals, and
+labels the analytic CD2 curve as the independent-uniform RMS reference.
+[The demo](wasm-demo.md) describes its workload caps, cancellation, and browser
+verification. Native benchmark timings are not browser execution deadlines.
+
+The focused mathematical contracts can be reproduced with:
+
+```sh
+go test -count=1 -timeout=10m -v -run 'Test(StarDiscrepancy.*|CenteredL2.*|Discrepancy.*|QMCBeatsPseudorandomOnStarDiscrepancy)' .
+```
+
+The statistical sweeps are skipped by `-short`; `just test-statistical`
+runs the complete suite.

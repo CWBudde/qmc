@@ -25,24 +25,24 @@ func TestRadicalInverseKnownValues(t *testing.T) {
 func TestPrimesUpTo(t *testing.T) {
 	want := []int{2, 3, 5, 7, 11, 13, 17, 19, 23, 29}
 
-	got := primesUpTo(len(want))
+	got := mustPrimes(len(want))
 	for i := range want {
 		if got[i] != want[i] {
-			t.Fatalf("primesUpTo(%d)[%d] = %d, want %d", len(want), i, got[i], want[i])
+			t.Fatalf("mustPrimes(%d)[%d] = %d, want %d", len(want), i, got[i], want[i])
 		}
 	}
-	// The 64th prime is 311 and the 1000th is 7919; both bounds exercise the
-	// sieve's growth loop rather than a hand-checked table.
-	if p := primesUpTo(64); p[63] != 311 {
+	// The 64th prime is 311 and the 1000th is 7919. Both fit the initial
+	// sieve bound; TestPrimeSieveBoundedExpansion covers growth explicitly.
+	if p := mustPrimes(64); p[63] != 311 {
 		t.Fatalf("64th prime = %d, want 311", p[63])
 	}
 
-	if p := primesUpTo(1000); p[999] != 7919 {
+	if p := mustPrimes(1000); p[999] != 7919 {
 		t.Fatalf("1000th prime = %d, want 7919", p[999])
 	}
 
-	if primesUpTo(0) != nil {
-		t.Fatalf("primesUpTo(0) should be nil")
+	if mustPrimes(0) != nil {
+		t.Fatalf("mustPrimes(0) should be nil")
 	}
 }
 
@@ -137,7 +137,7 @@ func TestCoordinatesStayInTheUnitInterval(t *testing.T) {
 
 		for i := 0; i < 2000; i++ {
 			for d, v := range g.At(i) {
-				if v < 0 || v >= 1 {
+				if !(v >= 0 && v < 1) {
 					t.Fatalf("scramble=%v point %d dim %d = %v, want [0,1)", scramble, i, d, v)
 				}
 			}

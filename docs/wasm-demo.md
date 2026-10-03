@@ -1,109 +1,107 @@
 # The WebAssembly demo
 
-[`examples/wasm-demo`](../examples/wasm-demo) is published at <https://cwbudde.github.io/qmc/>.
-Everything it shows is computed by this library compiled to `js/wasm` — there is no JavaScript
-reimplementation of the sequence, which is the point: the demo is a second consumer of the real
-API, and it is the heaviest one.
+[`examples/wasm-demo`](../examples/wasm-demo) is a separate Go module using a
+local replacement for the real library. The Pages workflow builds a static site
+for <https://cwbudde.github.io/qmc/>. The **Point Lab** explores scatter projections
+and Halton digits; the **Discrepancy Bench** measures correlation, convergence,
+and discrepancy. Sequence generation and numerical statistics run in Go/WASM;
+JavaScript owns controls, worker coordination, accessibility, and rendering.
 
-Two pages: a **Point Lab** (scatter explorer plus digit inspector) and a **Discrepancy Bench**
-(correlation heatmap, convergence chart, discrepancy sweep).
+## Computation and result ownership
 
-## What the demo asks of the library, and why
+Heavy exports run in worker-hosted Go instances. Point Lab has one computation
+channel; the Bench separates correlation from its shared sweep channel. A
+replaced active request terminates its worker, and generation IDs reject stale
+responses. Stop can terminate a running rung while retaining completed rows.
+Idle workers are reused. Typed output buffers transfer to the DOM thread without
+detaching already displayed data. Calling a heavy `qmc` export directly from the
+console remains synchronous in the calling realm.
 
-The demo is where several library decisions were pressure-tested, so its structure is worth
-knowing even if you never open it.
+Range controls debounce reduced previews and later request the full selected
+budget. All four heavy exports have maximum-workload browser regressions,
+including a reproducible one-CPU execution profile. Measurements and limitations
+are recorded under DEMO-03 in [PLAN.md](../PLAN.md); the
+[demo README](../examples/wasm-demo/README.md) describes worker and deadline policy.
+Discrepancy ceilings bound computation work rather than universal execution time.
 
-**It asks the library rather than re-deriving.** The `leaps` export answers whether a leap is
-admissible for the currently selected sequence and dimension count, and which nearby value is.
-It decides by building a generator and reading the constructor's error, not by re-deriving
-coprimality — the library is the only place that says what a constructor accepts. The
-`randomizations` map in `info.go` follows the same rule. `StarDiscrepancy`'s refusal is
-rendered verbatim rather than paraphrased.
+A sweep records its configuration alongside completed results. Changing a sweep
+setting cancels and clears that panel, and starting the other sweep supersedes
+the current one. Correlation changes remain independent. Gaussian metadata and
+integrals use the selected dimensions. Missing/null/non-object options retain
+their documented fallbacks. Matched output buffers are validated before reuse.
+Recovered requests leave Go usable; actual runtime termination disables compute
+controls and offers a reload action.
 
-**It needs introspection the interface does not offer.** What randomization is in effect, how
-many dimensions the concrete generator reaches, whether it has prime bases — the demo keeps a
-hand-maintained table for all three. That duplication is the concrete argument for
-`Describe()`; see [API design](api-design.md).
+Both pages use `WasmRuntime.load` in runtime.js for byte-stream progress and the
+non-reader/reduced-motion instantiation path. When streaming instantiation is
+unavailable, that path reads bytes without replacing a browser global. Runtime
+startup remains separate so normal exit, traps, request recovery, and Reload
+retain the same terminal-state handling. `just test-browser` first runs the
+offline loader/DOM regressions, then tests production pages and a separate Go
+runtime fixture. The fixture checks 36 digit-inspector configurations against
+independently constructed Halton generators, including all three offered
+randomizations, skip/leap, clamping, maximum indices/dimensions, raw expansions,
+fixed-permutation tails, and rejected requests. No library internals or new
+production exports were added solely for this inspection.
 
-**Its cost model is measured, not assumed.** Under `js/wasm` CD2's cost per pair is _affine_
-in the dimension count, `N(N−1)/2 * (5.7s + 7.5)` ns. A purely proportional model would have
-been three times too generous at one dimension. See [Performance](performance.md).
+## Accessible inspection
 
-**Sweeps run on a cancellable ladder.** `converge.go` slices a blocking computation so the tab
-stays responsive; `runSweep` was extracted so the discrepancy panel reuses it rather than
-growing a second copy.
+The heatmap has a textual correlation grid with row/column dimension headers,
+keyboard cell navigation, and one Tab stop. Every canvas has a current summary;
+both sweeps expose named progressbars and full result tables. The Point Lab
+reveal slider and digit inspector provide keyboard inspection. Reduced-motion
+behavior, visible focus, and throttled final announcements are browser-tested.
+The demo README contains keyboard steps and limits of the automated checks.
 
-## Known problems
+## Rendering maintenance decision
 
-None of these is fixed. They are recorded here because the demo has **no tests at all** and
-[no quality gate](toolchain.md#the-demo-module-has-no-quality-gate), so the only thing keeping
-them visible is this list.
+Retain full hover redraws for now. On 2026-10-03, Chrome 144.0.7559.109 on
+Linux/amd64 with an i7-1255U measured 100 redraws after ten warmups at the
+48-dimension limit. At a 295.5-pixel square and DPR 1, the heatmap median/p95
+was 1.115/2.070 ms and the legend 0.115/0.275 ms. At a 344.34-pixel square and
+DPR 2, the heatmap was 0.830/1.020 ms and the legend 0.155/0.195 ms. The shared
+browser recipe reports these samples; they measure JavaScript/canvas command
+submission in headless Chrome, not end-to-end frame presentation or every device.
+Runs were sequential, with no concurrent benchmark workload.
 
-### Blocking and responsiveness
+Reproduce with `just test-browser` using the publishing compiler Go 1.26.1
+and Node 18.19.1. The fixture renders a 48-dimensional correlation matrix from
+64 points with skip 0, plain Halton, seed 1, and leap 1;
+`scripts/test-demo-browser.mjs` is the generating harness. It sorts
+100 samples and reports element 50 as median and element 95 as p95. These are
+finite order statistics, with no confidence interval. Geometry and DPR are
+recorded in its output; the second profile uses a 1280×900 emulated viewport.
 
-- The Point Lab runs two synchronous `points` calls per animation frame with no debounce. At
-  the limits the UI allows (20 000 points, 64 dimensions) that is 2.5 M radical inverses per
-  frame while the pointer is held down. `refreshCorrelation` on the analysis page has the same
-  shape. `converge.go` writes a careful explanation of why a blocking call must be sliced, and
-  then `points` and `correlate` ignore it. Wants a worker, an `input` debounce, or a reduced
-  count during drag.
-- Even the sliced sweep only checks for cancellation between steps, and the longest step is
-  65 536 points across up to 32 dimensions evaluated twice. Stop is unresponsive for the whole
-  of it — the hung tab the slicing exists to prevent.
-- `tick` re-arms `requestAnimationFrame` unconditionally, so an idle Point Lab tab wakes 60
-  times a second for the life of the page. Start it from `setPlaying(true)` and cancel on
-  pause.
-- After a panic the page sets `state.dead` and every call returns `null` before any status
-  update, so controls keep responding visually while doing nothing. The Go side's comment says
-  the page "should offer a reload"; it never does.
+These modest costs do not presently justify a retained bitmap and its separate
+data/size/theme ownership. Revisit caching if a representative slower device
+or larger layout demonstrates a material problem. Current redraws always use
+current matrix data and canvas geometry; resize and DPR callbacks redraw, and
+DPR callbacks call `Render.invalidateTheme`. CSS-variable reads already have
+an explicit theme cache invalidator. There is no theme-switching control: any
+future theme change must invalidate that cache and redraw all canvases. Browser
+regressions check changed theme colours and resized/DPR-scaled backing stores.
 
-### Correctness
+## Quality gates
 
-- `info()` computes `exact` at a hardcoded 32 dimensions and the analysis page renders it as
-  "Exact value over the unit cube". Move the dimensions slider to 4 and the page still shows
-  the 32-dimensional value (~7e-5 where the truth is ~0.30). The Go comment predicts this and
-  says to read `exact` back from `converge()`; the page does that in the readout but not in the
-  note.
-- `digits.go` hardcodes `skip + 1 + index*leap`, re-deriving the mapping in `fill`, and
-  `baseDigits` re-implements the digit loop of `radicalInverse`. Nothing exports that mapping
-  and nothing tests the demo, so a convention change leaves the digit inspector showing the
-  digits of the wrong index while the values beside it move. Export the mapping from the
-  library, or test the demo against it. (The inspector's _label_ has been fixed to show the
-  full arithmetic, with the skip recovered from the response rather than from the control — but
-  the duplicated mapping underneath it remains.)
-- `sinkFor` checks the float view's length but never that the byte view addresses the same
-  `ArrayBuffer` or is large enough, so a mismatched pair yields a half-written buffer and a
-  plausible partial plot rather than an error.
-- `state.geo` is assigned but absent from the state literal, and `cellAt` depends on it.
-- `index.html`'s DOM-map comment block is hand-maintained against the markup below it and
-  nothing checks the two agree — one caption example had already gone stale.
+`just check-wasm-demo` explicitly verifies/tidies this module, builds production
+js/wasm, vets js/wasm with the runtime fixture, and builds the native stub.
+`just lint-wasm-demo` covers its real production/fixture code under the library's
+lint rules. Compiling the stub alone does not validate the WASM implementation.
 
-### Frontend quality
+`just test-browser` checks both pages in actual Chrome: configuration ownership,
+source/randomization changes, numerical references, buffers, panic/exit recovery,
+asset failures, worker cancellation, responsiveness, keyboard input, accessibility
+semantics, and network/console/runtime errors. PR and Pages jobs invoke the same
+recipes; Pages checks the exact build before upload. Compiler compatibility and
+the pinned publishing toolchain are explained in [toolchain](toolchain.md).
 
-- Roughly 150 lines are byte-identical between `app.js` and `analysis.js`, including the entire
-  WASM loader and the panic gate. Both pages already share `render.js`; they should share a
-  `boot.js`.
-- The load-failure message blames a missing `Content-Type: application/wasm`, which is
-  irrelevant to the `WebAssembly.instantiate(bytes)` path actually taken. Users hitting the
-  common failure get a red herring.
-- Neither page has a `<noscript>`, and the sliders and selects ship enabled before boot while
-  only the buttons ship disabled — so before or after a failed load a user can drag controls
-  that do nothing, with no feedback.
-- Accessibility: canvases carry static `aria-label`s that never reflect the data drawn, the
-  progress bar is a bare `<div>` with no `role="progressbar"`, the heatmap legend is
-  `aria-hidden` with no text equivalent, and the heatmap is hover-only with no keyboard path to
-  any cell.
-- The heatmap re-renders in full on every `mousemove` that changes cell, including a per-pixel
-  legend redraw, instead of using an overlay canvas. Both pages also allocate two typed-array
-  views per result per frame — the churn the sink machinery exists to avoid, moved to the
-  JavaScript side.
-- `render.js` caches CSS custom properties and invalidates only on DPR change. Harmless today
-  because the stylesheet has no `prefers-color-scheme` block, and a trap for whoever adds one.
+The demo uses system fonts and same-origin static downloads. Computation is
+local, with no analytics, submissions, or third-party font requests.
 
-## A lesson worth keeping
+## Review decisions
 
-Two of the bugs already found here were not crashes. `analysis.js` read a nullable correlation
-through `Math.abs(null)` and printed a confident `0.000` — the best possible verdict — for a
-measurement that did not exist; and the digit inspector's label described an index it had not
-computed. Both looked right on screen. That is the failure mode an untested demo produces, and
-it is the argument for the quality gate.
+DEMO-01 through DEMO-10, PERF-01, and API-01 have implementation or decision
+evidence in [PLAN.md](../PLAN.md). DOC-01/02 reconcile claims and contributor
+guidance. Keep future remediation status in that plan, with explanations here
+when the change affects demo behavior. Hover bitmap caching remains a measured
+deferral rather than an unimplemented requirement.

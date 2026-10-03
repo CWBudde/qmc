@@ -1,0 +1,8 @@
+Command: ['go', 'test', '-run', '^$', '-bench', '^BenchmarkReviewConstruction$/^Sobol$/^plain$/^39d$', '-benchtime=1x', '-count=1', '-benchmem', '-cpu=1', '.']
+goos: linux
+goarch: amd64
+pkg: github.com/cwbudde/qmc
+cpu: 12th Gen Intel(R) Core(TM) i7-1255U
+BenchmarkReviewConstruction/Sobol/plain/39d         	       1	   1225635 ns/op	  445216 B/op	    4104 allocs/op
+PASS
+ok  	github.com/cwbudde/qmc	0.003s

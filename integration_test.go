@@ -8,25 +8,9 @@ import (
 	"github.com/cwbudde/qmc"
 )
 
-// The test that makes the rest of the suite mean something.
-//
-// Every other assertion in this package is a proxy. The correlation test in
-// correlation_test.go measures adjacent-dimension Pearson r, and plain
-// math/rand scores *better* on that measurement (0.1244) than the scrambled
-// generator does (0.1406) — pseudorandom noise passes it comfortably. The same
-// is true of the known-value and round-trip tests: they pin the arithmetic,
-// not the property the arithmetic is for. Swap the whole generator for
-// rand.Float64() and every one of those tests stays green.
-//
-// This test is the one that would not. A low-discrepancy point set exists to
-// integrate better than independent sampling at the same budget: its error
-// falls off roughly as 1/n instead of 1/sqrt(n), so at a few thousand points
-// in a few dozen dimensions it is an order of magnitude ahead. That gap is not
-// something a random number generator can fake, and it is the only property
-// here that a caller actually buys.
-//
-// If this test is deleted, the package loses its only evidence that it does
-// what its name claims.
+// A smooth-product quality gate complements arithmetic and structure tests.
+// The margin is specific to this integrand and budget. The broader functions
+// and aligned-block comparisons live in integration_diversity_test.go.
 
 // The integrand is the smooth product
 //
@@ -49,11 +33,11 @@ func productIntegrand(x []float64) float64 {
 }
 
 // qmcRMSError returns the root-mean-square relative error of the scrambled
-// generator's estimate over streams independent scrambling seeds.
+// generator's estimate over a fixed set of stream seeds.
 //
 // Averaging over several seeds is not decoration. A single randomized-QMC run
 // is one draw from a distribution; the RMS over seeds is the quantity the
-// theory bounds, and it is what keeps this test from turning on whether one
+// test compares, and it is what keeps this test from turning on whether one
 // lucky seed happened to land well.
 //
 // The randomize parameter builds the option under test from a stream seed,
@@ -85,7 +69,12 @@ func qmcRMSError(t *testing.T, randomize func(uint64) qmc.Option, dims, n, strea
 		sumSq += e * e
 	}
 
-	return math.Sqrt(sumSq / float64(streams))
+	result := math.Sqrt(sumSq / float64(streams))
+	if !finiteMeasurement(result) {
+		t.Fatalf("nonfinite RMS integration measurement: %g", result)
+	}
+
+	return result
 }
 
 // mcRMSError is the same measurement driven by math/rand.
@@ -95,7 +84,9 @@ func qmcRMSError(t *testing.T, randomize func(uint64) qmc.Option, dims, n, strea
 // streams are consecutive draws from one source rather than separately seeded
 // generators: separately seeded ones can correlate, which would flatter the
 // baseline this test is trying to beat honestly.
-func mcRMSError(dims, n, streams int) float64 {
+func mcRMSError(t *testing.T, dims, n, streams int) float64 {
+	t.Helper()
+
 	rng := rand.New(rand.NewSource(20240823)) //nolint:gosec // statistical baseline, not cryptography
 
 	sumSq := 0.0
@@ -116,37 +107,38 @@ func mcRMSError(dims, n, streams int) float64 {
 		sumSq += e * e
 	}
 
-	return math.Sqrt(sumSq / float64(streams))
+	result := math.Sqrt(sumSq / float64(streams))
+	if !finiteMeasurement(result) {
+		t.Fatalf("nonfinite RMS integration measurement: %g", result)
+	}
+
+	return result
 }
 
-// TestScrambledQMCBeatsMonteCarloAt39Dims is the package's design point: 39
-// knobs, a budget of a few thousand evaluations. Measured here, scrambled QMC
-// comes in around 19-28x more accurate than plain Monte Carlo depending on n.
-//
-// The asserted margin is deliberately far below that. A factor of 5 still
-// cannot be reached by any generator producing independent samples — the gap
-// between 1/n and 1/sqrt(n) convergence is structural — while leaving room for
-// an unlucky seed, a different Go version's rand, and future changes to the
-// scrambling scheme that shift the constant without giving up the rate. A test
-// pinned at 19x would fail on noise; one at 5x fails only if the package has
-// stopped being a QMC package.
+// TestScrambledQMCBeatsMonteCarloAt39Dims compares RMS error on the same smooth
+// product integrand, budget, and fixed streams. The threshold is an empirical
+// regression guard, not a convergence theorem or a guarantee on other functions.
 func TestScrambledQMCBeatsMonteCarloAt39Dims(t *testing.T) {
+	if testing.Short() {
+		t.Skip("statistical sweep; run just test-statistical")
+	}
+
 	const (
 		dims        = 39
 		n           = 4096
-		streams     = 10
+		streams     = 40
 		wantSpeedup = 5.0
 	)
 
 	qmcErr := qmcRMSError(t, qmc.WithScrambling, dims, n, streams)
-	mcErr := mcRMSError(dims, n, streams)
+	mcErr := mcRMSError(t, dims, n, streams)
 
 	if qmcErr <= 0 {
 		t.Fatalf("QMC RMS error is %g; an exactly-zero error means the integrand or the estimator collapsed, not that QMC is perfect", qmcErr)
 	}
 
 	ratio := mcErr / qmcErr
-	if ratio < wantSpeedup {
+	if !finiteMeasurement(ratio) || ratio < wantSpeedup {
 		t.Fatalf("at %d dims with n=%d over %d streams: QMC RMS error %.3e vs MC %.3e = %.1fx, want >= %.0fx; "+
 			"the generator is no longer integrating better than independent sampling",
 			dims, n, streams, qmcErr, mcErr, ratio, wantSpeedup)
@@ -171,15 +163,15 @@ func TestScrambledQMCBeatsMonteCarloAtLowDims(t *testing.T) {
 	const (
 		dims        = 8
 		n           = 512
-		streams     = 10
+		streams     = 40
 		wantSpeedup = 5.0
 	)
 
 	qmcErr := qmcRMSError(t, qmc.WithScrambling, dims, n, streams)
-	mcErr := mcRMSError(dims, n, streams)
+	mcErr := mcRMSError(t, dims, n, streams)
 
 	ratio := mcErr / qmcErr
-	if ratio < wantSpeedup {
+	if !finiteMeasurement(ratio) || ratio < wantSpeedup {
 		t.Fatalf("at %d dims with n=%d over %d streams: QMC RMS error %.3e vs MC %.3e = %.1fx, want >= %.0fx",
 			dims, n, streams, qmcErr, mcErr, ratio, wantSpeedup)
 	}

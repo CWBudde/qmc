@@ -284,26 +284,11 @@ func TestCoordinatesLieInUnitInterval(t *testing.T) {
 // TestFirstPointsAreOneDimensionallyBalanced is the defining (t,m,s)-net
 // property, in the form that holds universally.
 //
-// A digital (0,m,1)-net puts exactly one of its 2^m points in each of the 2^m
-// intervals [k/2^m, (k+1)/2^m). Sobol satisfies this in every dimension
-// independently, and it is precisely what a damaged direction table destroys:
-// the V_i of a dimension have to be linearly independent over GF(2) for the
-// map from index to interval to be a bijection, and an even m_i, a shifted
-// row, or a non-primitive polynomial all break that independence. The points
-// then still spread across the cube — that is why a corrupted table is
-// invisible in the output — but some intervals get two points and others none.
-//
-// The block has to be aligned. WithSkip(2^m - 1) puts the points on raw
-// indices 2^m .. 2^(m+1)-1, and a dyadic block of 2^m consecutive indices is a
-// net only when it starts on a multiple of 2^m. The default skip of 0 gives
-// raw indices 1..2^m, which straddles two blocks: measured here, that leaves
-// 40 dimensions out of 40 unbalanced at m=8. This is not a defect, it is what
-// "the first 2^m points" means, and the test says so rather than quietly
-// choosing a skip that works.
-//
-// Gray-code ordering does not disturb any of this: gray is a bijection that
-// preserves the top bit, so it permutes each aligned dyadic block onto itself
-// and the point set of a block is the same either way.
+// Each supported coordinate is tested for one-point occupancy in every dyadic
+// interval of width 2^-m on the aligned raw block selected by WithSkip(2^m-1).
+// Arbitrary unaligned windows lack this general guarantee. Gray coding maps
+// an aligned block to another aligned block by permuting its low m bits; it
+// need not map a later block onto itself.
 func TestFirstPointsAreOneDimensionallyBalanced(t *testing.T) {
 	const dims = 1024
 
@@ -421,21 +406,9 @@ func TestFirstPointsSatisfyPropertyA(t *testing.T) {
 	}
 }
 
-// TestFirstTwoDimensionsFormAZeroNet checks the strongest balance property
-// this table actually has: every elementary interval, at every aspect ratio.
-//
-// The first two dimensions of a Sobol sequence form a (0,m,2)-net, so for
-// every split m = a+b the 2^m points fall one apiece into the 2^a x 2^b
-// rectangles. That is a much stronger statement than the one-dimensional test
-// and it is the natural thing to want for all pairs — so it is worth recording
-// why the test does not ask for it. Measured over all 780 pairs of the first
-// 40 dimensions, 18 are balanced at every split at m=8 and 4 at m=10 — and
-// (0,1) is the only pair in both lists. Sobol sequences are (t,m,s)-nets with
-// t growing with s, and the
-// Joe-Kuo D(6) search optimises the quality of two-dimensional projections
-// without making them all t=0. A test demanding it of every pair would be
-// asserting something false about a correct table, and the usual fate of such
-// a test is to be loosened until it asserts nothing.
+// TestFirstTwoDimensionsFormAZeroNet checks one-point occupancy at every dyadic
+// aspect ratio of the first-two-dimensional projection on aligned raw blocks.
+// Other projections inherit a t guarantee but need not be t=0 nets.
 func TestFirstTwoDimensionsFormAZeroNet(t *testing.T) {
 	for _, m := range []int{4, 6, 8, 10} {
 		n := 1 << m
@@ -973,7 +946,7 @@ func TestSobolRefusesIndicesBeyondItsDirectionNumbers(t *testing.T) {
 	last := uint64(math.MaxUint32)
 
 	// One below the limit still works: raw index 2^32-1 is the last point.
-	if p := g.At(int(last - 1)); p[0] < 0 || p[0] >= 1 {
+	if p := g.At(int(last - 1)); !(p[0] >= 0 && p[0] < 1) {
 		t.Fatalf("the last representable point must still be produced, got %v", p[0])
 	}
 
@@ -1156,7 +1129,7 @@ func TestDirectionTableBeyondTheEmbeddedCeiling(t *testing.T) {
 		g.AtInto(i, point)
 
 		for d, v := range point {
-			if v < 0 || v >= 1 {
+			if !(v >= 0 && v < 1) {
 				t.Fatalf("point %d dimension %d is %v, which is outside [0,1)", i, d, v)
 			}
 

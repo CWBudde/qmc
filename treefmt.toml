@@ -1,5 +1,5 @@
 # treefmt configuration for the QMC quasi-Monte Carlo library.
-# Run with: just fmt  (treefmt --allow-missing-formatter)
+# Run with: just fmt / just check-formatted (strict pinned tools)
 # See: https://treefmt.com
 
 [global]
@@ -15,6 +15,10 @@ excludes = [
   # dependencies
   "vendor/**",
   "node_modules/**",
+  # local editor/agent state, not project source
+  ".agents/**",
+  ".codex/**",
+  ".aws/**",
   # generated changelog
   "CHANGELOG.md",
   # gitignore
@@ -62,18 +66,17 @@ includes = [
   "*.yaml",
   "*.yml",
   "*.js",
+  "*.mjs",
   "*.css",
   "*.html",
 ]
 
 ### Shell
 
-[formatter.shellcheck]
-command = "shellcheck"
-includes = ["*.sh"]
+# ShellCheck is an explicit gate in scripts/check-shell.sh. It does not write
+# files, so its diagnostics must not depend on formatter change detection.
 
 [formatter.shfmt]
 command = "shfmt"
 options = ["-s", "-w", "-i", "2"]
 includes = ["*.sh"]
-priority = 1                      # run after shellcheck

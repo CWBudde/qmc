@@ -245,15 +245,10 @@ func ExampleStarDiscrepancy() {
 	// 12 dims refused: true
 }
 
-// CenteredL2Discrepancy has no dimension ceiling, and that is exactly the trap.
-//
-// For N independent uniform points its expectation is
-// sqrt(((5/4)^s - (13/12)^s)/N), and that baseline is the number to compare
-// against before believing anything the statistic says. At two dimensions a
-// scrambled Halton set comes in far below it; at 39 dimensions the two are
-// within a percent of each other, because the statistic has become its own
-// diagonal — even though the same two point sets still integrate with a
-// sixteenfold difference in error.
+// This example compares individual CD2 values with the analytic i.i.d. RMS
+// baseline sqrt(((5/4)^s-(13/12)^s)/N), not the mean CD2 expectation.
+// The finite comparison is illustrative; CD2 is not an integration error bound
+// without a corresponding integrand class and norm.
 func ExampleCenteredL2Discrepancy() {
 	// One point at the centre of the cube: CD2 = sqrt((13/12)^s - 1).
 	cd2, err := qmc.CenteredL2Discrepancy([][]float64{{0.5, 0.5, 0.5, 0.5}})
@@ -276,12 +271,12 @@ func ExampleCenteredL2Discrepancy() {
 
 		random := math.Sqrt((math.Pow(1.25, float64(dims)) - math.Pow(13.0/12.0, float64(dims))) / 1024)
 
-		fmt.Printf("s=%2d n=1024: Halton CD2 = %.4f, random expectation = %.4f, ratio = %.2f\n",
+		fmt.Printf("s=%2d n=1024: Halton CD2 = %.4f, random RMS baseline = %.4f, ratio = %.2f\n",
 			dims, cd2, random, random/cd2)
 	}
 
 	// Output:
 	// centre point, s=4:  CD2 = 0.614299
-	// s= 2 n=1024: Halton CD2 = 0.0014, random expectation = 0.0195, ratio = 13.84
-	// s=39 n=1024: Halton CD2 = 2.3606, random expectation = 2.4198, ratio = 1.03
+	// s= 2 n=1024: Halton CD2 = 0.0014, random RMS baseline = 0.0195, ratio = 13.84
+	// s=39 n=1024: Halton CD2 = 2.3606, random RMS baseline = 2.4198, ratio = 1.03
 }

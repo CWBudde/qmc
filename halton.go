@@ -22,10 +22,10 @@ const oneMinusEpsilon = 0x1.fffffffffffffp-1
 // dimensions.
 //
 // A Halton generator is not safe for concurrent use through its stateful
-// methods (Next, NextInto, Reset). At is stateless and may be called from any
+// methods (Next, NextInto, Reset). At and AtInto are stateless and may be called from any
 // number of goroutines at once, which is the way to drive one shared sequence
 // from a worker pool: have the workers claim indices from an atomic counter
-// and call At.
+// and call AtInto with separate destination buffers.
 type Halton struct {
 	dims  int
 	bases []int
@@ -41,6 +41,13 @@ type Halton struct {
 //
 // dims is bounded only by how many primes fit in memory; there is no fixed
 // base table to run out of.
+// A skip that leaves no representable first raw index is an error.
+// WithScrambling constructs one int32 permutation per prime base, with memory
+// proportional to the sum of those bases. At 1000 dimensions the measured
+// constructor allocates about 15.6 MB; reuse a generator across a run rather
+// than constructing it per point. WithNestedScrambling instead keeps roots
+// and a bounded immutable root-permutation cache. See docs/performance.md for
+// repeated timings, allocations, and the cache's construction tradeoff.
 func NewHalton(dims int, opts ...Option) (*Halton, error) {
 	if dims < 1 {
 		return nil, fmt.Errorf("qmc: dims must be >= 1, got %d", dims)
@@ -49,6 +56,10 @@ func NewHalton(dims int, opts ...Option) (*Halton, error) {
 	var cfg settings
 	for _, opt := range opts {
 		opt(&cfg)
+	}
+
+	if cfg.skip == math.MaxInt {
+		return nil, fmt.Errorf("qmc: skip %d puts point 0 beyond the raw Halton index range", cfg.skip)
 	}
 
 	// A randomization is rejected here rather than ignored. The schemes are
@@ -65,7 +76,10 @@ func NewHalton(dims int, opts ...Option) (*Halton, error) {
 		return nil, fmt.Errorf("qmc: %s does not apply to a Halton generator", cfg.randomize)
 	}
 
-	bases := primesUpTo(dims)
+	bases, err := primesUpTo(dims)
+	if err != nil {
+		return nil, err
+	}
 
 	// The leap is checked here, against the bases this generator will actually
 	// use, rather than being clamped or accepted with a warning. A leap sharing
@@ -86,7 +100,7 @@ func NewHalton(dims int, opts ...Option) (*Halton, error) {
 	}
 	switch cfg.randomize {
 	case randomizeNested:
-		h.nest = newNestedScrambler(cfg.seed, dims)
+		h.nest = newNestedScrambler(cfg.seed, bases)
 	case randomizeDigitPermutation:
 		h.perms = make([][]int32, dims)
 		for d, base := range h.bases {
@@ -128,7 +142,7 @@ func (h *Halton) Bases() []int {
 // Permutation returns the digit permutation applied to dimension dim, or nil
 // when the generator is unscrambled.
 //
-// With WithScrambling in effect, each dimension carries an independent uniform
+// With WithScrambling in effect, each dimension carries a seeded
 // permutation of the digit alphabet {0..base-1} for its base, and every digit
 // of the radical inverse — including the infinitely many leading zeros — is
 // mapped through it. The returned slice is that permutation: entry i is the
@@ -170,8 +184,10 @@ func (h *Halton) Next() []float64 {
 	return out
 }
 
-// NextInto writes the next point into dst. It allocates nothing, which matters
-// in an optimizer's inner loop.
+// NextInto writes the next point into dst without allocating a point slice.
+// Plain and fixed digit-scrambled generators allocate no scratch. Nested
+// scrambling allocates once per coordinate whose prime base exceeds 512:
+// zero allocations through 97 dimensions, one at 98, and three at 100.
 //
 // dst must have room for Dims() coordinates; a shorter one panics. Absorbing
 // it instead would leave the tail coordinates holding zeros or stale values,
@@ -194,7 +210,12 @@ func (h *Halton) Reset() { h.cursor = 0 }
 // WithLeap is in effect — so index 0, the degenerate origin that is all zeros
 // before scrambling, is never returned.
 //
-// Negative i is treated as 0.
+// Negative i is treated as 0. A raw index above math.MaxInt panics.
+// Fixed digit scrambling can also panic at very large representable raw
+// indices when reversing the permuted digits would overflow uint64; those
+// indices are refused rather than returning truncated coordinates.
+// Next and NextInto return the final admissible point normally and panic on
+// subsequent draws until Reset is called.
 func (h *Halton) At(i int) []float64 {
 	out := make([]float64, h.dims)
 	h.fill(i, out)
@@ -202,8 +223,9 @@ func (h *Halton) At(i int) []float64 {
 	return out
 }
 
-// AtInto is At without the allocation. As with NextInto, dst shorter than
-// Dims() panics rather than being silently truncated.
+// AtInto is At without allocating a point slice. Its scratch allocation is
+// the same as NextInto's. It is safe for concurrent calls with separate dst
+// buffers. dst shorter than Dims() panics rather than being silently truncated.
 func (h *Halton) AtInto(i int, dst []float64) { h.fill(i, dst) }
 
 func (h *Halton) fill(i int, dst []float64) {
@@ -227,7 +249,8 @@ func (h *Halton) fill(i int, dst []float64) {
 	// division floors, so i is admissible precisely when it is at or below the
 	// quotient. Doing it this way rather than multiplying first is the point —
 	// the multiplication being guarded is the one that would overflow.
-	if i > (math.MaxInt-1-h.skip)/h.leap {
+	remaining := math.MaxInt - 1 - h.skip
+	if remaining < 0 || i > remaining/h.leap {
 		panic(fmt.Sprintf(
 			"qmc: point index %d with skip %d and leap %d overflows the raw Halton index",
 			i, h.skip, h.leap,
@@ -239,7 +262,7 @@ func (h *Halton) fill(i int, dst []float64) {
 	switch {
 	case h.nest != nil:
 		for d := 0; d < h.dims; d++ {
-			dst[d] = nestedRadicalInverse(index, h.bases[d], h.nest.roots[d])
+			dst[d] = nestedInverse(index, h.bases[d], h.nest.roots[d], h.nest.rootPermutation(d))
 		}
 	case h.perms != nil:
 		for d := 0; d < h.dims; d++ {

@@ -17,11 +17,9 @@ import (
 // be in two packages, so the two test files are split by what each one needs
 // to reach rather than by subject.
 //
-// Read the long comment at the top of integration_test.go before changing the
-// 5x threshold here. The reasoning is the same and it is written down there:
-// no generator producing independent samples can reach 5x, because the gap
-// between 1/n and 1/sqrt(n) convergence is structural, while a bound pinned at
-// the measured value would fail on an unlucky seed.
+// The 5x threshold is an empirical regression margin on this smooth product
+// and these budgets; it is not a universal QMC rate or a theorem about all
+// independent sampling. Broader references live in integration_diversity_test.go.
 
 // randomize builds the option under test from a stream seed. Passing it in
 // rather than hardcoding one keeps the two randomizations measured on exactly
@@ -51,7 +49,12 @@ func sobolRMSError(t *testing.T, randomize func(uint64) qmc.Option, dims, n, str
 		sumSq += e * e
 	}
 
-	return math.Sqrt(sumSq / float64(streams))
+	result := math.Sqrt(sumSq / float64(streams))
+	if !finiteMeasurement(result) {
+		t.Fatalf("nonfinite RMS integration measurement: %g", result)
+	}
+
+	return result
 }
 
 // TestShiftedSobolBeatsMonteCarloAt39Dims is Sobol's version of the gate in
@@ -62,31 +65,29 @@ func sobolRMSError(t *testing.T, randomize func(uint64) qmc.Option, dims, n, str
 // generator that had quietly stopped integrating well; this is the test that
 // would not.
 //
-// The threshold is 5x, the same figure and the same argument as the Halton
-// gate: no generator producing independent samples can reach it, because the
-// gap between 1/n and 1/sqrt(n) convergence is structural, while it leaves
-// room for an unlucky seed and for a future change to the randomization that
-// shifts the constant without giving up the rate. Measured here, shifted Sobol
-// comes in at 29.5x against math/rand at these settings, so the margin is
-// wide — deliberately, because a test pinned near the measured value would
-// fail on noise and a test that fails on noise gets deleted.
+// The threshold is an empirical margin for these fixed seeds and this product
+// integrand, not an impossible outcome for arbitrary independent samples.
 func TestShiftedSobolBeatsMonteCarloAt39Dims(t *testing.T) {
+	if testing.Short() {
+		t.Skip("statistical sweep; run just test-statistical")
+	}
+
 	const (
 		dims        = 39
 		n           = 4096
-		streams     = 10
+		streams     = 40
 		wantSpeedup = 5.0
 	)
 
 	sobolErr := sobolRMSError(t, qmc.WithDigitalShift, dims, n, streams)
-	mcErr := mcRMSError(dims, n, streams)
+	mcErr := mcRMSError(t, dims, n, streams)
 
 	if sobolErr <= 0 {
 		t.Fatalf("Sobol RMS error is %g; an exactly-zero error means the integrand or the estimator collapsed, not that QMC is perfect", sobolErr)
 	}
 
 	ratio := mcErr / sobolErr
-	if ratio < wantSpeedup {
+	if !finiteMeasurement(ratio) || ratio < wantSpeedup {
 		t.Fatalf("at %d dims with n=%d over %d streams: Sobol RMS error %.3e vs MC %.3e = %.1fx, want >= %.0fx; "+
 			"the generator is no longer integrating better than independent sampling",
 			dims, n, streams, sobolErr, mcErr, ratio, wantSpeedup)
@@ -96,29 +97,17 @@ func TestShiftedSobolBeatsMonteCarloAt39Dims(t *testing.T) {
 		dims, n, streams, sobolErr, mcErr, ratio)
 }
 
-// TestSobolAgainstHaltonAt39Dims measures the two generators against each
-// other and asserts almost nothing.
-//
-// The measurement is worth having: it is the number that answers "should I
-// switch?", and the answer at this package's design point is 1.67x — Sobol's
-// RMS error is a little under two thirds of scrambled Halton's at 39
-// dimensions and 4096 points. That is a real improvement and it is smaller
-// than the folklore suggests, which is exactly why it should be logged rather
-// than remembered.
-//
-// The assertion is loose on purpose. Which of two low-discrepancy sequences
-// wins on a given integrand at a given n is not a stable fact — it moves with
-// the integrand's effective dimension, with n relative to powers of two, and
-// with the randomization. A test pinned at 1.67x would be a test of this
-// integrand rather than of either generator, and it would fail on a change
-// that improved Halton. All that is asserted is that Sobol is not
-// dramatically worse, which would mean something is broken; the number itself
-// goes to the log, where a human can read it.
+// TestSobolAgainstHaltonAt39Dims compares both generators on a fixed workload.
+// Its slack guards a large regression, not a universal ordering of methods.
 func TestSobolAgainstHaltonAt39Dims(t *testing.T) {
+	if testing.Short() {
+		t.Skip("statistical sweep; run just test-statistical")
+	}
+
 	const (
 		dims    = 39
 		n       = 4096
-		streams = 10
+		streams = 40
 	)
 
 	sobolErr := sobolRMSError(t, qmc.WithDigitalShift, dims, n, streams)
@@ -129,7 +118,7 @@ func TestSobolAgainstHaltonAt39Dims(t *testing.T) {
 	t.Logf("d=%d n=%d streams=%d: Sobol RMS %.3e vs scrambled Halton %.3e (Sobol %.2fx better)",
 		dims, n, streams, sobolErr, haltonErr, ratio)
 
-	if ratio < 0.5 {
+	if !finiteMeasurement(ratio) || ratio < 0.5 {
 		t.Fatalf("Sobol RMS error %.3e is more than twice scrambled Halton's %.3e; "+
 			"the two should be within a small factor of each other on a smooth integrand, "+
 			"so a gap this size means the Sobol construction is damaged rather than merely different",
@@ -148,15 +137,15 @@ func TestSobolBeatsMonteCarloAtLowDims(t *testing.T) {
 	const (
 		dims        = 8
 		n           = 512
-		streams     = 10
+		streams     = 40
 		wantSpeedup = 5.0
 	)
 
 	sobolErr := sobolRMSError(t, qmc.WithDigitalShift, dims, n, streams)
-	mcErr := mcRMSError(dims, n, streams)
+	mcErr := mcRMSError(t, dims, n, streams)
 
 	ratio := mcErr / sobolErr
-	if ratio < wantSpeedup {
+	if !finiteMeasurement(ratio) || ratio < wantSpeedup {
 		t.Fatalf("at %d dims with n=%d over %d streams: Sobol RMS error %.3e vs MC %.3e = %.1fx, want >= %.0fx",
 			dims, n, streams, sobolErr, mcErr, ratio, wantSpeedup)
 	}
@@ -182,10 +171,14 @@ func TestSobolBeatsMonteCarloAtLowDims(t *testing.T) {
 // the shift by the measured factor would be pinning a constant that depends on
 // the integrand, and would fail for reasons that say nothing about the code.
 func TestOwenBeatsDigitalShiftAt39Dims(t *testing.T) {
+	if testing.Short() {
+		t.Skip("statistical sweep; run just test-statistical")
+	}
+
 	const (
 		dims    = 39
 		n       = 4096
-		streams = 10
+		streams = 40
 
 		// Owen may come out slightly behind on a given integrand without
 		// anything being wrong — the two are close on smooth products, which

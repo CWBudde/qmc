@@ -2,32 +2,26 @@ package qmc
 
 import (
 	"math"
+	"sort"
 	"testing"
 )
 
-// The measurement this package exists for.
-//
-// A 39-dimensional Halton sequence sampled at 600 points is exactly what a
-// parameter search over 39 knobs on a 600-evaluation budget asks for. Without
-// scrambling the last coordinates have not yet left their first period —
-// dimension 38 has base 167, so its first 167 points are 0, 1/167, 2/167, ...
-// in order — and adjacent high dimensions therefore ramp in lockstep. The
-// measured worst adjacent-pair correlation is 0.84 with no burn-in and still
-// 0.81 after skipping 64 points, in both cases between dimensions 34 and 35.
-//
-// Scrambling is the fix, and this test is what keeps it fixed.
+// Correlation regressions use a fixed 39-dimensional, 600-point Halton window
+// and thirty scrambling seeds. They guard the observed high-base ramp defect
+// without claiming a universal correlation threshold for other windows.
 const (
 	corrDims   = 39
 	corrPoints = 600
 	corrSkip   = 64
+	corrSeeds  = 30
 )
 
 func TestScramblingBreaksHighDimensionalCorrelation(t *testing.T) {
 	const tolerance = 0.25
 
-	worstOverall := 0.0
+	worstPerSeed := make([]float64, 0, corrSeeds)
 
-	for _, seed := range []uint64{1, 2, 3, 4, 5} {
+	for seed := uint64(1); seed <= corrSeeds; seed++ {
 		g, err := NewHalton(corrDims, WithSkip(corrSkip), WithScrambling(seed))
 		if err != nil {
 			t.Fatal(err)
@@ -36,15 +30,18 @@ func TestScramblingBreaksHighDimensionalCorrelation(t *testing.T) {
 		pts := Draw(g, corrPoints)
 
 		worst, pair := worstAdjacentCorrelation(pts)
-		if worst > tolerance {
+		if math.IsNaN(worst) || math.IsInf(worst, 0) || worst > tolerance {
 			t.Fatalf("seed %d: adjacent dims %d/%d correlate at %.4f, want <= %.2f",
 				seed, pair, pair+1, worst, tolerance)
 		}
 
-		worstOverall = math.Max(worstOverall, worst)
+		worstPerSeed = append(worstPerSeed, worst)
 	}
 
-	t.Logf("scrambled: worst adjacent-pair |corr| over 5 seeds = %.4f", worstOverall)
+	sort.Float64s(worstPerSeed)
+	median := (worstPerSeed[corrSeeds/2-1] + worstPerSeed[corrSeeds/2]) / 2
+	p90 := worstPerSeed[int(math.Ceil(0.9*corrSeeds))-1]
+	t.Logf("scrambled: per-seed worst adjacent-pair |corr| over %d seeds: median %.4f, p90 %.4f, worst %.4f", corrSeeds, median, p90, worstPerSeed[corrSeeds-1])
 }
 
 // TestUnscrambledStillShowsTheDefect pins the behaviour the scrambled path is
@@ -58,7 +55,7 @@ func TestUnscrambledStillShowsTheDefect(t *testing.T) {
 	}
 
 	worst, pair := worstAdjacentCorrelation(Draw(g, corrPoints))
-	if worst < 0.5 {
+	if math.IsNaN(worst) || math.IsInf(worst, 0) || worst < 0.5 {
 		t.Fatalf("unscrambled worst adjacent-pair |corr| = %.4f at dims %d/%d; "+
 			"expected the known defect (~0.81), so the scrambled comparison no longer means anything",
 			worst, pair, pair+1)
@@ -79,6 +76,10 @@ func worstAdjacentCorrelation(pts [][]float64) (float64, int) {
 
 	for d := 0; d+1 < dims; d++ {
 		r := math.Abs(pearson(column(pts, d), column(pts, d+1)))
+		if math.IsNaN(r) || math.IsInf(r, 0) {
+			return r, d
+		}
+
 		if r > worst {
 			worst, at = r, d
 		}

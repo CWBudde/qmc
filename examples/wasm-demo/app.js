@@ -8,7 +8,8 @@
  * export in the Go bridge instead — a demo that reimplements the library in
  * JavaScript is demonstrating the JavaScript.
  *
- * No modules; this file is an IIFE and depends only on window.Render.
+ * No modules; shared rendering, runtime, worker, and accessibility helpers
+ * are loaded before this controller.
  */
 (function () {
   "use strict";
@@ -33,6 +34,7 @@
   const playButton = el("play");
   const scrub = el("scrub");
   const revealReadout = el("revealReadout");
+  const scatterSummary = el("scatterSummary");
 
   const dimsInput = el("dims");
   const dimsOut = el("dimsOut");
@@ -92,20 +94,18 @@
     random: null,
     reveal: 0,
     playing: false,
+    playFrame: null,
     lastTick: 0,
     selected: -1,
-    lastAnnounce: 0,
-    pending: false,
+    refreshTimer: null,
+    fullRefreshTimer: null,
+    renderId: 0,
 
     // The last answer from the leaps() export. Cached because refresh() has to
     // consult it before every draw and the answer only changes when the
     // sequence, the dimension count or the leap does.
     leapCheck: null,
   };
-
-  // Reusable views over JS-owned ArrayBuffers, one set per point cloud so the
-  // two calls never write into each other's memory.
-  const sinks = { sequence: {}, random: {} };
 
   function setStatus(message, tone) {
     statusEl.textContent = message;
@@ -114,16 +114,7 @@
 
   // The scatter redraws on every slider tick; an unthrottled live region would
   // read out hundreds of updates a second and drown the page in speech.
-  function announce(message) {
-    const now = Date.now();
-
-    if (now - state.lastAnnounce < LIVE_THROTTLE_MS) {
-      return;
-    }
-
-    state.lastAnnounce = now;
-    liveRegion.textContent = message;
-  }
+  const announce = Accessibility.announcer(liveRegion, LIVE_THROTTLE_MS);
 
   // --- the wasm call wrapper ---------------------------------------------
 
@@ -132,79 +123,35 @@
   // and a null return. Nothing from the wasm side is ever allowed to throw into
   // the render loop, because a half-drawn frame is much harder to diagnose than
   // a status line that says what went wrong.
+  const runtime = WasmRuntime.create({
+    onError: (message) => setStatus(message, "error"),
+    onTerminal: (message) => {
+      state.dead = true;
+      state.ready = false;
+      state.renderId += 1;
+      compute.dispose();
+      clearTimeout(state.refreshTimer);
+      clearTimeout(state.fullRefreshTimer);
+      setPlaying(false);
+      for (const input of document.querySelectorAll("input, select, button")) {
+        input.disabled = input.id !== "reloadWasm";
+      }
+      el("reloadWasm").hidden = false;
+      rack.dataset.boot = "failed";
+      bootRing.dataset.state = "error";
+      setStatus(message, "error");
+    },
+  });
+
+  el("reloadWasm").addEventListener("click", () => window.location.reload());
+
+  const compute = QMCCompute.create({
+    onError: (message) => setStatus(message, "error"),
+    onTerminal: (message) => runtime.terminate(message),
+  });
+
   function call(name, opts, callOpts) {
-    const silent = callOpts && callOpts.silent;
-
-    // A panic aborts the whole wasm instance. Once one has been reported the
-    // module is rubble, and calling into it again produces noise rather than
-    // information, so the gate stays shut until the page is reloaded.
-    if (state.dead) {
-      return null;
-    }
-
-    const api = globalThis.qmc;
-
-    if (!api || typeof api[name] !== "function") {
-      if (!silent) {
-        setStatus(`export "${name}" is unavailable`, "error");
-      }
-
-      return null;
-    }
-
-    let result;
-
-    try {
-      result = api[name](opts);
-    } catch (err) {
-      console.error(err);
-
-      if (!silent) {
-        setStatus(`${name} failed: ${err && err.message}`, "error");
-      }
-
-      return null;
-    }
-
-    if (result && result.error) {
-      console.error(result.error);
-
-      if (result.panic) {
-        state.dead = true;
-        setStatus(
-          `${name} panicked: ${result.error} — the WebAssembly instance is dead. Reload the page.`,
-          "error",
-        );
-
-        return null;
-      }
-
-      if (!silent) {
-        setStatus(result.error, "error");
-      }
-
-      return null;
-    }
-
-    return result;
-  }
-
-  // cacheSinks remembers the views Go handed back so the next call can reuse
-  // their buffers. A returned view may be a subarray of the buffer, so the
-  // whole ArrayBuffer is re-wrapped rather than the view stored directly —
-  // caching `result.xy` itself would hand Go a short window into a long buffer
-  // and the next, larger request would look like it needed a reallocation.
-  function cacheSinks(store, result, keys) {
-    for (const key of keys) {
-      const view = result[key];
-
-      if (view && view.buffer) {
-        store[key] = {
-          f32: new Float32Array(view.buffer),
-          u8: new Uint8Array(view.buffer),
-        };
-      }
-    }
+    return runtime.call(name, opts, callOpts);
   }
 
   // --- control readers ---------------------------------------------------
@@ -520,19 +467,28 @@
 
   // --- drawing -----------------------------------------------------------
 
-  function scheduleRefresh() {
-    if (state.pending || !state.ready) {
+  function scheduleRefresh(preview) {
+    if (!state.ready) {
       return;
     }
-
-    state.pending = true;
-    requestAnimationFrame(() => {
-      state.pending = false;
-      refresh();
-    });
+    state.renderId += 1;
+    compute.cancel();
+    clearTimeout(state.refreshTimer);
+    clearTimeout(state.fullRefreshTimer);
+    setPlaying(false);
+    state.sequence = null;
+    state.random = null;
+    playButton.disabled = true;
+    scrub.disabled = true;
+    draw();
+    setStatus("Updating points…", "loading");
+    const dragging = preview === true;
+    state.refreshTimer = setTimeout(() => refresh(dragging), dragging ? 80 : 0);
+    if (dragging)
+      state.fullRefreshTimer = setTimeout(() => refresh(false), 350);
   }
 
-  function refresh() {
+  async function refresh(preview = false) {
     if (!state.ready) {
       return;
     }
@@ -548,27 +504,27 @@
     }
 
     const request = baseRequest();
+    const renderId = ++state.renderId;
+    if (preview)
+      request.count = Math.min(
+        request.count,
+        request.randomization === "nested" ? 64 : 256,
+      );
+    const sequence = await compute.call("points", request);
 
-    const sequence = call(
-      "points",
-      Object.assign({}, request, { out: sinks.sequence }),
-    );
+    if (renderId !== state.renderId || !state.ready) return;
 
     if (!sequence) {
       return;
     }
 
-    cacheSinks(sinks.sequence, sequence, ["xy"]);
     state.sequence = sequence;
 
-    const random = call(
+    const random = await compute.call(
       "points",
-      Object.assign({}, request, { source: "random", out: sinks.random }),
+      Object.assign({}, request, { source: "random" }),
     );
-
-    if (random) {
-      cacheSinks(sinks.random, random, ["xy"]);
-    }
+    if (renderId !== state.renderId || !state.ready) return;
 
     state.random = random;
 
@@ -596,7 +552,7 @@
     const label = spec ? spec.label : request.source;
 
     setStatus(
-      `${label} · ${count.toLocaleString("en-US")} points · ${sequence.dims} dims · axes ${sequence.axisX}×${sequence.axisY} · randomization ${request.randomization}`,
+      `${preview ? "Preview · " : ""}${label} · ${count.toLocaleString("en-US")} points · ${sequence.dims} dims · axes ${sequence.axisX}×${sequence.axisY} · randomization ${request.randomization}`,
       "ready",
     );
     announce(
@@ -636,6 +592,13 @@
     const random = state.random;
     const axisX = intValue(axisXSelect, 0);
     const axisY = intValue(axisYSelect, 1);
+    scatterSummary.textContent = sequence
+      ? `${state.reveal.toLocaleString("en-US")} of ${sequence.count.toLocaleString("en-US")} points shown on dimensions ${sequence.axisX} and ${sequence.axisY} of ${sequence.dims}. ${sequence.source}, ${sequence.randomization}, skip ${sequence.skip}, leap ${sequence.leap}, seed ${sequence.seed}; filled circles. Pseudo-random comparison uses crosses. Use the reveal slider and digit inspector to inspect points without a mouse.`
+      : "Point sets are being recomputed; no current values are displayed.";
+    scrub.setAttribute(
+      "aria-valuetext",
+      `${state.reveal} of ${sequence ? sequence.count : 0} points shown`,
+    );
 
     Render.drawScatter(haltonCanvas, {
       xy: sequence && sequence.xy,
@@ -672,10 +635,21 @@
   }
 
   function setPlaying(playing) {
+    if (state.playFrame !== null) {
+      cancelAnimationFrame(state.playFrame);
+      state.playFrame = null;
+    }
+    if (playing && reducedMotion) {
+      setReveal(state.sequence ? state.sequence.count : 0);
+      draw();
+      playing = false;
+    }
+    playing = Boolean(playing && state.ready && !document.hidden);
     state.playing = playing;
     playButton.setAttribute("aria-pressed", String(playing));
     playButton.textContent = playing ? "Pause" : "Play";
     state.lastTick = performance.now();
+    if (playing) state.playFrame = requestAnimationFrame(tick);
   }
 
   // The reveal advances on wall-clock time rather than once per animation
@@ -684,6 +658,7 @@
   const REVEAL_SECONDS = 3;
 
   function tick(now) {
+    state.playFrame = null;
     if (state.playing && state.sequence) {
       const total = state.sequence.count;
       const elapsed = Math.max(0, now - state.lastTick);
@@ -701,7 +676,7 @@
       draw();
     }
 
-    requestAnimationFrame(tick);
+    if (state.playing) state.playFrame = requestAnimationFrame(tick);
   }
 
   // --- digit inspector ---------------------------------------------------
@@ -863,12 +838,11 @@
 
     // Nested scrambling is randomized but has no permutation table to
     // show: its permutation depends on the digits above the one being
-    // rewritten, so there is one per node of a tree that is derived on the fly
-    // and never stored. The library returns nil for exactly this reason, and
-    // reporting it as "off" would contradict the two values below, which do
-    // differ.
+    // rewritten. The library may cache immutable shallow-node permutations,
+    // but there is no single table covering every point and digit. An absent
+    // fixed table does not mean that randomization is off.
     if (!d.permutation) {
-      return `<b>Randomized (${d.randomization}).</b> There is no single permutation to show: this scheme draws one per digit position, conditioned on the digits above it, so the row below is the raw expansion. The two coordinates underneath still differ, which is the randomization at work.`;
+      return `<b>Randomized (${d.randomization}).</b> There is no single permutation to show: this scheme uses one per tree node, conditioned on the digits above it, so the row below is the raw expansion. Compare the two finite-precision coordinates underneath; one coincident value would not imply that randomization is off.`;
     }
 
     const perm = Array.from(d.permutation);
@@ -952,8 +926,9 @@
           refreshLeapCheck();
         }
 
-        scheduleRefresh();
+        scheduleRefresh(true);
       });
+      input.addEventListener("change", () => scheduleRefresh(false));
     }
 
     leapInput.addEventListener("input", () => {
@@ -1028,6 +1003,10 @@
       draw();
     });
 
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) setPlaying(false);
+    });
+
     digitIndexInput.addEventListener("change", () => {
       state.selected = intValue(digitIndexInput, 0);
       refreshDigits();
@@ -1073,87 +1052,21 @@
 
   // --- boot --------------------------------------------------------------
 
-  // Streamed rather than instantiateStreaming'd so the boot ring can show real
-  // progress. The streaming path is kept as the fallback for a response with
-  // no body reader, and taken outright under prefers-reduced-motion, where an
-  // animated progress ring is exactly what the user asked not to see.
-  async function loadWasmWithProgress(onProgress) {
-    if (!WebAssembly.instantiateStreaming) {
-      WebAssembly.instantiateStreaming = async (resp, importObject) => {
-        const source = await (await resp).arrayBuffer();
-
-        return WebAssembly.instantiate(source, importObject);
-      };
-    }
-
-    const go = new Go();
-    const response = await fetch("qmc.wasm");
-
-    if (!response.ok) {
-      throw new Error(`fetch qmc.wasm: ${response.status}`);
-    }
-
-    if (!response.body || !response.body.getReader || reducedMotion) {
-      onProgress(1);
-
-      return {
-        go,
-        result: await WebAssembly.instantiateStreaming(
-          response,
-          go.importObject,
-        ),
-      };
-    }
-
-    const total = Number(response.headers.get("content-length")) || 0;
-    const reader = response.body.getReader();
-    const chunks = [];
-    let received = 0;
-
-    for (;;) {
-      const { done, value } = await reader.read();
-
-      if (done) {
-        break;
-      }
-
-      chunks.push(value);
-      received += value.length;
-
-      if (total > 0) {
-        onProgress(Math.min(0.98, received / total));
-      }
-    }
-
-    onProgress(1);
-
-    const bytes = new Uint8Array(received);
-    let offset = 0;
-
-    for (const chunk of chunks) {
-      bytes.set(chunk, offset);
-      offset += chunk.length;
-    }
-
-    return {
-      go,
-      result: await WebAssembly.instantiate(bytes, go.importObject),
-    };
-  }
-
   async function initWasm() {
     setStatus("Loading WebAssembly…", "loading");
 
-    const { go, result } = await loadWasmWithProgress((progress) => {
+    const { go, result } = await WasmRuntime.load((progress) => {
       Render.ring(bootRing, progress);
-    });
+    }, reducedMotion);
 
     // Deliberately not awaited: the demo's main() ends in select{} so this
     // promise never resolves. Awaiting it would hang the page forever.
-    go.run(result.instance);
+    runtime.start(go, result.instance);
 
     // Give the Go side one turn of the event loop to publish globalThis.qmc.
     await new Promise((resolve) => setTimeout(resolve, 0));
+
+    if (state.dead) return;
 
     const info = call("info", undefined);
 
@@ -1178,15 +1091,12 @@
     digitNext.disabled = false;
 
     setStatus("WASM ready", "ready");
-    requestAnimationFrame(tick);
     refresh();
   }
 
   initWasm().catch((err) => {
-    console.error(err);
-    setStatus(
-      "WebAssembly failed to load. Serve this page over HTTP — a file:// URL cannot fetch a .wasm — and check that qmc.wasm is sent with Content-Type: application/wasm.",
-      "error",
+    runtime.terminate(
+      `WebAssembly failed to load: ${err.message || err}. Serve the page over HTTP and check its assets.`,
     );
   });
 })();

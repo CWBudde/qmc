@@ -7,14 +7,9 @@ import (
 	"testing"
 )
 
-// These tests are white-box because most of what nested scrambling has to get
-// right is a property of one digit at a time — of nestedRadicalInverse and of
-// the per-node permutation — rather than of a point. That choice costs one
-// duplication: the integration harness in integration_test.go is in package
-// qmc_test and cannot be reached from here, so nestedIntegrand below repeats
-// productIntegrand verbatim. Whether the copy is still faithful is not left to
-// inspection: the random-digit figure measured through it, 17.7x, is the 18x
-// integration_test.go documents, and a drifted copy would not land there.
+// White-box tests check per-node permutations and digit-tail behavior.
+// nestedIntegrand repeats the external-package productIntegrand harness; its
+// mathematical integral is one, and comparisons share dimensions/budgets/seeds.
 
 // nestedTestBases is every base a 64-dimensional generator uses: 2 through
 // 311. Nothing here is base-2 folklore, and the properties that hold for base
@@ -22,7 +17,7 @@ import (
 // permutations, so a base-2-only test cannot tell a uniform draw from almost
 // any other construction. The large bases are where a permutation scheme is
 // actually distinguishable from a cheap stand-in.
-func nestedTestBases() []int { return primesUpTo(64) }
+func nestedTestBases() []int { return mustPrimes(64) }
 
 // TestNestedPermutationIsABijection is the property the whole construction
 // rests on: a digit map that is not a bijection is not a scramble. It maps two
@@ -321,8 +316,7 @@ func nestedInverseWithoutTail(index, base int, root uint64) float64 {
 // remove: the coordinate is a relabelled ramp again. With the tail none of
 // them do. The second measurement is the bias: the tail is a positive quantity
 // that is always dropped, so leaving it out shifts every coordinate low, by a
-// measured 0.0013 in base 2 and 0.0005 in base 167 over the 600 indices of the
-// correlation test.
+// the positive omitted contribution on this fixed window.
 func TestNestedIncludesTheLeadingZeroTail(t *testing.T) {
 	const base = 167
 
@@ -366,10 +360,8 @@ func TestNestedIncludesTheLeadingZeroTail(t *testing.T) {
 				tc.base, bias)
 		}
 
-		// The measured figures are 0.001338 (base 2) and 0.000524 (base 167).
-		// They are asserted only to their leading digit, since they depend on
-		// the seed, but the order of magnitude is the point: it is the mean of
-		// p^-m/2 over the index lengths in this range, not a rounding error.
+		// This fixed-seed/window reference is checked only to its leading digit.
+		// It guards the omitted tail's scale rather than a general bias formula.
 		if got := int(math.Round(bias * 10000)); got != tc.wantBias {
 			t.Fatalf("base %d: mean tail contribution %.6f, want about %.4f", tc.base, bias, float64(tc.wantBias)/10000)
 		}
@@ -506,10 +498,17 @@ func nestedRMSError(t *testing.T, dims, n, streams int, randomize func(uint64) O
 		sumSq += e * e
 	}
 
-	return math.Sqrt(sumSq / float64(streams))
+	result := math.Sqrt(sumSq / float64(streams))
+	if !finiteDiscrepancyTerm(result) {
+		t.Fatalf("nonfinite RMS integration measurement: %g", result)
+	}
+
+	return result
 }
 
-func nestedMCError(dims, n, streams int) float64 {
+func nestedMCError(t *testing.T, dims, n, streams int) float64 {
+	t.Helper()
+
 	rng := rand.New(rand.NewSource(20240823)) //nolint:gosec // statistical baseline, not cryptography
 
 	sumSq := 0.0
@@ -530,47 +529,31 @@ func nestedMCError(dims, n, streams int) float64 {
 		sumSq += e * e
 	}
 
-	return math.Sqrt(sumSq / float64(streams))
+	result := math.Sqrt(sumSq / float64(streams))
+	if !finiteDiscrepancyTerm(result) {
+		t.Fatalf("nonfinite RMS integration measurement: %g", result)
+	}
+
+	return result
 }
 
-// TestNestedIntegratesAtLeastAsWellAsDigitScrambling is the gate the option
-// had to pass to be worth adding at all, and the gate the switch from affine
-// to full permutations had to pass to be worth making.
-//
-// Nested scrambling costs a permutation draw per digit where random-digit
-// scrambling costs a table lookup, and the package already had a scrambling
-// that integrates 18x better than Monte Carlo. Anything that does not improve
-// on that number is buying nothing with the extra work.
-//
-// Ten streams is what this test can afford, and ten streams is not enough to
-// read the gap to a significant figure: measured at 39 dimensions and n=4096
-// it gives 32x for nested against 18x for random-digit, while a variant that
-// differed only in the direction of the Fisher-Yates loop read 44x on the same
-// ten seeds. Run out to 40 streams the same measurement settles at 41x against
-// 24x, and at 80 streams 42x against 26x. Those are the figures the doc
-// comments quote. What ten streams does establish reliably is the ordering,
-// and the ordering is what is asserted.
-//
-// The affine construction this replaced measured 53.2x over 10 streams and
-// 49.9x over 40, so about a sixth of the integration advantage was given up
-// for the correlation tail — see TestNestedCorrelationOverThirtySeeds, which
-// is the other half of that trade.
-//
-// The assertion is the weaker claim that it is not worse than random-digit,
-// with a quarter's slack: the size of the gap belongs to these seeds and this
-// integrand, while the direction belongs to the construction. A regression
-// that merely halved the advantage would still be worth knowing about, but not
-// worth a red suite.
+// TestNestedIntegratesAtLeastAsWellAsDigitScrambling compares both methods on
+// the same smooth product integrand, budget, and forty fixed seeds. The slack
+// is a workload regression policy, not a theorem about either construction.
 func TestNestedIntegratesAtLeastAsWellAsDigitScrambling(t *testing.T) {
+	if testing.Short() {
+		t.Skip("statistical sweep; run just test-statistical")
+	}
+
 	const (
 		dims     = 39
 		n        = 4096
-		streams  = 10
+		streams  = 40
 		slack    = 1.25
 		wantVsMC = 5.0
 	)
 
-	mc := nestedMCError(dims, n, streams)
+	mc := nestedMCError(t, dims, n, streams)
 	digit := nestedRMSError(t, dims, n, streams, WithScrambling)
 	nested := nestedRMSError(t, dims, n, streams, WithNestedScrambling)
 
@@ -581,11 +564,11 @@ func TestNestedIntegratesAtLeastAsWellAsDigitScrambling(t *testing.T) {
 
 	if nested > digit*slack {
 		t.Fatalf("at %d dims with n=%d over %d streams: nested RMS error %.3e against random-digit "+
-			"%.3e; nested scrambling costs about forty times as much per point and is no longer paying for it",
+			"%.3e; nested exceeds the configured workload regression slack",
 			dims, n, streams, nested, digit)
 	}
 
-	if ratio := mc / nested; ratio < wantVsMC {
+	if ratio := mc / nested; !finiteDiscrepancyTerm(ratio) || ratio < wantVsMC {
 		t.Fatalf("at %d dims with n=%d over %d streams: nested RMS error %.3e vs MC %.3e = %.1fx, want >= %.0fx; "+
 			"the generator is no longer integrating better than independent sampling",
 			dims, n, streams, nested, mc, ratio, wantVsMC)
@@ -595,35 +578,9 @@ func TestNestedIntegratesAtLeastAsWellAsDigitScrambling(t *testing.T) {
 		dims, n, streams, mc, digit, mc/digit, nested, mc/nested)
 }
 
-// TestNestedCorrelationOverThirtySeeds is the measurement that motivated the
-// switch away from the affine construction, kept as the gate that stops it
-// coming back by accident.
-//
-// A single-seed test here would mean nothing. The typical seed was always fine
-// under affine too — what the affine restriction did was add a tail to the
-// distribution over seeds. At 600 points a large-base coordinate has only its
-// first digit varying, and on that digit an affine map is a ramp of another
-// slope rather than a scattering; two neighbouring dimensions that drew
-// commensurate slopes ramped together much as the unscrambled ones did.
-//
-// Five seeds would not see the tail either. That is not a supposition: a
-// change to this scrambling that was a pure re-instantiation, not a change of
-// scheme, once moved a five-seed worst case from 0.40 to 0.12. Thirty is the
-// smallest count at which the statistic has been stable here.
-//
-// Measured over 30 seeds at 39 dimensions and 600 points after skipping 64:
-//
-//	                     median    p90    worst
-//	random-digit          0.093  0.126    0.161
-//	nested affine (was)   0.090  0.195    0.373
-//	nested full (is)      0.089  0.123    0.141
-//
-// So the median is asserted against random-digit, where nested has no excuse,
-// and the worst case against random-digit's worst with a little slack — which
-// is the assertion that has teeth. Under the affine construction the worst was
-// 2.3 times random-digit's and this test as written would fail on it, which is
-// the point: a ceiling loose enough to pass affine would not be a gate, it
-// would be a record.
+// TestNestedCorrelationOverThirtySeeds compares adjacent-pair correlation
+// median and worst case over the stated thirty-seed workload. Historical affine
+// comparisons belong in docs/randomization.md rather than a universal claim.
 func TestNestedCorrelationOverThirtySeeds(t *testing.T) {
 	const (
 		seeds       = 30
@@ -642,6 +599,10 @@ func TestNestedCorrelationOverThirtySeeds(t *testing.T) {
 			}
 
 			w, pair := worstAdjacentCorrelation(Draw(g, corrPoints))
+			if !finiteDiscrepancyTerm(w) {
+				t.Fatalf("seed %d produced nonfinite correlation %g", seed, w)
+			}
+
 			if w > worst {
 				worst, at = w, pair
 			}
@@ -676,13 +637,8 @@ func TestNestedCorrelationOverThirtySeeds(t *testing.T) {
 		seeds, digitMedian, digitWorst, nestedMedian, nestedWorst, at, at+1)
 }
 
-// BenchmarkAtIntoNested is the third leg of bench_test.go's comparison at 39
-// dimensions, kept here because the option it measures lives here. On the
-// machine and runs the doc comments quote it was 20881 ns/op against 548 for
-// random-digit scrambling and 467 unscrambled, medians of seven — a factor of
-// about 38, spent on roughly 484 tree nodes per point, of which 366 are the
-// leading-zero tails of the small bases. Under the affine construction this
-// replaced, the same digit loop on the same machine ran 4038 ns.
+// BenchmarkAtIntoNested includes the bounded immutable root cache.
+// Comparable timing and allocation baselines are in docs/performance.md.
 func BenchmarkAtIntoNested(b *testing.B) {
 	g, err := NewHalton(benchNestedDims, WithSkip(64), WithNestedScrambling(1))
 	if err != nil {
@@ -702,16 +658,12 @@ func BenchmarkAtIntoNested(b *testing.B) {
 
 var sinkNested float64
 
-// benchNestedDims is the package's design point and the dimension count every
-// figure in this file's doc comments was measured at.
+// benchNestedDims is the dimension count of the nested benchmark workload.
 const benchNestedDims = 39
 
-// BenchmarkNewHaltonNested is the construction cost, which is the one number
-// this scheme is cheap at: the constructor derives one root hash per dimension
-// and nothing else, where random-digit scrambling builds a permutation per
-// dimension and so does work proportional to the sum of the bases. Everything
-// nested scrambling costs is deferred to the point where a digit is actually
-// rewritten.
+// BenchmarkNewHaltonNested includes root derivation and the bounded immutable
+// root-permutation cache. Review baselines and cache tradeoffs are in
+// docs/performance.md; deeper-node work stays deferred to indexed calls.
 func BenchmarkNewHaltonNested(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -726,35 +678,16 @@ func BenchmarkNewHaltonNested(b *testing.B) {
 	}
 }
 
-// BenchmarkNestedNodeCache measures the cache that nestedRadicalInverse
-// deliberately does not have.
-//
-// The argument for caching a permutation per node is that the tree depth is
-// bounded by the digit count, so the set of nodes a run touches is small and
-// the O(base) shuffle is paid once each rather than once per visit. The depth
-// is bounded. The node count is the thing a cache holds, and it is not: the
-// leading-zero tail hangs a fresh chain of nodes below every index's explicit
-// digits, and nothing in one is ever visited twice.
-//
-// So this benchmark counts, rather than assumes. It walks exactly the nodes
-// nestedRadicalInverse walks over the workload the other benchmarks use — 39
-// dimensions, 4096 points, skip 64 — and reports the visits, the distinct
-// nodes, the resulting reuse factor, and the memory a map[uint64][]int32
-// holding them would need for its keys, slice headers and digit arrays alone.
-// Measured at 1982974 visits against 1544674 distinct nodes: a reuse factor of
-// 1.28 and 382 MB, for a scheme whose whole appeal was being cheaper.
-// If a future change to the digit loop or the tail bound makes those numbers
-// look different, this is where it shows up.
-//
-// It is a benchmark rather than a test because the numbers are a measurement,
-// not a threshold — there is no figure here that should fail a build.
+// BenchmarkNestedNodeCache counts visited/distinct nodes and estimated storage
+// for a hypothetical full-tree cache on this fixed workload. Production keeps
+// an immutable bounded root cache; memory/reuse tradeoffs are in docs/performance.md.
 func BenchmarkNestedNodeCache(b *testing.B) {
 	const (
 		points = 4096
 		skip   = 64
 	)
 
-	bases := primesUpTo(benchNestedDims)
+	bases := mustPrimes(benchNestedDims)
 
 	var visits, distinct, bytes int
 

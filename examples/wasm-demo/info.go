@@ -31,8 +31,8 @@ const (
 	// A leap multiplies the raw index: point i is raw index skip+1+i*leap, so
 	// the largest raw index this page can ask for is maxLeap times the largest
 	// count any export offers. Sobol's direction numbers run out at 2^32 and
-	// fill panics past that, which guard() would turn into a dead instance
-	// rather than a red box. The binding case is the convergence sweep at
+	// fill panics past that, which guard() turns into a failed request. The
+	// binding case is the convergence sweep at
 	// maxConvergeN = 200,000 points; 200,000 * 1000 is 2e8, two decimal orders
 	// below the ceiling, and every other export is smaller still. Halton has
 	// no such wall but does grow a digit per factor of the base, which is the
@@ -43,10 +43,10 @@ const (
 // The shared defaults. They are not neutral: they aim the demo straight at the
 // library's headline defect. A 39-dimensional generator drawn 600 times, with
 // the scatter plot showing dimensions 37 and 38 — bases 163 and 167 — is
-// exactly the configuration measured in correlation_test.go, where the
-// unscrambled sequence correlates those two coordinates at 0.65 after a
-// 64-point burn-in. Open the page and the diagonal stripe is the first thing
-// you see; pick a randomization and it dissolves.
+// the configuration measured in correlation_test.go. At this budget each base
+// has completed several leading-digit cycles, but the slower higher digits
+// remain poorly explored. The selected pair is illustrative; the worst pair
+// across all adjacent dimensions is reported separately by correlate().
 const (
 	defaultDims   = 39
 	defaultCount  = 600
@@ -66,12 +66,9 @@ const (
 	// page having to know what the new source's menu contains.
 	randomizationNone = "none"
 
-	// defaultMetric aims the discrepancy panel at the defect the same way
-	// defaultDims aims the scatter plot at it. Centred L2 at 39 dimensions is
-	// the configuration in which the statistic says nothing — the sequence's
-	// curve and the pseudorandom one lie on top of each other and the ratio
-	// reads about 1.02 — so the page opens on the null result and the note
-	// beside it explains how to get a real one.
+	// defaultMetric opens on centred L2 at 39 dimensions, where this metric can
+	// distinguish point sets only weakly. Start computes the actual chosen sets;
+	// no fixed ratio or seed-independent outcome is promised.
 	defaultMetric = "cl2"
 )
 
@@ -103,30 +100,30 @@ var randomizations = map[string]randomizationSpec{
 	randomizationNone: {
 		key:         randomizationNone,
 		label:       "None",
-		description: "The deterministic sequence, identical on every run. Reproducible, and above roughly twenty dimensions not actually filling the box at practical sample counts.",
+		description: "The deterministic sequence, identical on every run.",
 	},
 	"scramble": {
 		key:         "scramble",
 		label:       "Random-digit scrambling",
-		description: "One uniform permutation of the digit alphabet per dimension, reused at every digit position. Still low-discrepancy, no longer identical across seeds.",
+		description: "One seeded permutation per dimension, reused at every digit position. Preserves interval structure, but does not give uniform point marginals or guarantee unbiased estimates; seed spread can miss bias.",
 		option:      qmc.WithScrambling,
 	},
 	"nested": {
 		key:         "nested",
 		label:       "Nested scrambling",
-		description: "A fresh uniform digit permutation per node of the scramble tree, conditioned on the digits above the digit being rewritten. At 39 dimensions it integrates about twice as accurately as random-digit scrambling — 41x against Monte Carlo over 40 seeds, against 24x — and its worst adjacent-pair |r| over 30 seeds is 0.141 against 0.161. It costs roughly forty times as much per point, which is what the uniform draw buys.",
+		description: "A seeded Fisher–Yates permutation per node, conditioned on the digits above it. Finite hashes and truncated tails approximate ideal nested randomization; seed spread does not measure its bias. Building permutations per point can be expensive, especially at high prime bases. Accuracy depends on the integrand and sampling budget; compare repeated seeds.",
 		option:      qmc.WithNestedScrambling,
 	},
 	"shift": {
 		key:         "shift",
 		label:       "Digital shift",
-		description: "One uniform 32-bit word per dimension, XORed into every point: the cheapest randomization a digital net admits. It translates the whole net rigidly, so a projection that is poorly distributed stays poorly distributed under every shift.",
+		description: "One seeded pseudorandom 32-bit word per dimension, XORed into every point. Ideal independent words make points uniform on the finite grid, not the continuous cube. It translates the whole net rigidly, so a projection that is poorly distributed stays poorly distributed under every shift.",
 		option:      qmc.WithDigitalShift,
 	},
 	"owen": {
 		key:         "owen",
 		label:       "Owen scrambling",
-		description: "An independent bit flip at every node of each coordinate's binary tree, hashed rather than stored. It redistributes rather than translating, and measured 1.08x more accurate than a digital shift on the package's 39-dimensional integrand. Nearly free on At, three times the cost on Next.",
+		description: "Hash-based nested bit flips on a 32-bit grid. Node flips need not be independent; the scramble preserves dyadic occupancy and cannot repair a poor table. Accuracy and cost comparisons depend on the integrand, sampling budget, and access method.",
 		option:      qmc.WithOwenScrambling,
 	},
 }
@@ -163,18 +160,11 @@ type sourceSpec struct {
 
 // sobolMaxDims is the largest dimension count this page offers for Sobol.
 //
-// The embedded Joe-Kuo table covers 1024 dimensions and NewSobol refuses more,
-// but that constant is unexported, so the number is written out here rather
-// than read from the library. The minimum against maxDims is what makes it
-// safe: today the shared clamp is far below 1024 and binds first, so the
-// figure below is not load-bearing, and if a future table were smaller than
-// maxDims this is where the page would learn it — from a per-source field the
-// controls already respect, not from an error after the fact.
-const sobolMaxDims = min(sobolTableDims, maxDims)
-
-// sobolTableDims is the dimension count of the embedded Joe-Kuo table, which
-// NewSobol will not exceed.
-const sobolTableDims = 1024
+// This is a product workload limit, not a duplicate of the library's embedded
+// table capacity. Constructors remain the authority on supported dimensions
+// and options; the browser fixture checks every offered endpoint/configuration
+// against them so changes cannot silently make the capability menu invalid.
+const sobolMaxDims = maxDims
 
 // sourceOrder fixes the order the page lists sequences in.
 var sourceOrder = []string{"halton", "sobol", "random"}
@@ -235,7 +225,8 @@ var sources = map[string]sourceSpec{
 // table above puts it in the dropdown without anyone editing a .html file —
 // and, more importantly, a limit can never disagree between the slider that
 // enforces it and the Go code that actually clamps it.
-func jsInfo(_ js.Value) any {
+func jsInfo(opts js.Value) any {
+	dims := clampInt(readInt(opts, "dims", defaultDims), 1, maxConvergeDims)
 	list := make([]any, 0, len(integrandOrder))
 
 	for _, key := range integrandOrder {
@@ -245,12 +236,9 @@ func jsInfo(_ js.Value) any {
 			"label":       spec.label,
 			"description": spec.description,
 
-			// Reported at the dimension count converge() will actually use for
-			// the shared default (39 clamped to maxConvergeDims), because the
-			// gaussian integrand's exact value depends on d. The authoritative
-			// value for a given call is the "exact" field converge() returns;
-			// the page must read that back rather than cache this one.
-			"exact":   jsNumber(spec.exact(clampInt(defaultDims, 1, maxConvergeDims))),
+			// Use the same dimension clamp and exact function as converge().
+			"exact":   jsNumber(spec.exact(dims)),
+			"dims":    dims,
 			"minDims": 1,
 			"maxDims": maxConvergeDims,
 		})
@@ -261,10 +249,12 @@ func jsInfo(_ js.Value) any {
 	for _, key := range discrepancyOrder {
 		spec := discrepancies[key]
 		metricList = append(metricList, map[string]any{
-			"key":         spec.key,
-			"label":       spec.label,
-			"description": spec.description,
-			"analytic":    spec.analytic != nil,
+			"key":           spec.key,
+			"label":         spec.label,
+			"description":   spec.description,
+			"analytic":      spec.analytic != nil,
+			"analyticKind":  spec.analyticKind,
+			"analyticLabel": spec.analyticLabel,
 		})
 	}
 
@@ -345,10 +335,21 @@ func randomizationList(spec sourceSpec) []any {
 		}
 
 		entry := randomizations[key]
+		description := entry.description
+
+		if key == randomizationNone {
+			switch spec.key {
+			case "halton":
+				description += " High prime bases can produce long coordinate ramps and strong correlations at small sample budgets. Burn-in does not guarantee a cure."
+			case "sobol":
+				description += " Uses base 2 in every dimension, without Halton's high-prime ramps. Projection quality depends on the direction table and the sampled block; use aligned power-of-two blocks for net guarantees."
+			}
+		}
+
 		out = append(out, map[string]any{
 			"key":         entry.key,
 			"label":       entry.label,
-			"description": entry.description,
+			"description": description,
 		})
 	}
 

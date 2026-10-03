@@ -1,98 +1,89 @@
 # Leaping
 
-`WithLeap(n)` takes every _n_-th point instead of every point: point _i_ becomes raw index
-`skip + 1 + i*n` (Kocis & Whiten 1997). It is the third remedy for the high-dimensional
-Halton defect, after a burn-in and the two scrambling schemes, and the only deterministic
-one — no seed, so a leaped run is plain QMC and reproducible without recording anything.
+`WithLeap(n)` takes every n-th underlying point. Point i uses raw index
+`skip + 1 + i*n`; values below 1 are clamped to 1, and leap 1 preserves the
+unleaped sequence.
 
-That is also its limitation: with no seed there is no averaging over seeds, so a leaped run
-gives no error estimate the way an RQMC run does.
+Leaping is deterministic and can change Halton's large-base ramps without a
+seed. It gives no seed variability to estimate. Randomized runs have different
+assumptions; their seed spread also does not bound bias. See
+[Randomization](randomization.md).
 
-## A leap must be coprime to every base in use
+Reference: Kocis and Whiten (1997), “Computational Investigations of
+Low-Discrepancy Sequences,” ACM Transactions on Mathematical Software 23(2).
 
-If a base _p_ divides _n_, every raw index is congruent to `skip+1` mod _p_, so that
-coordinate's leading base-_p_ digit never changes and the coordinate is confined to a single
-strip of width `1/p`. Measured at 39 dimensions with a leap of 167, dimension 38 spends the
-entire run inside a strip covering **0.6%** of its range — while still producing a plausible
-spread of values inside it, which is what makes this worth refusing rather than documenting.
+## Coprimality is required
 
-Scrambling does not rescue it: a permuted constant digit is still a constant digit, so the
-coordinate moves to a different strip of the same width. All three Halton randomizations were
-measured showing this.
+If prime base p divides the leap, every raw index has the same remainder
+`skip+1` modulo p. That coordinate's first base-p digit is fixed and its
+values remain in one strip of width `1/p`. Scrambling maps the constant digit
+to another constant digit; it cannot remove this confinement.
 
-`NewHalton` and `NewSobol` therefore **refuse** such a leap at construction, naming the
-dimension and the base. In practice, pick a prime above the largest base — above 167 at 39
-dimensions. On Sobol every base is 2, so the leap must simply be odd.
+Both constructors reject leaps sharing a factor with their bases.
+For Halton, choose a leap coprime to every prime in use; a prime greater than
+`Bases()[Dims()-1]` suffices. At 39 dimensions the largest base is 167.
+Sobol works in base 2, so accepted leaps must be odd.
 
-## Sobol's trap is not the base-2 restatement it looks like
+`TestASharedFactorConfinesTheHaltonCoordinate` demonstrates confinement for
+plain, fixed-permutation, and nested Halton configurations.
 
-This is the one claim here that had to be measured before it could be written down.
+## Sobol's Gray-code case
 
-Points are generated in Gray-code order, so a stride in the raw index is not a stride in the
-direct-form index, and no bit is obviously pinned. What _is_ pinned is the parity of the
-population count of `gray(m)`, which is exactly `m&1` — and that parity is the leading bit of
-every dimension whose direction numbers all carry their own leading bit.
+A stride in Sobol's raw index is not a stride in its direct-form index because
+this implementation uses Gray-code order. The population-count parity of
+`gray(m)` is nevertheless `m & 1`. A coordinate whose direction numbers all
+have their leading bit set therefore has that parity as its leading bit.
 
-Dimension 1 is the only such dimension in the first eight of the embedded table (32 of 32
-direction numbers, against dimension 0's 1 of 32). An even leap pins it to one half of
-`[0,1)` at every skip tried, taking integration from 2.6e-04 to 1.2e-01.
+Dimension 1 in the embedded table has this property, so an even leap fixes its
+coordinate in one half of the interval. A leap divisible by 4 also fixes
+dimension 0's leading bit. `TestAnEvenLeapConfinesASobolCoordinate` and
+`TestAnEvenLeapWrecksSobolIntegration` exercise these failure modes.
 
-## Measured: it is the most accurate option for integration
+An odd leap greater than one is accepted, but it no longer visits the complete
+aligned raw block required by the usual net guarantee. It also loses the
+single-step Gray-code recurrence on NextInto: generation uses indexed work.
+Leap 1 retains the ordinary behavior. Prefer measuring digital shifting or
+Owen scrambling before adding a Sobol leap solely for decorrelation.
 
-39 dimensions, 4096 points, over forty admissible leaps against forty scrambling seeds — one
-run, so these are a comparison rather than four sittings:
+## Measured Halton quality fixtures
 
-| configuration          | RMS relative error | vs Monte Carlo |
-| ---------------------- | ------------------ | -------------- |
-| unleaped, unscrambled  | 3.9e-03            | 1.4x           |
-| `WithLeap`             | **1.0e-04**        | **54.3x**      |
-| `WithScrambling`       | 2.2e-04            | 24.4x          |
-| `WithNestedScrambling` | 1.3e-04            | 41.1x          |
+`TestLeapingIntegratesBetterThanAnUnleapedSequence` evaluates the smooth product
+with integral 1 at 39 dimensions and 4096 points, skip 64. It uses the first
+40 prime leaps above 167 for deterministic configurations and seeds 1..40 for
+fixed/nested scrambling. MC uses consecutive draws from one `math/rand` source
+seeded 20240823. The plain configuration repeats the same estimate; the spread
+over leaps is not an error estimate for a single chosen leap.
 
-## The gain is in the average, not the tail
+The gate requires lower RMS error across these chosen leaps than the plain
+configuration. It does not require a ranking against scrambling or establish
+that leaping wins on other integrands.
 
-Worst adjacent-pair |r| at 600 points, over thirty leaps:
+`TestLeapingBreaksHighDimensionalCorrelation` uses the first 30 prime leaps
+above 167, 39 dimensions, 600 points, and skip 64. It measures each leap's worst
+adjacent-pair absolute Pearson correlation and reports the upper-middle median,
+the observation at zero-based index 27 for its p90 summary, and the maximum.
+That convention differs from the fixed-scrambling test's average-middle median
+and nearest-rank p90. Its gate checks a broad maximum-correlation margin; it
+does not establish a universal population of “good leaps.”
 
-| configuration                   | median | p90  | worst    |
-| ------------------------------- | ------ | ---- | -------- |
-| unleaped, unscrambled, skip 64  | —      | —    | **0.81** |
-| `WithLeap`, skip 64             | 0.097  | 0.23 | **0.32** |
-| `WithScrambling`, skip 64       | 0.093  | 0.13 | **0.16** |
-| `WithNestedScrambling`, skip 64 | 0.089  | 0.12 | **0.14** |
+These fixtures show why integration error and correlation should both be
+considered for a chosen stride. A favorable mean over candidate leaps does not
+ensure every candidate suits a parameter sweep. Reproduce them with:
 
-The medians agree; the tail does not. A leap only reorders the digits a coordinate visits, so
-two dimensions whose bases interact with the leap in commensurate ways still ramp together,
-and roughly one leap in ten draws such a pair — the same shape of defect the affine nested
-scrambling had. Leaping suits integration, where the average is what you get; it does not
-suit a parameter sweep, where the worst case is what you feel.
+```sh
+go test -count=1 -timeout=10m -v -run 'Test(LeapingBreaksHighDimensionalCorrelation|LeapingIntegratesBetterThanAnUnleapedSequence|ASharedFactorConfinesTheHaltonCoordinate|AnEvenLeap.*)' .
+```
 
-## It is not free, and not because of the multiply
+## Cost and browser controls
 
-The multiply is unmeasurable. What costs is that a leaped generator works on raw indices _n_
-times larger, so every radical inverse carries about `log(n)` more digits: `AtInto` at 39
-dimensions is **634 ns/op** at a leap of 173, against 512 unleaped.
+A Halton leap reaches larger raw indices and can increase the digit workload.
+Sobol leaps greater than one lose the stateful recurrence. The
+[controlled performance report](performance.md) measures fixed-window throughput,
+including leap 173, on the same machine and toolchain as its other configurations.
+Its canonical integration comparison does not include leap accuracy; keep the
+separate quality fixtures above scoped to their own MC policy.
 
-On **Sobol** the option exists for symmetry and is not the one to reach for — Sobol has no
-ramp defect to cure. A leap costs `Next` the Gray-code recurrence entirely (**301 ns/op**
-against 46.0) and forfeits the (t,m,s)-net balance property at any leap, so an odd leap is
-legal there and still measures 8.8e-03 against 1.8e-04 unleaped at 16 dimensions.
-
-## Tests
-
-`TestLeapingBreaksHighDimensionalCorrelation`,
-`TestLeapingIntegratesBetterThanAnUnleapedSequence`,
-`TestASharedFactorConfinesTheHaltonCoordinate`, `TestAnEvenLeapConfinesASobolCoordinate` and
-`TestAnEvenLeapWrecksSobolIntegration` keep every number and every claim above honest.
-
-## In the browser demo
-
-The demo exposes a leap as an independent numeric knob rather than as a randomization, with
-`maxLeap` fixed at 1000 by Sobol's 2^32 raw-index ceiling against the convergence sweep's
-200,000 points.
-
-The interesting part is the `leaps` export, which answers whether a leap is admissible for
-the sequence and dimension count now selected, and which nearby value is. Without it the
-control would look broken rather than sparse: at 39 Halton dimensions the smallest admissible
-leap is 173, so almost every number a slider can reach is refused. It decides by building a
-generator and reading the constructor's error rather than by re-deriving coprimality — the
-library is the only place that says what a constructor accepts.
+The browser treats leap as a configuration control, independent of randomization.
+Go-side constructor validation determines admissible values; the UI does not
+reimplement coprimality. Browser workload caps and worker execution are described
+in [the demo](wasm-demo.md).

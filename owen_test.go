@@ -239,7 +239,7 @@ func TestOwenCoordinatesAreInUnitInterval(t *testing.T) {
 		g.AtInto(i, point)
 
 		for d, v := range point {
-			if v < 0 || v >= 1 {
+			if !(v >= 0 && v < 1) {
 				t.Fatalf("point %d dimension %d is %.17g, outside [0,1)", i, d, v)
 			}
 		}

@@ -1,0 +1,23 @@
+Command: taskset -c 2 env GOMAXPROCS=1 GOTOOLCHAIN=go1.26.1 GOWORK=off GOFLAGS= go test -run '^$' -bench '^BenchmarkReviewCache$' -benchmem -benchtime=500ms -count=5 -cpu=1 .
+
+goos: linux
+goarch: amd64
+pkg: github.com/cwbudde/qmc
+cpu: 12th Gen Intel(R) Core(TM) i7-1255U
+BenchmarkReviewCache/uncached	38932	16091 ns/op	0 B/op	0 allocs/op
+BenchmarkReviewCache/uncached   39232	     15222 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewCache/uncached         	   40850	     15163 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewCache/uncached         	   40636	     15321 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewCache/uncached         	   40755	     15034 ns/op	       0 B/op	       0 allocs/op
+BenchmarkReviewCache/root             	   78583	      7531 ns/op	     11656 table-B	       0 B/op	       0 allocs/op
+BenchmarkReviewCache/root             	   79225	      7624 ns/op	     11656 table-B	       0 B/op	       0 allocs/op
+BenchmarkReviewCache/root             	   80336	      7750 ns/op	     11656 table-B	       0 B/op	       0 allocs/op
+BenchmarkReviewCache/root             	   77934	      8009 ns/op	     11656 table-B	       0 B/op	       0 allocs/op
+BenchmarkReviewCache/root             	   76668	      7881 ns/op	     11656 table-B	       0 B/op	       0 allocs/op
+BenchmarkReviewCache/shallow          	   90789	      7356 ns/op	     64756 table-B	       0 B/op	       0 allocs/op
+BenchmarkReviewCache/shallow          	   89959	      6947 ns/op	     64756 table-B	       0 B/op	       0 allocs/op
+BenchmarkReviewCache/shallow          	   90504	      7114 ns/op	     64756 table-B	       0 B/op	       0 allocs/op
+BenchmarkReviewCache/shallow          	   91046	      6883 ns/op	     64756 table-B	       0 B/op	       0 allocs/op
+BenchmarkReviewCache/shallow          	   89814	      6967 ns/op	     64756 table-B	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/cwbudde/qmc	10.803s

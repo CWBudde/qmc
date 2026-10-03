@@ -8,49 +8,13 @@ import (
 	"github.com/cwbudde/qmc"
 )
 
-// The regime nobody measured: forty points.
-//
-// Everything else in this package is measured where QMC is supposed to win.
-// integration_test.go integrates at n=4096, discrepancy_test.go at n=1024, and
-// both report the 1/n-versus-1/sqrt(n) gap in the tens. The caller that
-// actually shipped against this library does none of that:
-// mayfly.WithQMCInitialPopulation seeds a population of 40 individuals in up
-// to 30 dimensions and never asks for point 41. Forty points in thirty
-// dimensions is not a low-discrepancy point set in any useful sense — it is
-// the first two levels of a stratification that would need 2^30 points to
-// complete — and whether the scrambling constants tuned at n=4096 are the
-// right ones there was an open question.
-//
-// This file answers it with numbers rather than argument, at s in {2, 10, 30}
-// and n in {40, 160} so that a trend in n is visible and not just a single
-// point, and it compares the ranking of the four randomizations at n=40
-// against the ranking the rest of the repo quotes at n=4096.
-//
-// Two decisions about method are worth stating because the answers turn on
-// them:
-//
-// Two hundred streams, not ten. Ten seeds is enough to separate a factor of
-// twenty (which is what the n=4096 tests do) and nowhere near enough to
-// separate two good schemes from each other: the RMS of ten squares has a
-// relative standard error near 1/sqrt(2*10) = 22%, so two schemes 15% apart
-// are indistinguishable. At n=40 the per-stream spread is much wider again.
-// Two hundred seeds brings that standard error to about 5%, and 200 x 40
-// points costs nothing.
-//
-// Honest gates. The measurements below do not all favour QMC, and the
-// assertions say so. Each gate is an ordering or a margin far away from the
-// measured value, in whichever direction the measurement actually points. A
-// gate that had to be tuned to pass would be reporting the author's hopes, not
-// the package's behaviour.
-//
-// Every figure quoted in docs/small-sample-regime.md comes out of
-// `go test -run TestSmallSample -v .` on this file.
+// Small-budget statistical fixtures use the stated dimensions/counts and
+// two hundred fixed randomization seeds on a smooth product integrand. Their
+// empirical level/trend policies do not imply convergence rates or optimizer
+// initialization quality for arbitrary functions. Results are logged for
+// comparison with docs/small-sample-regime.md.
 
-// smallSampleDims and smallSampleCounts are the grid. 30 dimensions and 40
-// points are mayfly's shape exactly; 2 dimensions is where a 40-point set is
-// still genuinely stratified (40 points cover a 6x6 grid); 10 sits between,
-// and n=160 is the second rung that shows which way each number moves as the
-// budget grows.
+// smallSampleDims and smallSampleCounts define the measurement grid.
 var (
 	smallSampleDims   = []int{2, 10, 30}
 	smallSampleCounts = []int{40, 160}
@@ -107,36 +71,9 @@ type scheme struct {
 	sobol     bool
 }
 
-// TestSmallSampleIntegration measures RMS integration error of all four
-// randomizations against the math/rand baseline on the smooth product
-// integrand, across the (s, n) grid, over 200 streams each.
-//
-// What it would catch: a change to any randomization that quietly destroyed
-// its small-sample behaviour while leaving the n=4096 gates green. The two
-// regimes are not the same measurement. At n=4096 the asymptotic rate carries
-// the result and the scrambling constants barely matter; at n=40 there is no
-// asymptotic regime to sit in, only the first two or three strata, and the
-// answer is decided entirely by how the randomization places those. A
-// generator could keep its 20x at n=4096 and lose everything at n=40, and
-// before this test nothing in the package would have noticed.
-//
-// The measured answer, over 200 streams, is that the advantage survives all
-// the way down: the worst cell of the grid is Halton random-digit scrambling
-// at s=30, n=40, and even there QMC is 3.40x more accurate than Monte Carlo.
-// The best is Owen-scrambled Sobol at s=2, n=160 at 61x. Nothing on the grid
-// is worse than independent sampling, so the honest gate is a speedup gate
-// rather than a no-pessimisation one — but it is placed at 1.5x, less than
-// half the worst measured value, so that a change of constants that costs
-// some accuracy still passes and only a change that has given up the
-// low-discrepancy property fails.
-//
-// The second gate is a trend rather than a level. At s=2, where 40 points are
-// genuinely stratified, the advantage over Monte Carlo must not shrink when
-// the budget goes from 40 to 160 points. That is the 1/n-versus-1/sqrt(n) rate
-// showing up directly: measured, the four schemes go from 3.96x, 9.05x,
-// 11.97x and 5.25x at n=40 to 10.83x, 24.10x, 61.47x and 8.89x at n=160.
-// A generator whose error had stopped falling faster than sqrt would fail this
-// while still passing every level gate in the package.
+// TestSmallSampleIntegration compares product-integrand RMS error at the stated
+// small budgets and dimensions over two hundred fixed seeds. Level and trend
+// assertions are fixture regression policies, not universal convergence rates.
 func TestSmallSampleIntegration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("200 streams over six (dims, n) cells and five samplers; -short skips it")
@@ -150,7 +87,7 @@ func TestSmallSampleIntegration(t *testing.T) {
 
 	for _, dims := range smallSampleDims {
 		for _, n := range smallSampleCounts {
-			mcErr := mcRMSError(dims, n, smallSampleStreams)
+			mcErr := mcRMSError(t, dims, n, smallSampleStreams)
 
 			type result struct {
 				name string
@@ -183,10 +120,9 @@ func TestSmallSampleIntegration(t *testing.T) {
 
 				ratioAt2Dims[n][r.name] = ratio
 
-				if ratio < wantSpeedup {
+				if !finiteMeasurement(ratio) || ratio < wantSpeedup {
 					t.Fatalf("d=%d n=%d: %s is only %.2fx better than Monte Carlo (%.4e vs %.4e), want >= %.1fx; "+
-						"forty points is a small sample but it is not so small that a low-discrepancy set stops "+
-						"paying for itself, and the worst cell of this grid measured 3.40x",
+						"the fixed small-sample workload lost its configured accuracy margin",
 						dims, n, r.name, ratio, r.rms, mcErr, wantSpeedup)
 				}
 			}
@@ -226,21 +162,14 @@ type row struct {
 // wrong option.
 //
 // Both budgets are measured here, in the same run, on the same seeds, so the
-// comparison is not against a number quoted from another file that may have
-// drifted. The test asserts only the part that a scheme change must not break:
-// at n=4096 and 30 dimensions, Owen-scrambled Sobol is the best of the four —
-// that is the claim the docs make and it should fail loudly if it stops being
-// true. At n=40 the ranking is logged and compared but not asserted, because
-// the schemes there are close enough together that pinning an order would be
-// pinning noise; docs/small-sample-regime.md reports what was measured.
+// comparison is not against a stale quoted number. The gate permits Owen
+// to be within 20% of the measured leader at n=4096 rather than requiring it
+// to win a near tie. This conservative margin exceeds the roughly 5% normal
+// RMS sampling error at 200 streams; it is specific to this regression.
+// At n=40 rankings are reported without enforcing an order.
 //
-// Measured: the two rankings differ only in the top pair. At n=4096 it is
-// Owen Sobol (1.2256e-04) then nested Halton (1.2776e-04); at n=40 it is
-// nested Halton (1.0999e-02) then Owen Sobol (1.1152e-02). Both gaps are
-// around 1.4%, well inside the ~5% standard error of an RMS over 200 streams,
-// so the honest reading is that the top two are tied at both budgets and that
-// the bottom two — digital-shift Sobol then random-digit Halton — hold their
-// places exactly.
+// Ordering can change with seeds, budget, and integrand; this fixture's near-tie
+// policy does not establish the best randomization for another application.
 func TestSmallSampleRankingMatchesLargeSample(t *testing.T) {
 	if testing.Short() {
 		t.Skip("four randomizations x 200 streams at n=4096 in 30 dimensions; -short skips it")
@@ -290,10 +219,11 @@ func TestSmallSampleRankingMatchesLargeSample(t *testing.T) {
 
 	t.Logf("d=%d streams=%d: n=40 ranking %s the n=4096 ranking", dims, smallSampleStreams, map[bool]string{true: "matches", false: "does NOT match"}[agree])
 
-	if want := sobolSchemes[0].name; large[0].name != want {
-		t.Fatalf("at d=%d n=4096 over %d streams the best randomization is %s (%.4e), not %s (%.4e); "+
-			"the recommendation in README.md and docs/small-sample-regime.md rests on Owen coming first here",
-			dims, smallSampleStreams, large[0].name, large[0].rms, want, rmsOf(large, want))
+	want := sobolSchemes[0].name
+
+	candidate := rmsOf(large, want)
+	if !finiteMeasurement(candidate) || !finiteMeasurement(large[0].rms) || candidate > 1.2*large[0].rms {
+		t.Fatalf("at d=%d n=4096 over %d streams %s has RMS %.4e, beyond the 20%% near-tie margin of the leader %s (%.4e)", dims, smallSampleStreams, want, candidate, large[0].name, large[0].rms)
 	}
 }
 
@@ -309,33 +239,11 @@ func rmsOf(rows []row, name string) float64 {
 	return math.NaN()
 }
 
-// TestSmallSampleDiscrepancy asks the other half of the question: at n=40, can
-// either discrepancy statistic still tell a QMC point set from an i.i.d.
-// uniform one?
-//
-// discrepancy_test.go already shows that centered L2 saturates at 39
-// dimensions and n=1024 — QMC and random land within 10% of each other while
-// their integration errors differ by more than 5x. That is a statement about
-// dimension. This is the statement about sample size, and the two failure
-// modes are different: CD2 saturates in s because (5/4)^s runs away from
-// (13/12)^s, while at small n every point set looks like noise because there
-// are not enough points for the statistic to resolve anything finer than the
-// first stratum.
-//
-// The analytic i.i.d. expectation sqrt(((5/4)^s - (13/12)^s)/N) is reported
-// alongside, as discrepancy_test.go does, so a reader can see immediately
-// whether the random baseline is behaving and therefore whether the QMC
-// column means anything. Star discrepancy is computed exactly at s=2 and s=3,
-// where n=40 is far inside the leaf budget, because star is the statistic that
-// does not saturate and is the only one here with a chance of separating the
-// point sets.
-//
-// The gate is deliberately one-sided and loose: at s=2 the QMC point sets must
-// have a star discrepancy below the random baseline's, which is the weakest
-// statement that still means "these are not the same point sets". No gate is
-// placed on CD2 at all, because what this test documents is that CD2 cannot
-// tell them apart at this size — asserting a separation would be asserting the
-// opposite of the finding.
+// TestSmallSampleDiscrepancy compares sample mean discrepancies for the stated
+// dimensions, budgets, and seeds. It also reports sampled and analytic RMS CD2
+// for i.i.d. points; neither is an exact expression for mean CD2.
+// The star-discrepancy gate checks low-dimensional separation on this workload;
+// no CD2 ordering is asserted for the measured high-dimensional cases.
 func TestSmallSampleDiscrepancy(t *testing.T) {
 	if testing.Short() {
 		t.Skip("exact star discrepancy over 200 point sets; -short skips it")
@@ -345,7 +253,7 @@ func TestSmallSampleDiscrepancy(t *testing.T) {
 		for _, n := range smallSampleCounts {
 			rng := rand.New(rand.NewSource(20240824)) //nolint:gosec // statistical baseline, not cryptography
 
-			randCD2, randStar := 0.0, 0.0
+			randCD2, randCD2Square, randStar := 0.0, 0.0, 0.0
 
 			for seed := 1; seed <= smallSampleStreams; seed++ {
 				pts := randomPoints(rng, n, dims)
@@ -356,6 +264,7 @@ func TestSmallSampleDiscrepancy(t *testing.T) {
 				}
 
 				randCD2 += cd2
+				randCD2Square += cd2 * cd2
 
 				if dims <= 3 {
 					star, err := qmc.StarDiscrepancy(pts)
@@ -370,14 +279,15 @@ func TestSmallSampleDiscrepancy(t *testing.T) {
 			randCD2 /= smallSampleStreams
 			randStar /= smallSampleStreams
 
-			analytic := math.Sqrt((math.Pow(1.25, float64(dims)) - math.Pow(13.0/12.0, float64(dims))) / float64(n))
+			analyticRMS := math.Sqrt((math.Pow(1.25, float64(dims)) - math.Pow(13.0/12.0, float64(dims))) / float64(n))
+			sampledRMS := math.Sqrt(randCD2Square / smallSampleStreams)
 
 			if dims <= 3 {
-				t.Logf("d=%d n=%d streams=%d: random CD2 %.5f (analytic %.5f), star %.5f",
-					dims, n, smallSampleStreams, randCD2, analytic, randStar)
+				t.Logf("d=%d n=%d streams=%d: random mean CD2 %.5f, sampled RMS CD2 %.5f, analytic i.i.d. RMS CD2 %.5f, mean star %.5f",
+					dims, n, smallSampleStreams, randCD2, sampledRMS, analyticRMS, randStar)
 			} else {
-				t.Logf("d=%d n=%d streams=%d: random CD2 %.5f (analytic %.5f), star not computed above %d dimensions",
-					dims, n, smallSampleStreams, randCD2, analytic, 3)
+				t.Logf("d=%d n=%d streams=%d: random mean CD2 %.5f, sampled RMS CD2 %.5f, analytic i.i.d. RMS CD2 %.5f, star not computed above %d dimensions",
+					dims, n, smallSampleStreams, randCD2, sampledRMS, analyticRMS, 3)
 			}
 
 			for _, s := range allSchemes() {

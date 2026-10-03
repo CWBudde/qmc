@@ -26,7 +26,7 @@ import (
 // deterministic, so the analogue of thirty streams is thirty admissible leaps.
 func leapPrimesAbove(largest, n int) []int {
 	out := make([]int, 0, n)
-	for _, p := range primesUpTo(n * 8) {
+	for _, p := range mustPrimes(n * 8) {
 		if p > largest {
 			out = append(out, p)
 			if len(out) == n {
@@ -596,7 +596,7 @@ func TestLeapingBreaksHighDimensionalCorrelation(t *testing.T) {
 		tolerance = 0.35
 	)
 
-	bases := primesUpTo(corrDims)
+	bases := mustPrimes(corrDims)
 
 	worsts := make([]float64, 0, leaps)
 
@@ -637,10 +637,8 @@ func TestLeapingBreaksHighDimensionalCorrelation(t *testing.T) {
 // TestLeapingIntegratesBetterThanAnUnleapedSequence is the other half of the
 // measurement, on the statistic integration_test.go uses.
 //
-// Forty leaps rather than ten, for the reason recorded in
-// docs/testing-methodology.md: a ten-stream figure cannot separate two good
-// schemes, and two statistically identical constructions once read 44.0x and
-// 31.9x on the same ten seeds.
+// Forty fixed admissible leaps share the same integrand and sample budget.
+// The comparison is workload evidence, not a guarantee for an arbitrary leap.
 func TestLeapingIntegratesBetterThanAnUnleapedSequence(t *testing.T) {
 	const (
 		dims    = 39
@@ -648,7 +646,7 @@ func TestLeapingIntegratesBetterThanAnUnleapedSequence(t *testing.T) {
 		streams = 40
 	)
 
-	bases := primesUpTo(dims)
+	bases := mustPrimes(dims)
 	leaps := leapPrimesAbove(bases[dims-1], streams)
 
 	point := make([]float64, dims)
@@ -691,7 +689,7 @@ func TestLeapingIntegratesBetterThanAnUnleapedSequence(t *testing.T) {
 
 	scrambledErr := nestedRMSError(t, dims, n, streams, WithScrambling)
 	nestedErr := nestedRMSError(t, dims, n, streams, WithNestedScrambling)
-	mcErr := nestedMCError(dims, n, streams)
+	mcErr := nestedMCError(t, dims, n, streams)
 
 	// All four measured in one run, so the README table they feed is a
 	// comparison rather than four numbers from four sittings.

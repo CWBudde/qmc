@@ -19,7 +19,7 @@ import (
 // generator itself uses, so a fuzz input can never name a base no Halton
 // dimension would ever see. 64 is the dimension ceiling the WebAssembly demo
 // clamps to and is far past the point where the failure modes differ.
-var fuzzBases = primesUpTo(64)
+var fuzzBases = mustPrimes(64)
 
 // baseFor maps an arbitrary fuzz int onto a valid base rather than rejecting
 // it. Rejecting would throw away almost every input the fuzzer generates and
@@ -117,7 +117,7 @@ func FuzzRadicalInverse(f *testing.F) {
 
 		got := radicalInverse(index, base)
 
-		if got < 0 || got >= 1 {
+		if !(got >= 0 && got < 1) {
 			t.Fatalf("radicalInverse(%d, %d) = %v, outside [0,1)", index, base, got)
 		}
 
@@ -154,7 +154,7 @@ func FuzzScrambledRadicalInverse(f *testing.F) {
 
 		got := scrambledRadicalInverse(index, base, perm)
 
-		if got < 0 || got >= 1 {
+		if !(got >= 0 && got < 1) {
 			t.Fatalf("scrambledRadicalInverse(%d, %d) = %v, outside [0,1)", index, base, got)
 		}
 

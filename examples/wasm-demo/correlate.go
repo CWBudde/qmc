@@ -18,12 +18,11 @@ const (
 // coordinates of one draw: the heatmap that shows the defect as a picture
 // rather than as a single number.
 //
-// The scatter plot can only ever show one pair at a time, which makes the
-// failure look like a quirk of dimensions 37 and 38. The matrix shows that it
-// is a band: every adjacent high-dimensional pair lights up at once, because
-// each of them is still inside its own first period and ramping in lockstep.
-// Picking a randomization wipes the band out and leaves only the unit
-// diagonal.
+// The scatter plot shows one projection; this matrix compares every pair.
+// High-prime Halton coordinates can show correlated patterns when higher
+// digits remain poorly explored, even after several leading-digit cycles.
+// Randomization can change those patterns, but finite sample correlations
+// need not vanish and small coefficients do not establish independence.
 //
 // The correlation helper is reimplemented here rather than imported. qmc's
 // version lives in correlation_test.go and is unexported, so there is no way
