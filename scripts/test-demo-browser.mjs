@@ -1,16 +1,25 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import { readFile, mkdtemp, rm } from "node:fs/promises";
-import { resolve, extname } from "node:path";
+import { resolve, extname, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { StringDecoder } from "node:string_decoder";
+import { fileURLToPath } from "node:url";
 
 const started = Date.now();
 const root = resolve(process.argv[2] || "dist");
 const runtimeFixture = process.argv[3] ? resolve(process.argv[3]) : null;
+const mountPath = process.env.QMC_BROWSER_PATH || "/";
+assert(
+  /^\/(?:[a-zA-Z0-9_-]+\/)*$/.test(mountPath),
+  "invalid browser mount path",
+);
 let useFixture = false;
 let failureMode = null;
+let servedRoot = root;
+let staleBuildPrefix = null;
+let cacheArtifact = null;
 const mime = {
   ".wasm": "application/wasm",
   ".js": "text/javascript",
@@ -20,11 +29,15 @@ const mime = {
 };
 const server = createServer(async (req, res) => {
   try {
-    const path = resolve(
-      root,
-      "." + decodeURIComponent(new URL(req.url, "http://local").pathname),
+    const pathname = decodeURIComponent(
+      new URL(req.url, "http://local").pathname,
     );
-    if (!path.startsWith(root + "/")) throw new Error("path");
+    if (!pathname.startsWith(mountPath)) throw new Error("mount path");
+    const path = resolve(
+      servedRoot,
+      "." + "/" + pathname.slice(mountPath.length),
+    );
+    if (!path.startsWith(servedRoot + "/")) throw new Error("path");
     if (
       (failureMode === "missing-wasm" && path.endsWith("/qmc.wasm")) ||
       (failureMode === "missing-runtime" && path.endsWith("/wasm_exec.js")) ||
@@ -45,6 +58,9 @@ const server = createServer(async (req, res) => {
     res.writeHead(200, {
       "Content-Type": mime[extname(path)] || "application/octet-stream",
       "Content-Length": data.length,
+      "Cache-Control": pathname.includes("/build-")
+        ? "public, max-age=31536000, immutable"
+        : "no-store",
       "Cross-Origin-Opener-Policy": "same-origin",
       "Cross-Origin-Embedder-Policy": "require-corp",
     });
@@ -157,7 +173,8 @@ try {
             (failureMode === "missing-runtime" &&
               entry.url?.endsWith("/wasm_exec.js")) ||
             (failureMode === "missing-worker" &&
-              entry.url?.endsWith("/compute-worker.js")));
+              entry.url?.endsWith("/compute-worker.js")) ||
+            (staleBuildPrefix && entry.url?.startsWith(staleBuildPrefix)));
         if (!expected) resourceErrors.push(entry);
       }
     }
@@ -194,6 +211,7 @@ try {
   await send("Runtime.enable", {}, sessionId);
   await send("Page.enable", {}, sessionId);
   await send("Network.enable", {}, sessionId);
+  await send("Network.setCacheDisabled", { cacheDisabled: true }, sessionId);
   await send("Log.enable", {}, sessionId);
   const evaluate = async (expression, timeoutMs = 20000) => {
     const r = await send(
@@ -207,7 +225,9 @@ try {
   };
   await send(
     "Page.navigate",
-    { url: `http://127.0.0.1:${server.address().port}/analysis.html` },
+    {
+      url: `http://127.0.0.1:${server.address().port}${mountPath}analysis.html`,
+    },
     sessionId,
   );
   const deadline = Date.now() + 30000;
@@ -573,7 +593,7 @@ try {
     for (const page of ["analysis.html", "index.html"]) {
       await send(
         "Page.navigate",
-        { url: `http://127.0.0.1:${server.address().port}/${page}` },
+        { url: `http://127.0.0.1:${server.address().port}${mountPath}${page}` },
         sessionId,
       );
       const deadline = Date.now() + 30000;
@@ -637,7 +657,7 @@ try {
   // Switch sources and all their randomizations through the actual Point Lab UI.
   await send(
     "Page.navigate",
-    { url: `http://127.0.0.1:${server.address().port}/index.html` },
+    { url: `http://127.0.0.1:${server.address().port}${mountPath}index.html` },
     sessionId,
   );
   let pageDeadline = Date.now() + 30000;
@@ -743,7 +763,7 @@ try {
   );
   await send(
     "Page.navigate",
-    { url: `http://127.0.0.1:${server.address().port}/index.html` },
+    { url: `http://127.0.0.1:${server.address().port}${mountPath}index.html` },
     sessionId,
   );
   pageDeadline = Date.now() + 30000;
@@ -819,7 +839,9 @@ try {
   console.log("Worker responsiveness:", JSON.stringify(responsiveness));
   await send(
     "Page.navigate",
-    { url: `http://127.0.0.1:${server.address().port}/analysis.html` },
+    {
+      url: `http://127.0.0.1:${server.address().port}${mountPath}analysis.html`,
+    },
     sessionId,
   );
   pageDeadline = Date.now() + 30000;
@@ -865,6 +887,85 @@ try {
     "Stop during the maximum nested rung (DOM at 6x throttle), ms:",
     stopLatency,
   );
+  // Keep an old page alive while the server publishes a different complete
+  // bundle. Uncached old URLs must fail rather than serve new-build bytes.
+  cacheArtifact = await mkdtemp(resolve(tmpdir(), "qmc-cache-artifact-"));
+  const fixture = spawnSync(
+    "python3",
+    [
+      resolve(
+        dirname(fileURLToPath(import.meta.url)),
+        "prepare-cache-artifact.py",
+      ),
+      root,
+      cacheArtifact,
+    ],
+    { encoding: "utf8", timeout: 10000 },
+  );
+  assert.equal(fixture.status, 0, fixture.stderr || fixture.error?.message);
+  const newBuild = fixture.stdout.trim();
+  await send("Network.setCacheDisabled", { cacheDisabled: false }, sessionId);
+  await send("Network.clearBrowserCache", {}, sessionId);
+  await send(
+    "Page.navigate",
+    {
+      url: `http://127.0.0.1:${server.address().port}${mountPath}analysis.html`,
+    },
+    sessionId,
+  );
+  pageDeadline = Date.now() + 30000;
+  while (
+    !(await evaluate(
+      'document.getElementById("rack")?.dataset.boot === "ready" && document.getElementById("corrTable")?.getAttribute("aria-busy") === "false"',
+    ))
+  ) {
+    assert(Date.now() < pageDeadline, "cached page startup deadline");
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  const oldBase = await evaluate("document.baseURI");
+  assert(!oldBase.includes(newBuild), "cache fixture did not change identity");
+  servedRoot = cacheArtifact;
+  staleBuildPrefix = oldBase;
+  await send("Network.clearBrowserCache", {}, sessionId);
+  const requestStart = requests.length;
+  assert(
+    await evaluate(`(async () => {
+      const failures=[], worker=QMCCompute.create({onError:e=>failures.push(e),onTerminal:e=>failures.push(e)});
+      const result=await worker.call('points',{dims:2,count:5});
+      worker.dispose();
+      return result===null && failures.length===1;
+    })()`),
+    "stale page silently accepted new-build worker bytes",
+  );
+  assert.equal(await evaluate("document.baseURI"), oldBase);
+  assert(
+    requests.slice(requestStart).some((url) => url.startsWith(oldBase)),
+    "stale page did not request its original namespace",
+  );
+  assert(
+    requests.slice(requestStart).every((url) => !url.includes(newBuild)),
+    "stale page fetched a different build",
+  );
+  await new Promise((r) => setTimeout(r, 100));
+  await evaluate("location.reload(); true");
+  pageDeadline = Date.now() + 30000;
+  while (
+    !(await evaluate(
+      'document.getElementById("rack")?.dataset.boot === "ready" && document.getElementById("corrTable")?.getAttribute("aria-busy") === "false"',
+    )) ||
+    !(await evaluate("document.baseURI")).includes(`build-${newBuild}/`)
+  ) {
+    assert(Date.now() < pageDeadline, "new-build reload deadline");
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  assert((await evaluate("document.baseURI")).includes(`build-${newBuild}/`));
+  assert(
+    await evaluate("qmc.points({dims:2,count:5}).count===5"),
+    "new bundle did not recover on reload",
+  );
+  servedRoot = root;
+  staleBuildPrefix = null;
+  await send("Network.setCacheDisabled", { cacheDisabled: true }, sessionId);
   // Deliberate loading failures are allowed only for their precise asset URLs.
   for (const page of ["index.html", "analysis.html"]) {
     for (const mode of [
@@ -876,7 +977,7 @@ try {
       failureMode = mode;
       await send(
         "Page.navigate",
-        { url: `http://127.0.0.1:${server.address().port}/${page}` },
+        { url: `http://127.0.0.1:${server.address().port}${mountPath}${page}` },
         sessionId,
       );
       pageDeadline = Date.now() + 30000;
@@ -934,6 +1035,8 @@ try {
         chromiumAX: true,
       },
       loadingFailureCases: 8,
+      cacheCoherence: true,
+      mountPath,
       browserCPUs: browserCPUs || "unrestricted",
       unexpectedErrors: 0,
       elapsedSeconds: (Date.now() - started) / 1000,
@@ -963,4 +1066,5 @@ try {
     maxRetries: 10,
     retryDelay: 100,
   });
+  if (cacheArtifact) await rm(cacheArtifact, { recursive: true, force: true });
 }

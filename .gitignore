@@ -20,6 +20,9 @@ trace.out
 
 # Build output
 /dist/
+.qmc-demo-*.lock
+.qmc-demo-stage-*/
+__pycache__/
 
 # The non-wasm stub main of the demo builds a host binary of this name when it
 # is compiled without GOOS=js; it is a build artifact, never a checked-in file.

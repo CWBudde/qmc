@@ -35,12 +35,17 @@ jobs:
       - name: Build the WebAssembly demo
         run: just build-wasm-demo dist
 
+      - name: Verify artifact integrity and references
+        run: just check-demo-artifact dist
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: "22"
 
       - name: Verify the built artifact in Chrome
+        env:
+          QMC_BROWSER_PATH: /qmc/
         run: just test-browser dist
 
       - name: Configure Pages

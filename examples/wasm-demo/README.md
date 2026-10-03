@@ -144,7 +144,9 @@ it is three. Runtime depends on the point set and device.
 ```bash
 just run-wasm-demo                            # build into ./dist and serve on :8090
 just build-wasm-demo                          # build only
-./scripts/build-wasm-demo.sh /tmp/somewhere   # build somewhere else
+just build-wasm-demo /tmp/somewhere           # build somewhere else
+just check-demo-artifact /tmp/somewhere      # verify that exact build
+just test-demo-artifact                      # exercise publication/safety failures
 ```
 
 **An HTTP server is required.** Both pages `fetch("qmc.wasm")`, and a `file://`
@@ -152,16 +154,35 @@ URL cannot fetch a `.wasm` at all. The server must also send the module as
 `Content-Type: application/wasm`; without it `WebAssembly.instantiateStreaming`
 refuses the response and the status line says so.
 
-Every asset reference in these pages is a bare relative filename — `style.css`,
-`render.js`, `qmc.wasm` — with no leading slash anywhere. That is what lets the
-identical directory work at `http://localhost:8090/` and at
-`https://cwbudde.github.io/qmc/` with no base-path handling and no build-time
-rewriting.
+The build stages and validates a complete site before publishing it. Stable
+`index.html` and `analysis.html` entry pages select one immutable
+`build-<sha256>/` directory through a relative HTML base URL. That directory
+contains the scripts, styles, worker, WASM and runtime, including recursive
+static files from `assets/`. A change to any payload file or compiler version
+changes the build ID. Page navigation stays at the stable public URLs. The
+same output works at `http://localhost:8090/` and a `/qmc/` project path;
+the browser regression exercises the latter with `QMC_BROWSER_PATH=/qmc/`.
+
+An old open/cached page keeps requesting its original namespace. If deployment
+removed that bundle and the browser lacks its cached resources, requests fail
+and Reload obtains the current complete build. An old resource URL cannot
+silently resolve to new-build bytes. Configure hosts to revalidate entry HTML
+and cache `build-<sha256>/` files as immutable when cache headers are available.
+
+Output must be new, empty, or an intact prior build with `build-manifest.json`.
+The manifest lists every file and its content hash. Caller additions, edits,
+symlinks and source/private destinations are rejected and preserved. Replacing
+a prior build removes obsolete assets through an atomic directory exchange on
+supported Linux/macOS filesystems. If exchange is unavailable, the build fails
+and preserves the previous output; choose a fresh directory instead. An older
+unmanifested `dist` needs to be moved aside before building. See
+[the artifact policy](../../docs/toolchain.md#demo-artifact-publication) for the
+asset allowlist, locking, and caller-edit handling.
 
 `wasm_exec.js` is copied from your Go toolchain at build time and is never
 committed. It is version-locked to the compiler that produced the `.wasm`, and a
-stale copy fails at runtime in ways that look like demo bugs rather than like a
-version mismatch.
+The build verifies the compiler identity before and after compilation, and the
+artifact's hash binds both runtime bytes and the compiler version.
 
 ## Browser regression checks
 

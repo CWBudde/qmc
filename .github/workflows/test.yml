@@ -165,6 +165,9 @@ jobs:
       - name: Verify read-only module gates
         run: just test-module-gates
 
+      - name: Verify artifact publication and safety gates
+        run: just test-demo-artifact
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:

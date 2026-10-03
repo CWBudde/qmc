@@ -40,6 +40,14 @@ build-wasm-demo $qmc_demo_output="dist":
     source ./tools/versions.sh
     GOTOOLCHAIN="go$qmc_development_go_version" bash ./scripts/build-wasm-demo.sh "$qmc_demo_output"
 
+# Verify the exact bundle inventory, hashes, and static references
+check-demo-artifact $qmc_demo_output="dist":
+    python3 ./scripts/check-demo-artifact.py "$qmc_demo_output"
+
+# Artifact failure/publication regressions with an offline compiler fixture
+test-demo-artifact:
+    python3 ./scripts/test-demo-artifact.py
+
 # Build and serve the WebAssembly demo locally
 run-wasm-demo: build-wasm-demo
     @echo "Serving the demo at http://localhost:8090"
@@ -145,7 +153,7 @@ check-tidy:
 check: verify check-formatted check-tidy lint lint-wasm-demo check-wasm-demo test-fast
 
 # Routine CI contract, including race and real-browser verification
-ci: verify check-formatted check-tidy lint lint-wasm-demo check-wasm-demo test-race test-browser test-tool-setup test-formatting test-module-gates
+ci: verify check-formatted check-tidy lint lint-wasm-demo check-wasm-demo test-race test-browser test-demo-artifact test-tool-setup test-formatting test-module-gates
 
 # Validate a prospective release without creating a tag
 release-check version:

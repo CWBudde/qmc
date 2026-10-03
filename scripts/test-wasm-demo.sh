@@ -14,6 +14,8 @@ else
   SITE_DIR="$(cd "$SITE_DIR" && pwd)"
 fi
 
+python3 "$ROOT_DIR/scripts/check-demo-artifact.py" "$SITE_DIR"
+
 GOOS=js GOARCH=wasm go test -C "$ROOT_DIR/examples/wasm-demo" -c \
   -tags=qmc_browser_fixture -o "$TASK_DIR/runtime-fixture.wasm" .
 node "$ROOT_DIR/scripts/test-demo-browser.mjs" "$SITE_DIR" "$TASK_DIR/runtime-fixture.wasm"

@@ -104,40 +104,79 @@ and `GOTOOLCHAIN=go1.23.0 CGO_ENABLED=0 GOARCH=386 just test-fast`.
 Publishing deliberately uses a separate toolchain rather than changing the
 library's Go 1.23 requirement.
 
-| Command                         | Purpose                                                                        |
-| ------------------------------- | ------------------------------------------------------------------------------ |
-| `just setup-deps`               | Pinned user-owned developer tools                                              |
-| `just check`                    | Fast root and nested-module checks                                             |
-| `just ci`                       | Routine checks, race contracts, real Chrome, tool-gate regressions             |
-| `just test-statistical`         | Full ordinary statistical and contract suite, 10-minute test budget            |
-| `just test-race-statistical`    | Explicit full statistical race audit, 40-minute test budget                    |
-| `just check-wasm-demo`          | Nested-module tidy/verify, WASM build/vet, native stub                         |
-| `just lint-wasm-demo`           | Production and fixture WASM lint                                               |
-| `just test-browser [site]`      | Real-browser verification with the publishing toolchain                        |
-| `just build-wasm-demo [output]` | Publishing build; defaults to `dist`, safely forwards paths                    |
-| `just release-check VERSION`    | Prospective release checks; full artifact/release alignment tracked as TOOL-04 |
+| Command                             | Purpose                                                                        |
+| ----------------------------------- | ------------------------------------------------------------------------------ |
+| `just setup-deps`                   | Pinned user-owned developer tools                                              |
+| `just check`                        | Fast root and nested-module checks                                             |
+| `just ci`                           | Routine checks, race contracts, real Chrome, tool-gate regressions             |
+| `just test-statistical`             | Full ordinary statistical and contract suite, 10-minute test budget            |
+| `just test-race-statistical`        | Explicit full statistical race audit, 40-minute test budget                    |
+| `just check-wasm-demo`              | Nested-module tidy/verify, WASM build/vet, native stub                         |
+| `just lint-wasm-demo`               | Production and fixture WASM lint                                               |
+| `just test-browser [site]`          | Real-browser verification with the publishing toolchain                        |
+| `just build-wasm-demo [output]`     | Publishing build; defaults to `dist`, safely forwards paths                    |
+| `just check-demo-artifact [output]` | Exact inventory, hashes, build identity, and static-reference checks           |
+| `just test-demo-artifact`           | Offline publication, cleanup, destination safety, and failure regressions      |
+| `just release-check VERSION`        | Prospective release checks; full artifact/release alignment tracked as TOOL-04 |
 
 Every required configuration is tracked. Optional ignored local tool/editor
 state is not part of setup and does not affect these commands. Pages builds use
 `just build-wasm-demo dist`, then test that exact artifact before upload.
-Release policy, action SHA pins, clean artifact publication, and notices remain
-TOOL-04/SHIP-01/SHIP-02 in [PLAN.md](../PLAN.md).
+Release policy/action SHA pins and distribution notices remain TOOL-04/SHIP-02
+in [PLAN.md](../PLAN.md).
 
-## `scripts/build-wasm-demo.sh`
+## Demo artifact publication
 
-Quoting, `set -euo pipefail`, the nullglob handling and the GOROOT probe are all correct.
-Open:
+`scripts/build-wasm-demo.sh` resolves the repository location and invokes the
+stdlib Python builder. The public recipe selects `tools/go-version`; direct
+script invocation uses the caller's Go compiler. Python 3 and a local Linux or
+macOS filesystem supporting directory exchange are required for replacing a
+nonempty existing build. Fresh-directory publication uses rename.
 
-- The output directory is never cleaned, only `mkdir -p`'d, so a renamed or deleted asset
-  ships to Pages indefinitely.
-- `$1` is unvalidated. It cannot delete anything, but `./scripts/build-wasm-demo.sh ~`
-  scatters `index.html`, `app.js`, `style.css` and `wasm_exec.js` into that directory,
-  overwriting same-named files without confirmation.
-- The asset glob is non-recursive and covers no images, icons, fonts or JSON, so a future
-  `assets/` subdirectory silently ships nothing.
-- No cache-busting. The pages load `app.js` and `qmc.wasm` by bare name, so a returning
-  visitor can pair a new script with a cached `.wasm`. A content hash in the filename, or a
-  `?v=<sha>` injected at build time, would fix it.
+The payload contains top-level `.html`, `.css`, `.js`, `.mjs`, and `.svg` demo
+files. The optional `assets/` tree is recursive and additionally accepts PNG,
+JPEG, GIF, WebP, AVIF, ICO, JSON, WOFF/WOFF2, TTF/OTF, TXT, and PDF. Unrecognized
+types and symlinks fail the build rather than silently copying source/private
+files. The Go compiler produces `qmc.wasm`; `wasm_exec.js` comes from that same
+compiler's GOROOT. Compiler identity is checked before and after compilation.
+
+All payload files occupy one `build-<sha256>/` namespace. The ID hashes the
+logical filenames, each file's SHA-256, and the compiler version. Public HTML
+aliases insert a relative base URL selecting that namespace and retain stable
+page navigation. Thus worker startup, dynamic WASM fetches, CSS assets, and page
+scripts use the same build, including on project subpaths. Hosts can revalidate
+public HTML and use immutable caching for the versioned directories. A stale
+page whose bundle was removed needs Reload; it cannot fetch new-build bytes
+under the old URLs. The Chrome test exercises that deployment transition.
+
+`build-manifest.json` records exact file inventory and hashes. The standalone
+checker verifies them, the reconstructed entry pages, WASM header, and literal
+local references in HTML/SVG, CSS and JavaScript. It checks artifact integrity;
+real-browser tests additionally validate runtime behavior. Dynamic resource
+references added in future code need corresponding browser checks.
+
+Destinations must be user-owned, nonsymlink directories that are new, empty,
+or an intact managed site. Existing unrelated or edited files/directories are
+preserved and cause failure. The repository root/ancestors, home, filesystem
+root, demo sources, private state and third-party sources are protected. Paths
+with spaces and invocation outside the repository are supported. Move older
+unmanifested builds aside rather than expecting automatic adoption.
+
+A persistent hidden `.qmc-demo-<destination-hash>.lock` beside the output
+serializes cooperating builders, with a 30-second lock deadline. Each Go command
+has a 180-second budget. Builds use fresh sibling staging directories and fully
+validate them before publication. Linux `renameat2(RENAME_EXCHANGE)` or macOS
+`renamex_np(RENAME_SWAP)` replaces a nonempty site atomically; unsupported
+filesystems/platforms fail while preserving the old output. This host verified
+Linux exchange; macOS behavior has not been executed natively.
+
+Ordinary failed staging directories are cleaned. Caller edits made during
+compilation are rejected before publication. The old tree is checked again
+after exchange before cleanup; a racing edit causes that tree to be retained
+at the reported staging path, while the new complete build remains published.
+The manifest is an integrity/ownership convention, not authentication against
+an actor who can rewrite the manifest itself. It does not provide a filesystem
+transaction against uncooperative concurrent writers.
 
 ## Deliberate absences
 
