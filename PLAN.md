@@ -614,13 +614,24 @@ and console-error validation gate.
 
 ### DEMO-09 — Stop idle animation wakeups (P2)
 
-- [ ] Schedule animation frames only while playing or when a redraw is needed.
-- [ ] Cancel pending frames on pause and manage background-tab behavior.
+- [x] Schedule animation frames only while playing or when a redraw is needed.
+- [x] Cancel pending frames on pause and manage background-tab behavior.
 
 Evidence: [app.js](examples/wasm-demo/app.js).
 
 Acceptance: a paused, unchanged page has no perpetual animation loop; play, pause,
 scrubbing, and reduced-motion flows continue to work.
+
+Verification (2026-10-03): the real-Chrome regression fails against the previous
+controller with `paused page still schedules animation frames`. The corrected
+controller passes callback-count checks for idle and paused periods, confirms
+Play schedules frames again, and cancels its pending frame on Pause. Opening
+and activating a second real browser tab makes the first hidden and pauses its
+playback; returning does not skip forward using time spent in the background.
+With emulated reduced-motion preference, Play reveals all points statically
+and remains paused. Scrubbing, normal playback, runtime termination, and all
+existing smoke checks pass together (6.802 seconds). Redraws still occur in
+response to control/resize/DPR changes; no idle animation loop remains.
 
 ## Tooling and CI
 

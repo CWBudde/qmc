@@ -50,6 +50,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   numerical notes, typed transfers, error recovery, and loading failures with
   bounded Chrome/server lifetimes. Unexpected browser errors fail the gate;
   PR validation and Pages uploads require it.
+- Point Lab cancels animation frames when paused and pauses on tab hiding.
+  Play under reduced motion reveals the points without animation. Chrome checks
+  verify idle callback counts, resumed playback, and real tab visibility changes.
 
 ### Scientific contract corrections
 

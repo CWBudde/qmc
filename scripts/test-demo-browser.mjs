@@ -416,9 +416,64 @@ try {
     set('scrub',3,'input'); check(el('revealReadout').textContent.includes('3 / 10'),'scrub failed');
     el('play').click(); await new Promise(r=>setTimeout(r,100)); el('play').click();
     check(el('play').getAttribute('aria-pressed')==='false','pause failed');
+    const originalRAF=window.requestAnimationFrame;
+    let frames=0;
+    window.requestAnimationFrame=callback=>originalRAF(time=>{frames++;callback(time)});
+    await new Promise(r=>setTimeout(r,100)); const idle=frames;
+    await new Promise(r=>setTimeout(r,150));
+    check(frames===idle,'paused page still schedules animation frames');
+    set('scrub',2,'input'); el('play').click();
+    await new Promise(r=>setTimeout(r,150));
+    check(frames>idle && el('play').getAttribute('aria-pressed')==='true','play did not resume animation');
+    el('play').click(); const paused=frames;
+    await new Promise(r=>setTimeout(r,150));
+    check(frames===paused,'pause did not cancel pending animation');
+    window.requestAnimationFrame=originalRAF;
     return true;
   })()`);
   assert(switching);
+  await evaluate(
+    `document.getElementById('scrub').value='2';document.getElementById('scrub').dispatchEvent(new Event('input'));document.getElementById('play').click();true`,
+  );
+  const background = await send("Target.createTarget", { url: "about:blank" });
+  await send("Target.activateTarget", { targetId: background.targetId });
+  await new Promise((r) => setTimeout(r, 100));
+  assert(
+    await evaluate(
+      'document.hidden && document.getElementById("play").getAttribute("aria-pressed") === "false"',
+    ),
+    "background tab did not pause playback",
+  );
+  await send("Target.closeTarget", { targetId: background.targetId });
+  await send("Target.activateTarget", { targetId });
+  await send(
+    "Emulation.setEmulatedMedia",
+    { features: [{ name: "prefers-reduced-motion", value: "reduce" }] },
+    sessionId,
+  );
+  await send(
+    "Page.navigate",
+    { url: `http://127.0.0.1:${server.address().port}/index.html` },
+    sessionId,
+  );
+  pageDeadline = Date.now() + 30000;
+  while (
+    !(await evaluate(
+      'document.getElementById("rack")?.dataset.boot === "ready"',
+    ))
+  ) {
+    assert(Date.now() < pageDeadline, "reduced-motion boot deadline");
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  assert(
+    await evaluate(`(() => {
+    const el=id=>document.getElementById(id);
+    el('scrub').value='2';el('scrub').dispatchEvent(new Event('input'));el('play').click();
+    return el('play').getAttribute('aria-pressed')==='false' && el('scrub').value===el('scrub').max;
+  })()`),
+    "reduced-motion Play did not reveal statically",
+  );
+  await send("Emulation.setEmulatedMedia", { features: [] }, sessionId);
   // Deliberate loading failures are allowed only for their precise asset URLs.
   for (const page of ["index.html", "analysis.html"]) {
     for (const mode of ["missing-wasm", "corrupt-wasm", "missing-runtime"]) {

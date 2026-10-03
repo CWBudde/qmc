@@ -188,6 +188,11 @@ Chrome executable). Server startup, page readiness, protocol requests, and the
 overall browser run have 5/30/20/120-second deadlines respectively. Compilation
 is also bounded by the CI job's timeout.
 
+The Point Lab schedules reveal-animation frames only during playback. Pause
+cancels the pending frame; hiding the tab pauses playback without advancing
+through background time. Under reduced motion, Play reveals all points
+immediately. Scrubbing and other control changes redraw on demand.
+
 The regression covers both pages and source/randomization switching, control
 changes, panel switching,
 Stop/restart, unavailable metrics, result configuration snapshots, source-specific

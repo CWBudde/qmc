@@ -92,6 +92,7 @@
     random: null,
     reveal: 0,
     playing: false,
+    playFrame: null,
     lastTick: 0,
     selected: -1,
     lastAnnounce: 0,
@@ -637,10 +638,21 @@
   }
 
   function setPlaying(playing) {
+    if (state.playFrame !== null) {
+      cancelAnimationFrame(state.playFrame);
+      state.playFrame = null;
+    }
+    if (playing && reducedMotion) {
+      setReveal(state.sequence ? state.sequence.count : 0);
+      draw();
+      playing = false;
+    }
+    playing = Boolean(playing && state.ready && !document.hidden);
     state.playing = playing;
     playButton.setAttribute("aria-pressed", String(playing));
     playButton.textContent = playing ? "Pause" : "Play";
     state.lastTick = performance.now();
+    if (playing) state.playFrame = requestAnimationFrame(tick);
   }
 
   // The reveal advances on wall-clock time rather than once per animation
@@ -649,6 +661,7 @@
   const REVEAL_SECONDS = 3;
 
   function tick(now) {
+    state.playFrame = null;
     if (state.playing && state.sequence) {
       const total = state.sequence.count;
       const elapsed = Math.max(0, now - state.lastTick);
@@ -666,7 +679,7 @@
       draw();
     }
 
-    requestAnimationFrame(tick);
+    if (state.playing) state.playFrame = requestAnimationFrame(tick);
   }
 
   // --- digit inspector ---------------------------------------------------
@@ -993,6 +1006,10 @@
       draw();
     });
 
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) setPlaying(false);
+    });
+
     digitIndexInput.addEventListener("change", () => {
       state.selected = intValue(digitIndexInput, 0);
       refreshDigits();
@@ -1145,7 +1162,6 @@
     digitNext.disabled = false;
 
     setStatus("WASM ready", "ready");
-    requestAnimationFrame(tick);
     refresh();
   }
 
