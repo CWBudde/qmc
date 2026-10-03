@@ -139,14 +139,14 @@ describes these pin and permission practices.
 
 | Action                  | Reviewed commit                            | Version family |
 | ----------------------- | ------------------------------------------ | -------------- |
-| actions/checkout        | `11d5960a326750d5838078e36cf38b85af677262` | v4             |
+| actions/checkout        | `3d3c42e5aac5ba805825da76410c181273ba90b1` | v7             |
 | actions/setup-go        | `40f1582b2485089dde7abd97c1529aa768e1baff` | v5             |
 | actions/setup-node      | `49933ea5288caeca8642d1e84afbd3f7d6820020` | v4             |
-| actions/cache           | `0057852bfaa89a56745cba8c7296529d2fc39830` | v4             |
-| actions/upload-artifact | `ea165f8d65b6e75b540449e92b4886f43607fa02` | v4             |
-| extractions/setup-just  | `dd310ad5a97d8e7b41793f8ef055398d51ad4de6` | v2             |
-| actions/configure-pages | `983d7736d9b0ae728b81ab479565c72886d7745b` | v5             |
-| actions/deploy-pages    | `d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e` | v4             |
+| actions/cache           | `55cc8345863c7cc4c66a329aec7e433d2d1c52a9` | v6             |
+| actions/upload-artifact | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` | v7             |
+| extractions/setup-just  | `53165ef7e734c5c07cb06b3c8e7b647c5aa16db3` | v4             |
+| actions/configure-pages | `45bfe0192ca1faeb007ade9deae92b16b8254a0d` | v6             |
+| actions/deploy-pages    | `368f82528645a54fb793d4d04e342629a3f51346` | v5             |
 
 Workflow defaults grant `contents: read`. Pages write/OIDC permissions belong
 only to the deploy job, which waits for the verified build. Checkouts disable

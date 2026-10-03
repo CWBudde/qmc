@@ -21,7 +21,7 @@ assert JUST, "just is required"
 workflows = load()
 check(workflows)
 for name, before, after in [
-    ("test.yml", "actions/checkout@11d5960a326750d5838078e36cf38b85af677262", "actions/checkout@v4"),
+    ("test.yml", "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1", "actions/checkout@v7"),
     ("test.yml", "contents: read", "contents: write"),
     ("test.yml", "persist-credentials: false", "persist-credentials: true"),
     ("test.yml", "timeout-minutes: 15", "timeout-minutes: 0"),

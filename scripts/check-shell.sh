@@ -10,7 +10,9 @@ cd "$qmc_shell_root"
 qmc_shell_files=()
 qmc_shell_list=$(mktemp)
 trap 'rm -f "$qmc_shell_list"' EXIT
-git ls-files -z --cached --others --exclude-standard -- '*.sh' >"$qmc_shell_list"
+# Match the local agent/editor state that treefmt.toml excludes from formatting.
+git ls-files -z --cached --others --exclude-standard -- '*.sh' \
+  ':(exclude).agents/' ':(exclude).codex/' ':(exclude).aws/' >"$qmc_shell_list"
 while IFS= read -r -d '' qmc_file; do
   qmc_shell_files+=("$qmc_file")
 done <"$qmc_shell_list"
