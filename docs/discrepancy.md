@@ -52,7 +52,8 @@ belongs to that fixture, not a general discrepancy ratio.
 
 ### Approximate star discrepancy decision
 
-CORE-06 and API-01's review in [PLAN.md](../PLAN.md) retain the exact API.
+DOC-02's reconciliation in [PLAN.md](../PLAN.md) retains the exact API,
+consistent with CORE-06's work limits and API-01's small public surface.
 A sampled lower bound or randomized estimator could serve multipoint sets above
 the enumeration budget, but would need a separate result/accuracy contract,
 randomness policy, and independent reference validation. No demonstrated caller

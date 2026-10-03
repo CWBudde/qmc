@@ -1,7 +1,9 @@
 # Toolchain and CI
 
-What the repository's tooling does, where it is known to be weak, and which absences are
-deliberate.
+The tracked setup and verification commands cover both Go modules. Contributor
+instructions are in [CONTRIBUTING.md](../CONTRIBUTING.md); remediation status and
+verification evidence are in [PLAN.md](../PLAN.md), TOOL-01 through TOOL-04 and
+SHIP-01/02.
 
 ## What runs where
 
@@ -272,18 +274,20 @@ transaction against uncooperative concurrent writers.
 
 ## Deliberate absences
 
-Not worth adding for this repository, so that nobody adds them by reflex:
+The current workflow does not require these files:
 
 - `.nojekyll` — the archive/upload/deploy workflow does not run Jekyll, so it would
-  be cargo cult here.
-- `CODEOWNERS` — does nothing without branch protection.
+  change the current build.
+- `CODEOWNERS` — reviewers are currently selected through the maintainer's
+  review process. Required owner approvals would also need branch protection.
 - `SECURITY.md` — the library has no runtime dependencies or network activity.
   The demo downloads its own static/WASM assets, uses system fonts, and performs
   computation locally without analytics, submissions, or third-party requests.
 - Issue and PR templates, `CODE_OF_CONDUCT.md`.
-- `doc.go` — the package comment in `halton.go` already does that job.
+- `doc.go` — the package comment in `sequence.go` already provides package
+  documentation.
 - A `gomod` Dependabot updater — the module has no dependencies, by design. The
   `github-actions` updater proposes reviewed changes to the workflow SHA pins.
 
-A short `CONTRIBUTING.md` is borderline, and worth three lines only because the tooling above
-needs explaining.
+These are documented choices, not missing remediation tasks. Reconsider them
+when the project's contributor, security-reporting, or hosting needs change.

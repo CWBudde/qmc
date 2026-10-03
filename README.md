@@ -131,8 +131,9 @@ for the entire dimension.
 ## Documentation and contributing
 
 The [documentation index](docs/README.md) links the mathematical contracts,
-measurement evidence, tooling, and design decisions. [PLAN.md](PLAN.md) tracks
-review remediation and its completion evidence.
+measurement evidence, tooling, and design decisions.
+[CONTRIBUTING.md](CONTRIBUTING.md) describes setup and verification.
+[PLAN.md](PLAN.md) tracks review remediation and its completion evidence.
 
 ## License
 

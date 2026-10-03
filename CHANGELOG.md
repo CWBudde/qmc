@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   independence, projection, saturation and quality claims to their assumptions.
 - Star-discrepancy refusal wording now describes implementation work limits and
   the measured CD2 caveat without claiming a universal computability ceiling.
+- Add contributor setup/verification/release instructions and make PLAN.md the
+  authoritative remediation checklist linked from the documentation index.
 
 ### API contracts
 
