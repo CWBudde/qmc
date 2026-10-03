@@ -137,3 +137,35 @@ still passes the latter: it has a sensitivity floor. The seeded reference test
 `TestNestedIsArchitectureIndependent` detects that partial mutation. Preserve
 both direct structure tests and reproducibility/distribution references; none
 alone proves ideal joint independence.
+
+## Verification budgets
+
+- `just test-fast`: ordinary contracts and the small smooth-product quality gate,
+  with `-short -count=1 -timeout=3m`. It also runs as executable 386 in PR CI.
+- `just test-race`: the same routine suite with the race detector and a five-minute
+  Go timeout. This includes shared options and concurrent indexed access.
+- `just test-statistical`: the complete ordinary suite, including large discrepancy,
+  broad integrands, seed-distribution, and small-sample sweeps, with a ten-minute
+  Go timeout. It runs weekly/on demand on amd64 and 386, and for release validation.
+- `just test`: that same complete suite with coverage; scheduled amd64 validation
+  runs it once instead of duplicating the statistical run.
+- `just test-race-statistical`: an optional explicit full-suite audit with a
+  forty-minute timeout, selected by the manual statistical workflow’s `full_race`
+  input. PR/release race claims refer to the complete routine suite, not to an
+  uncompleted statistical race audit.
+
+The full ordinary completed-core milestone took 162 seconds locally on Go 1.26.1,
+i7-1255U; larger replicate counts add work. Job budgets include setup overhead:
+ten minutes for PR contracts, twenty for scheduled statistics, and forty-five for
+an explicitly requested full statistical race audit. Budgets are bounds, not
+performance guarantees. CI uses the same just recipes documented here.
+
+Browser verification remains tracked under DEMO-06 and is required before
+closing TEST-03. The current compile check does not prove runtime behavior.
+
+At this verification milestone, the corrected routine race suite completed in
+109.685 seconds and executable 386 fast checks in 48.608 seconds. Full ordinary
+statistical validation took 306.323 seconds, within its ten-minute budget. The previous
+short-mode snapshot still entered expensive star-discrepancy statistics and hit
+a five-minute timeout. The new exclusions resolve that budget problem while
+retaining the complete indexed-access/option/boundary race contracts.

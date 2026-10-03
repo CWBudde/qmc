@@ -17,9 +17,10 @@ jobs:
   format:
     name: Format
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -28,7 +29,7 @@ jobs:
           cache: true
 
       - name: Set up just
-        uses: extractions/setup-just@v4
+        uses: extractions/setup-just@v2
 
       - name: Install formatters
         run: just setup-deps
@@ -42,9 +43,10 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -57,7 +59,7 @@ jobs:
       # four or not at all. The args match the ones `just lint` uses, so a
       # local run and this job are the same check.
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v9
+        uses: golangci/golangci-lint-action@v8
         with:
           version: v2.13.1
           args: --config ./.golangci.yml --timeout 5m ./...
@@ -65,7 +67,7 @@ jobs:
   test:
     name: Test (go ${{ matrix.go-version }}, ${{ matrix.arch }})
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -83,15 +85,18 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go-version }}
 
+      - name: Set up just
+        uses: extractions/setup-just@v2
+
       - name: Cache Go build and module caches
-        uses: actions/cache@v6
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cache/go-build
@@ -109,27 +114,10 @@ jobs:
       - name: Run tests
         run: |
           if [ "${{ matrix.arch }}" = "386" ]; then
-            CGO_ENABLED=0 GOARCH=386 go test ./...
+            CGO_ENABLED=0 GOARCH=386 just test-fast
           else
-            go test -race ./...
+            just test-race
           fi
-
-      # Coverage is measured once, on amd64. The 386 leg exists to exercise a
-      # different int width, not to produce a second identical report.
-      - name: Run tests with coverage
-        if: matrix.arch == 'amd64'
-        run: go test -coverprofile=coverage.out -covermode=atomic ./...
-
-      - name: Generate coverage report
-        if: matrix.arch == 'amd64'
-        run: go tool cover -html=coverage.out -o coverage.html
-
-      - name: Archive coverage report
-        if: matrix.arch == 'amd64'
-        uses: actions/upload-artifact@v7
-        with:
-          name: coverage-report-go-${{ matrix.go-version }}
-          path: coverage.html
 
   wasm:
     name: WebAssembly
@@ -141,7 +129,7 @@ jobs:
     # on main, which is after the pull request has already merged.
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -150,7 +138,7 @@ jobs:
           cache: true
 
       - name: Set up just
-        uses: extractions/setup-just@v4
+        uses: extractions/setup-just@v2
 
       - name: Check the WebAssembly demo builds
         run: just check-wasm-demo

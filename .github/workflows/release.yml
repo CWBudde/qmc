@@ -30,6 +30,9 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Set up just
+        uses: extractions/setup-just@v2
+
       - name: Resolve and validate version
         id: version
         env:
@@ -60,8 +63,11 @@ jobs:
           go mod tidy -diff
           go vet ./...
 
-      - name: Run tests
-        run: go test -timeout 20m ./...
+      - name: Run contract race checks
+        run: just test-race
+
+      - name: Run full ordinary statistical suite
+        run: just test-statistical
 
       # The version is mirrored in justfile (setup-deps),
       # .github/workflows/test.yml and .trunk/trunk.yaml; change it in all four

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Verification jobs
+
+- Added bounded fast, routine-race, full-statistical, and optional full-statistical
+  race commands. Short mode now skips costly discrepancy and high-dimensional
+  integration sweeps. PR checks use the routine commands; scheduled/manual jobs
+  run full statistics on amd64 and 386, and release validation runs routine race
+  plus full ordinary tests. Browser verification remains pending in the plan.
+
 ### Statistical verification
 
 - Relaxed the large-budget exact-winner assertion to a documented near-tie

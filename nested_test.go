@@ -574,6 +574,10 @@ func nestedMCError(t *testing.T, dims, n, streams int) float64 {
 // that merely halved the advantage would still be worth knowing about, but not
 // worth a red suite.
 func TestNestedIntegratesAtLeastAsWellAsDigitScrambling(t *testing.T) {
+	if testing.Short() {
+		t.Skip("statistical sweep; run just test-statistical")
+	}
+
 	const (
 		dims     = 39
 		n        = 4096

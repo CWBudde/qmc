@@ -74,6 +74,10 @@ func sobolRMSError(t *testing.T, randomize func(uint64) qmc.Option, dims, n, str
 // wide — deliberately, because a test pinned near the measured value would
 // fail on noise and a test that fails on noise gets deleted.
 func TestShiftedSobolBeatsMonteCarloAt39Dims(t *testing.T) {
+	if testing.Short() {
+		t.Skip("statistical sweep; run just test-statistical")
+	}
+
 	const (
 		dims        = 39
 		n           = 4096
@@ -118,6 +122,10 @@ func TestShiftedSobolBeatsMonteCarloAt39Dims(t *testing.T) {
 // dramatically worse, which would mean something is broken; the number itself
 // goes to the log, where a human can read it.
 func TestSobolAgainstHaltonAt39Dims(t *testing.T) {
+	if testing.Short() {
+		t.Skip("statistical sweep; run just test-statistical")
+	}
+
 	const (
 		dims    = 39
 		n       = 4096
@@ -185,6 +193,10 @@ func TestSobolBeatsMonteCarloAtLowDims(t *testing.T) {
 // the shift by the measured factor would be pinning a constant that depends on
 // the integrand, and would fail for reasons that say nothing about the code.
 func TestOwenBeatsDigitalShiftAt39Dims(t *testing.T) {
+	if testing.Short() {
+		t.Skip("statistical sweep; run just test-statistical")
+	}
+
 	const (
 		dims    = 39
 		n       = 4096

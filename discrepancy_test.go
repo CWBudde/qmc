@@ -601,6 +601,10 @@ func randomPoints(rng *rand.Rand, n, s int) [][]float64 {
 // spread across seeds is a few percent against an asserted margin of more than
 // twofold, so the extra seeds would buy nothing but wall clock.
 func TestQMCBeatsPseudorandomOnStarDiscrepancy(t *testing.T) {
+	if testing.Short() {
+		t.Skip("statistical sweep; run just test-statistical")
+	}
+
 	const (
 		dims      = 3
 		n         = 512
@@ -650,6 +654,10 @@ func TestQMCBeatsPseudorandomOnStarDiscrepancy(t *testing.T) {
 // what makes "the statistic stops working at 39 dimensions" a statement about
 // the dimension count rather than about the implementation.
 func TestCenteredL2SeparatesQMCFromRandomAtLowDimensions(t *testing.T) {
+	if testing.Short() {
+		t.Skip("statistical sweep; run just test-statistical")
+	}
+
 	const (
 		n         = 1024
 		streams   = 5
@@ -710,6 +718,10 @@ func TestCenteredL2SeparatesQMCFromRandomAtLowDimensions(t *testing.T) {
 // If the two CD2 values ever do separate here, the documentation's caveat is
 // wrong and must be rewritten. Do not relax this test to make it pass.
 func TestCenteredL2SaturatesAtThirtyNineDimensions(t *testing.T) {
+	if testing.Short() {
+		t.Skip("statistical sweep; run just test-statistical")
+	}
+
 	const (
 		dims    = 39
 		n       = 1024
@@ -794,6 +806,10 @@ func meanProductIntegrand(pts [][]float64) float64 {
 // several sizes: E[CD2^2] = ((5/4)^s - (13/12)^s)/N for N i.i.d. uniform
 // points. It is a golden value with no golden constant in it.
 func TestCenteredL2MatchesTheRandomExpectation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("statistical sweep; run just test-statistical")
+	}
+
 	rng := rand.New(rand.NewSource(20240828)) //nolint:gosec // statistical baseline, not cryptography
 
 	for _, c := range []struct{ s, n, reps int }{{1, 256, 60}, {3, 256, 60}, {8, 512, 40}, {20, 512, 30}} {

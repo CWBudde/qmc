@@ -368,13 +368,13 @@ used its documented parallel-runner flag to avoid a shared temporary lock confli
 
 ### TEST-03 — Establish complete, affordable verification jobs (P1)
 
-- [ ] Separate routine contract/race checks from expensive statistical sweeps.
+- [x] Separate routine contract/race checks from expensive statistical sweeps.
       Ensure `-short` actually excludes the expensive discrepancy measurements too.
-- [ ] Give slow jobs explicit Go test timeouts and workflow budgets based on
+- [x] Give slow jobs explicit Go test timeouts and workflow budgets based on
       measured runtimes. Do not interpret the review timeouts as assertion failures.
-- [ ] Run statistical sweeps in an appropriate scheduled or explicit validation
+- [x] Run statistical sweeps in an appropriate scheduled or explicit validation
       job, with a smaller justified PR gate and a full release check.
-- [ ] Complete a race run covering the required contract tests and record the
+- [x] Complete a race run covering the required contract tests and record the
       full-suite race strategy rather than claiming an uncompleted suite passed.
 - [ ] Complete browser verification after DEMO-06 provides a bounded smoke suite.
 
@@ -384,6 +384,18 @@ Evidence: [test workflow](.github/workflows/test.yml), [justfile](justfile),
 Acceptance: each required job completes within an explicit budget on supported
 runners; routine and slow commands are reproducible locally; no verification
 status is inferred from incomplete or compile-only runs.
+
+Progress (2026-10-03): added fast/race/statistical/full-statistical-race recipes,
+short-mode exclusions for costly discrepancy and high-dimensional integration
+sweeps, routine PR race/386 jobs, a scheduled/manual statistical workflow, and
+release contract-race plus full ordinary checks. Routine race validation passes
+(`just test-race`, 109.685 seconds), as does
+executable 386 fast validation (48.608 seconds). YAML parses and root lint passes.
+The pre-exclusion short race snapshot exceeded five minutes in the star statistical
+sweep; that is a timeout, not an assertion failure. The corrected short suite
+completes within its five-minute budget. Full ordinary statistical validation
+(`just test-statistical`) passes in 306.323 seconds, within its ten-minute budget.
+Browser completion depends on DEMO-06; this task is not yet marked done.
 
 ## Browser demo
 

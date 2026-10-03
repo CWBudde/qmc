@@ -8,18 +8,30 @@ default:
 build:
     go build -v ./...
 
-# Run tests with coverage
+# Full ordinary suite with coverage (includes statistical sweeps)
 test:
-    go test -v -coverprofile=coverage.out ./...
+    go test -count=1 -timeout=10m -coverprofile=coverage.out ./...
     go tool cover -html=coverage.out -o coverage.html
 
-# Run tests with race detection
+# Routine contracts and the small smooth-product PR quality gate
+test-fast:
+    go test -short -count=1 -timeout=3m ./...
+
+# Routine contracts with race detection; expensive statistical sweeps skip
 test-race:
-    go test -v -race ./...
+    go test -short -race -count=1 -timeout=5m ./...
+
+# Full ordinary statistical validation, including all contract tests
+test-statistical:
+    go test -count=1 -timeout=10m ./...
+
+# Optional explicit full-suite race audit, including expensive sweeps
+test-race-statistical:
+    go test -race -count=1 -timeout=40m ./...
 
 # Run benchmarks
 bench:
-    go test -bench=. -benchmem ./...
+    go test -run '^$' -bench=. -benchmem ./...
 
 # Build the WebAssembly demo into ./dist
 build-wasm-demo:
@@ -135,7 +147,8 @@ release-check version:
     just check-tidy
     just lint
     go vet ./...
-    go test -timeout 20m ./...
+    just test-race
+    just test-statistical
 
 # Validate and create an annotated release tag locally
 release version:

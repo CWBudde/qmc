@@ -123,6 +123,10 @@ func mcRMSError(t *testing.T, dims, n, streams int) float64 {
 // variation. It is not a theorem about arbitrary independent samples or a
 // guarantee of the convergence rate on other integrands.
 func TestScrambledQMCBeatsMonteCarloAt39Dims(t *testing.T) {
+	if testing.Short() {
+		t.Skip("statistical sweep; run just test-statistical")
+	}
+
 	const (
 		dims        = 39
 		n           = 4096
