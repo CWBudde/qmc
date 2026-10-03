@@ -96,24 +96,35 @@
           <p class="lede">
             Halton places its <i>d</i>-th coordinate by the radical inverse in
             base <i>p<sub>d</sub></i
-            >, the <i>d</i>-th prime. For a large base the first
-            <i>p<sub>d</sub></i> points of that coordinate are just
-            <b>0, 1/p, 2/p, …</b> — a ramp, not a sample. Two adjacent
-            high-dimensional coordinates ramp together, and the pair collapses
-            onto a diagonal.
+            >, the <i>d</i>-th prime. At small raw indices, a large-base
+            coordinate moves in steps near <b>1/p</b> before its leading-digit
+            cycle wraps. Adjacent high-prime coordinates can move together,
+            producing correlated patterns while higher digits remain poorly
+            explored.
           </p>
           <p class="lede">
             The left panel starts on dimensions 37 and 38 of a 39-dimensional
-            Halton sequence with no randomization, which is exactly that
-            failure. <b>Pick a randomization</b> and the diagonal dissolves into
-            a filled square — or switch the sequence to <b>Sobol</b>, which is
-            base 2 in every dimension and has no ramp to begin with. Every
-            coordinate below is computed by <b>github.com/cwbudde/qmc</b>
-            compiled to WebAssembly and running in this tab; JavaScript draws
-            the pixels and nothing else.
+            Halton sequence with no randomization, which illustrates that
+            pattern. <b>Compare randomizations</b> at the same budget and across
+            several seeds — or switch the sequence to <b>Sobol</b>, which is
+            base 2 in every dimension and has no high-prime ramp. Its projection
+            quality still depends on the direction table and sampled block.
+            Every coordinate below is computed by <b>github.com/cwbudde/qmc</b>
+            compiled to WebAssembly in this tab's worker; JavaScript coordinates
+            requests, controls and rendering.
           </p>
         </div>
       </header>
+
+      <noscript>
+        <p class="callout">
+          This interactive demo requires JavaScript and WebAssembly. Enable
+          JavaScript in a WebAssembly-capable browser to run the calculations.
+          The
+          <a href="https://github.com/CWBudde/qmc">source and documentation</a>
+          remain available without JavaScript.
+        </p>
+      </noscript>
 
       <div class="status" id="status" data-state="loading">
         Loading WebAssembly…

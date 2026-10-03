@@ -6,17 +6,9 @@ import (
 	"testing"
 )
 
-// The measurement this package exists for.
-//
-// A 39-dimensional Halton sequence sampled at 600 points is exactly what a
-// parameter search over 39 knobs on a 600-evaluation budget asks for. Without
-// scrambling the last coordinates have not yet left their first period —
-// dimension 38 has base 167, so its first 167 points are 0, 1/167, 2/167, ...
-// in order — and adjacent high dimensions therefore ramp in lockstep. The
-// measured worst adjacent-pair correlation is 0.84 with no burn-in and still
-// 0.81 after skipping 64 points, in both cases between dimensions 34 and 35.
-//
-// Scrambling is the fix, and this test is what keeps it fixed.
+// Correlation regressions use a fixed 39-dimensional, 600-point Halton window
+// and thirty scrambling seeds. They guard the observed high-base ramp defect
+// without claiming a universal correlation threshold for other windows.
 const (
 	corrDims   = 39
 	corrPoints = 600

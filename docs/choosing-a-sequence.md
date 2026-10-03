@@ -1,83 +1,81 @@
 # Choosing a sequence
 
-**Sobol is a useful default.** Its base 2 in every dimension avoids Halton’s growing
-prime bases. Accuracy still depends on effective dimension and projection quality. It is capped at the 1024
-dimensions the embedded direction numbers cover, unless you supply your own table with
-`WithDirectionNumbers`.
+**Sobol is a useful default.** Its base 2 in every dimension avoids Halton's
+growing prime bases. Accuracy still depends on effective dimension, projection
+quality, and the selected sample block. The embedded Joe–Kuo direction numbers
+cover 1024 dimensions; `WithDirectionNumbers` accepts a larger table.
 
-**Halton** has no dimension ceiling — primes are sieved on demand, so `NewHalton(5000)`
-works — and its construction is simple enough to reproduce by hand, which matters if you are
-migrating off an existing implementation. Above roughly twenty dimensions it has to be
-considered for scrambling at small budgets; see [Randomization](randomization.md).
+**Halton** has no fixed base-table ceiling. Primes are sieved on demand, subject
+to representable sizes and available memory. Its construction is simple to
+reproduce. At small budgets, later coordinates can be strongly correlated;
+consider scrambling or admissible leaping and measure the workload you care about.
 
-## The measured comparison
+## Comparing error and cost
 
-A smooth 39-dimensional product integrand at n=4096 over ten randomization streams, against
-the same plain Monte Carlo baseline. Lower error is better; the multiplier is how many times
-more accurate than Monte Carlo on the same budget.
+The [controlled performance report](performance.md) is the canonical comparison:
+40 streams, 39 dimensions, 4096 points, skip 64, and the smooth product
 
-| generator                       | RMS relative error | vs Monte Carlo |
-| ------------------------------- | ------------------ | -------------- |
-| plain Monte Carlo (`math/rand`) | 4.3e-03            | 1x             |
-| Halton, random-digit scrambling | 2.4e-04            | **17.7x**      |
-| Sobol, digital shift            | 1.5e-04            | **29.5x**      |
-| Sobol, Owen scrambling          | 1.4e-04            | **32.0x**      |
-| Halton, nested scrambling       | 1.4e-04            | **31.9x**      |
+```
+f(x) = product_k (1 + (x[k] - 0.5)/(k+1))
+```
 
-Read that table with two caveats. It is one integrand, and a smooth product with decaying
-coefficients is the case nested scrambling suits best. And **ten streams is not many**: the
-same measurement over forty seeds moves random-digit Halton to 24.4x and nested Halton to
-41.1x, which is a different ordering against Sobol than the ten-stream column shows. The
-ratios move with the integrand and with the stream count, which is why the suite gates the
-generators at a factor of five against Monte Carlo rather than at any of these numbers — see
-[Testing methodology](testing-methodology.md).
+Its integral is 1. The report records seeds, the MC policy, index window,
+toolchain, hardware, raw results, and approximate uncertainty. It compares
+construction plus indexed generation and function evaluation as well as
+per-point throughput. It uses a nonaligned Sobol block, so it is not a comparison
+of optimal net usage.
 
-At 40 points rather than 4096 the picture is different again; see
-[the small-sample regime](small-sample-regime.md).
+The decaying weights give later dimensions less influence. A different
+integrand, reversed importance ordering, sharper peak, discontinuity, or time
+budget can change the result. Nested Halton and Owen Sobol merit consideration
+when their extra work improves the relevant estimator. Digital shifting and
+fixed-permutation Halton can suit cheaper generation budgets; fixed-permutation
+scrambling does not give unbiased uniform marginals. See
+[Randomization](randomization.md) for statistical assumptions and
+[the small-sample regime](small-sample-regime.md) for separate finite-budget gates.
 
-## Sobol's two balance properties
+The ordinary smooth-product quality tests use 40 seeds, skip 64, leap 1, and a
+`math/rand` baseline of consecutive draws from one source seeded 20240823.
+Their broad margins are regressions for those fixtures. Their MC baseline differs
+from the canonical performance report, which uses a fresh source per stream.
+`TestIntegrationAcrossReferenceFunctionsAndBudgets` broadens coverage to moments,
+interactions, reversed weights, a peak, and a discontinuity, with aligned Sobol
+blocks. [Testing methodology](testing-methodology.md) describes those gates.
 
-Each one makes a correct sequence look broken, so both are worth knowing before you test it.
+## Sobol alignment and projections
 
-**The (t,m,s)-net property is 2^m-aligned.** An elementary interval of volume `2^(t-m)`
-contains `2^t` points, with one-point occupancy only for `t=0`. This holds on a
-2^m-_aligned_ block of raw indices, so a stratification check
-wants `WithSkip(2^m - 1)`. With the default skip of 0, all 40 of the first 40 dimensions come
-out unbalanced at m=8; at skip 255, none of them do. The alignment is stated on the type and
-on `At`.
+A base-2 `(t,m,s)`-net puts `2^t` points in each dyadic elementary interval of
+volume `2^(t-m)` in a qualifying block of `2^m` points. Only `t=0` gives
+one-point occupancy. The guarantee concerns a complete block of raw indices
+beginning at a multiple of `2^m`, with leap 1.
 
-For any later aligned block, use `WithSkip(q*2^m - 1)` with representable
-`q >= 1` and leap 1, checking that the entire block fits the raw-index ceiling.
-The raw-origin block is not exposed by this API. Later-block and maximum-block
-regressions, and the decision to retain skip rather than add another helper,
-are described in [API design](api-design.md).
+This API starts at raw index 1 by default. For a later aligned block of
+`N = 2^m` points, use `WithSkip(q*N - 1)` with a representable `q >= 1`.
+The entire block must fit the raw-index ceiling. Negative skip is clamped to
+zero, so `WithSkip(-1)` does not expose the origin block. [API design](api-design.md)
+records the decision to retain skip/indexed access rather than add another helper.
 
-**Not every projection is a t=0 net.** Projections inherit the full-dimensional t
-guarantee and can improve it. The D(6) direction numbers optimise two-dimensional
-projections without making them all nets. Of the 780 pairs among the first 40 dimensions, 18
-are balanced at every split at m=8 and 4 at m=10. Plot dimensions 0 and 1 and you get one
-point per cell at every aspect ratio; plot 12 and 23 over the same 256 points and 224 of the
-256 cells of the 16x16 grid are empty while one holds eight. Both are the correct table
-behaving correctly.
+Projections inherit the full-dimensional t guarantee and may improve it. The
+Joe–Kuo search improves projection quality without making every pair a t=0 net.
+The known first-two-dimensional t=0 projection is covered by
+`TestFirstTwoDimensionsFormAZeroNet`; other projections can legitimately have
+different occupancy. Digital shifts and nested scrambling preserve that occupancy
+quality, rather than repairing a poor direction table.
 
-## Dimension ceilings
+## Dimension and construction limits
 
-**Sobol** covers 1024 dimensions from the embedded Joe & Kuo direction numbers.
-`WithDirectionNumbers(r io.Reader)` takes a caller's own table in the same format for more —
-upstream publishes the same construction out to 21201 dimensions at
-<https://web.maths.unsw.edu.au/~fkuo/sobol/>, and `new-joe-kuo-6.21201` can be passed whole.
-The format and the invariants a table has to satisfy (contiguous _d_ from 2, exactly _s_
-direction numbers per row, every _m_i_ odd and below 2^_i_, exactly _s_-1
-coefficient bits with `a=0` at degree one, a primitive polynomial) are
-documented on `WithDirectionNumbers`; anything failing them is refused at construction. What
-the validator cannot prove is that the numbers came from the authors' search — direction
-numbers cannot be derived, so a table is the only honest option. A synthesised
-1200-dimension table, whose polynomials are found by running `isPrimitiveOverGF2` rather than
-asserted, drives the loader end to end in the test suite.
+Sobol's embedded table covers 1024 dimensions. Upstream publishes Joe–Kuo tables
+through 21201 at <https://web.maths.unsw.edu.au/~fkuo/sobol/>.
+`WithDirectionNumbers(r io.Reader)` takes the upstream format and consumes its
+reader during construction. Rows require contiguous dimensions, exactly s
+initial values, odd `m_i < 2^i`, bounded coefficients (`a=0` at degree one),
+and a primitive polynomial. The validator checks usability, not provenance or
+optimized projection quality. `TestDirectionTableBeyondTheEmbeddedCeiling`
+exercises a synthesized 1200-dimensional table.
 
-**Halton** has no fixed base table. Primes are sieved on demand, so `NewHalton(500)` works.
-Scrambling allocates one permutation per dimension, sized by that dimension's prime, so
-memory grows roughly as the sum of the first _d_ primes, four bytes per entry. That is about
-12 KB at 39 dimensions and 3.5 MB at 500, but the sum grows faster than _d_ does: 5000
-dimensions cost around 475 MB, so scrambling at that scale is a decision to make on purpose.
-The construction cost is in [Performance](performance.md).
+Halton's fixed digit scrambling retains one int32 permutation per dimension.
+Its digit payload is `4 * sum(first d primes)` bytes, before slices, allocator
+rounding, generator state, and sieve work; it grows faster than linearly.
+Nested scrambling instead has bounded root-table payload plus O(d) root state.
+[Performance](performance.md) records constructor measurements and advises
+reusing generators. Indexed access can be shared with separate output buffers.

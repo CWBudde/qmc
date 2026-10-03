@@ -17,7 +17,7 @@ compiled to `js/wasm`:
   slopes for 1/_N_ and 1/√*N*; and, finally making the page's name true, a
   discrepancy sweep: exact star discrepancy or Hickernell's centred L2, the
   sequence against a pseudo-random set of the same size, against the analytic
-  expectation of the random one.
+  random RMS baseline, `sqrt(E[CD2²])`, for centred L2.
 
 The organising rule is that **no QMC logic lives in JavaScript**. Every point,
 every prime base, every correlation and every integration error comes out of the
@@ -70,7 +70,7 @@ seed, and both pages expose it as a plain number — the Point Lab beside the
 burn-in, the Bench once per panel, so the heatmap and the sweep can be leaped
 independently.
 
-It is also the only control here whose legal values depend on the other
+Its legal values also depend on the other
 controls. _L_ must share no factor with any base in use, and if it does, that
 coordinate's leading digit never changes and it spends the whole run inside one
 strip of width 1/base — scrambling does not rescue it, because a permuted
@@ -78,7 +78,7 @@ constant is still constant. The library refuses that at construction, by name.
 At 39 Halton dimensions the smallest admissible leap is therefore **173**, and
 Sobol is base 2 in every dimension so it refuses every even leap.
 
-That sparsity is why there is a sixth export, `leaps`. It reports whether the
+The `leaps` export reports whether the
 current number is admissible for the sequence and dimension count now selected,
 which nearby values are, and — when it is not — the constructor's own refusal,
 naming the dimension and the base. The page renders that sentence verbatim under
@@ -95,39 +95,36 @@ thirty seeds at their documented fixed configuration.
 
 ## Discrepancy
 
-The third panel measures the quantity the phrase "low-discrepancy sequence"
-refers to, and the page has been called the Discrepancy Bench since it shipped
-while computing no discrepancy at all. It sweeps _N_ the way the convergence
-panel does and draws three curves on log–log axes: the sequence's discrepancy,
-a pseudo-random set's over the same _N_, and — for centred L2 — the closed-form
-expectation of the random one,
+Press Start to compare the sequence's discrepancy with one seeded pseudorandom
+set at each sample budget. Centred L2 also plots an analytic random RMS baseline,
+assuming independent continuous uniform points:
 
-    E[CD2] = sqrt(((5/4)^s - (13/12)^s)/N)
+    E[CD2²] = ((5/4)^s - (13/12)^s)/N
+    RMS(CD2) = sqrt(E[CD2²])
 
-which is exact, costs nothing to evaluate, and is the thing that makes the
-defect visible. The headline is the ratio **random ÷ sequence**, matching the
-convergence panel's **mc ÷ qmc**: a ratio of 1.00 needs no interpretation.
+This is generally different from the mean `E[CD2]`. The seeded finite-precision
+comparison is one realization, so its score need not lie on this baseline.
+The `analytic` response field retains its existing value; `analyticKind: "rms"`
+and `analyticLabel` identify the reference in `info`, `metrics` and discrepancy
+results. Star has `analyticKind: "none"` and no reference value.
 
-It opens on the defect — 39 dimensions, centred L2 — so the page loads showing
-the null result: three superimposed curves and a ratio of about **1.02**.
-Centred L2's expectation is dominated by a `(5/4)^s` term that depends only on
-each coordinate's marginal spread, which at 39 dimensions is 100.4% of the
-total, so the statistic has nothing left to say about how the points sit
-relative to one another. Drop the slider to 4 dimensions and star discrepancy
-becomes available and separates the same two point sets by about **1.7x**; drop
-centred L2 to 2 dimensions and it separates them by more than **12x**.
+The default is 39 dimensions and centred L2. At high dimensions CD2 can
+distinguish useful sequences from random points only weakly. Its squared random
+expectation is dominated by `(5/4)^s` as dimensions grow, which does not fix the
+ratio for any particular source, seed or point count. Try smaller dimensions,
+several seeds and another available metric. No fixed improvement is promised.
 
-**Star's ceiling is asked of the library, not restated here.** Exact star
-discrepancy is NP-hard in the dimension, and `qmc.StarDiscrepancy` refuses
-above six dimensions or above its own work budget with an error naming the
-leaf count, the reason, and the affordable point count for each dimension. The
-`metrics` export finds out by building the smallest possible request and reading
-that error, then prints it verbatim under the menu — exactly the `leaps`
-precedent, and for the same reason: the library is the only place that says what
-it accepts, and a second copy in the demo is the copy that goes stale. It also
-probes downward for the widest cube star still accepts and offers it as a
-button, so the page offers the fix and not only the refusal. The metric menu
-stays fully populated at every dimension count; Start is what gets disabled.
+The headline **random ÷ sequence** compares these two measured scores. The
+panel's 1.5× display threshold is a UI policy, not a significance test or an
+integration-error guarantee. A computed zero can reflect floating-point
+cancellation or a numerical floor; it does not prove a perfect point set.
+
+**Star's library acceptance is probed, not restated.** Generic multi-point
+star computation has dimension and work limits; the library also has cheap
+one-point and one-dimensional paths. This demo offers at least two points.
+`metrics` probes that minimum, prints the library's refusal when unavailable,
+and offers lower dimensions it accepts. Start is disabled when unavailable;
+the menu retains all metrics. The demo's additional point caps are a separate policy.
 
 **The N ceiling moves with the dimension slider.** General centred L2 costs
 O(*N*²*s*), with a cheaper one-dimensional path. The demo retains conservative
@@ -149,10 +146,11 @@ just check-demo-artifact /tmp/somewhere      # verify that exact build
 just test-demo-artifact                      # exercise publication/safety failures
 ```
 
-**An HTTP server is required.** Both pages `fetch("qmc.wasm")`, and a `file://`
-URL cannot fetch a `.wasm` at all. The server must also send the module as
-`Content-Type: application/wasm`; without it `WebAssembly.instantiateStreaming`
-refuses the response and the status line says so.
+**An HTTP server is required.** Pages and workers fetch `qmc.wasm`; local
+`file://` URLs are not a supported serving path. Send the module as
+`Content-Type: application/wasm` for streaming instantiation. The shared loader
+usually reads bytes for progress, which does not require that MIME type; its
+streaming path does. Serve JavaScript and CSS with their normal MIME types too.
 
 The build stages and validates a complete site before publishing it. Stable
 `index.html`, `analysis.html`, and `credits.html` entry pages select one immutable
@@ -179,8 +177,8 @@ unmanifested `dist` needs to be moved aside before building. See
 [the artifact policy](../../docs/toolchain.md#demo-artifact-publication) for the
 asset allowlist, locking, and caller-edit handling.
 
-`wasm_exec.js` is copied from your Go toolchain at build time and is never
-committed. It is version-locked to the compiler that produced the `.wasm`, and a
+`wasm_exec.js` is copied from the build compiler's toolchain and is never
+committed. It must match the compiler that produced the `.wasm`.
 The build verifies the compiler identity before and after compilation, and the
 artifact's hash binds both runtime bytes and the compiler version.
 
@@ -249,38 +247,40 @@ are untouched.
 
 ## Layout
 
-| File                | Role                                                                        |
-| ------------------- | --------------------------------------------------------------------------- |
-| `main.go`           | Export table; publishes `globalThis.qmc`                                    |
-| `leap.go`           | The `leaps` export: which leaps a generator accepts                         |
-| `discrepancy.go`    | The `discrepancy` and `metrics` exports, and both measured browser ceilings |
-| `index.html`        | Point Lab markup, with its DOM contract                                     |
-| `analysis.html`     | Discrepancy Bench markup, with its DOM contract                             |
-| `style.css`         | The shared instrument-rack stylesheet; owns the palette                     |
-| `render.js`         | `window.Render` — canvas primitives for both pages                          |
-| `runtime.js`        | Go runtime monitoring and recoverable request handling in each realm        |
-| `compute.js`        | UI worker client, request ownership, deadlines, and cancellation            |
-| `compute-worker.js` | Worker-hosted WASM exports and transferred output buffers                   |
-| `accessibility.js`  | Shared throttled live announcer, preserving the latest queued message       |
-| `app.js`            | Point Lab controller: scatter, transport, digit inspector                   |
-| `analysis.js`       | Bench controller: heatmap, hover, two cancellable N-sweeps                  |
-| `favicon.svg`       | An even point set and a clumped one, in 32 pixels                           |
+| File                | Role                                                                           |
+| ------------------- | ------------------------------------------------------------------------------ |
+| `main.go`           | Export table; publishes `globalThis.qmc`                                       |
+| `leap.go`           | The `leaps` export: which leaps a generator accepts                            |
+| `discrepancy.go`    | The `discrepancy` and `metrics` exports, library acceptance and demo work caps |
+| `index.html`        | Point Lab markup, with its DOM contract                                        |
+| `analysis.html`     | Discrepancy Bench markup, with its DOM contract                                |
+| `style.css`         | The shared instrument-rack stylesheet; owns the palette                        |
+| `render.js`         | `window.Render` — canvas primitives for both pages                             |
+| `runtime.js`        | Go runtime monitoring and recoverable request handling in each realm           |
+| `compute.js`        | UI worker client, request ownership, deadlines, and cancellation               |
+| `compute-worker.js` | Worker-hosted WASM exports and transferred output buffers                      |
+| `accessibility.js`  | Shared throttled live announcer, preserving the latest queued message          |
+| `app.js`            | Point Lab controller: scatter, transport, digit inspector                      |
+| `analysis.js`       | Bench controller: heatmap, hover, two cancellable N-sweeps                     |
+| `favicon.svg`       | An even point set and a clumped one, in 32 pixels                              |
 
 The Go side publishes eight exports — `info`, `points`, `correlate`, `converge`,
 `digits`, `leaps`, `discrepancy` and `metrics` — each taking one options object
 and returning one plain object.
 `info()` is the capability table: every `<select>` on both pages ships empty in
 the HTML and is filled from it, and every slider's range is overwritten from it
-at boot. Raising a limit in the library raises it in the UI without anyone
-editing markup, and adding a sequence or a randomization to the table in
+at boot. Updating the demo's capability table updates these controls without
+editing markup; library limits and demo work policies remain separate.
+Adding a sequence or a randomization to the table in
 `info.go` puts it in both pages' menus with no JavaScript edit at all. Each
 source reports its own dimension ceiling, whether it has prime bases and whether
 it supports the digit inspector, so the pages hide a panel from data rather than
 from a hard-coded list of source names.
 
-`newGenerator` in `converge.go` is the one place a generator is built, for every
-export. It returns `qmc.Sequence`, so `points`, `correlate` and `converge` carry
-no per-source branch at all. `digits` is the exception: it needs `Bases` and
+`newGenerator` in `converge.go` maps requested options to each sequence
+constructor and returns `qmc.Sequence`. The point/statistics loops use that
+interface; pseudorandom generation and Halton-specific metadata still have
+their own branches. `digits` needs `Bases` and
 `Permutation`, which are Halton's and are deliberately not on the interface, so
 it recovers the concrete type with an assertion and returns an error — never a
 panic — if it is ever reached for anything else.
@@ -292,8 +292,8 @@ canvas and the stylesheet cannot drift apart.
 
 The quasi-random sequence is a filled circle in teal, pseudo-random is a
 diagonal cross in amber, on every page and in every chart. The pairing is
-deliberate: colour alone excludes roughly one man in twelve, and
-sequence-against-random is the one comparison these pages exist to make.
+deliberate: shape preserves the comparison when users cannot distinguish the
+colours, including in greyscale.
 
 ## Reading the numbers
 
@@ -302,15 +302,14 @@ sequence-against-random is the one comparison these pages exist to make.
   them. A pair can look like a perfect lattice while the set is badly clumped
   somewhere you cannot see, and it can look like a diagonal while every other
   pair is fine. That is precisely why the Bench draws all pairs at once.
-- **Correlation is a symptom, not the disease.** A low-discrepancy sequence
-  promises even coverage of the whole box; pairwise correlation catches only the
-  most visible way that promise fails. Zero everywhere is necessary, not
-  sufficient.
+- **Correlation measures linear association.** Small sample coefficients do
+  not establish independence, low discrepancy or integration accuracy. A useful
+  finite point set need not have exactly zero correlation between every pair.
 - **A randomized run is seed-dependent by design.** Any of the four
-  randomizations makes this randomized quasi-Monte Carlo, not plain QMC: each
-  seed gives a different,
-  equally valid point set, and both the worst correlated pair and the error
-  curve wobble between seeds. One displayed seed is not a seed-distribution
+  randomizations makes this randomized quasi-Monte Carlo. Different
+  seeds can give different point sets, and both the worst correlated pair and
+  the error curve can vary. Finite seeded schemes need not give a unique point
+  set for every seed. One displayed seed is not a seed-distribution
   summary. Fix the seed and everything is reproducible again.
 - **The heatmap's colour ramp is eased, not linear.** Magnitudes are raised to
   the 0.65 power before they are coloured, making small coefficients easier to
@@ -319,22 +318,15 @@ sequence-against-random is the one comparison these pages exist to make.
   own realm. Worker placement changes responsiveness; benchmark timings still
   depend on the device, compiler, configuration, and warmup. The controlled
   measurements below concern UI behavior rather than universal library throughput.
-- **Centred L2 saturates, and the panel is built to show it.** Its expectation
-  over _N_ uniform points is exactly `sqrt(((5/4)^s - (13/12)^s)/N)`, and the
-  `(5/4)^s` term — the diagonal of the double sum, which depends only on each
-  coordinate's marginal spread — swamps everything a well-spread point set can
-  improve. Measured at _N_ = 1024, the random-to-sequence ratio decays
-  smoothly: 12.5x at 2 dimensions, 6.3x at 5, 2.4x at 10, 1.6x at 15, 1.28x at
-  20, 1.08x at 30, 1.02x at 39. That is a decay, not a cliff, so there is no
-  honest dimension count at which to refuse — the library returns the number
-  and documents the caveat, and the page decides in Go whether the ratio still
-  counts as separating the two sets rather than thresholding it in JavaScript.
-  Star discrepancy does not saturate; it is simply unaffordable above six
-  dimensions.
+- **A discrepancy comparison is one measurement.** CD2 can separate useful
+  and random sets only weakly at high dimensions. Compare its measured value
+  with another available metric and the random RMS reference; none of these
+  supplies an error bar for your integrand. Generic star computation has work
+  limits, and CD2 has floating-point range and cancellation limits. The demo's
+  point caps are retained work policies, not current runtime calibrations.
 - **The convergence chart is one seed, one integrand, one dimension count.** It
   shows the shape of the two error curves, not a claim about your integrand.
-  Change the dimension slider and watch how much less clear-cut the advantage
-  becomes as _d_ grows; that is the honest part of the picture.
+  Changes to the function, dimensions, point count or seed can change the ordering.
 
 ## Two things that look odd and are not
 
@@ -438,7 +430,8 @@ values follow the [ARIA progressbar definition](https://www.w3.org/TR/wai-aria-1
 ## Randomization interpretation
 
 The seed selects reproducible outputs. Fixed digit scrambling does not give uniform
-point marginals: its first base-2 point is 0.5 for every seed, so a one-point
+point marginals: with skip zero, its first base-2 point is 0.5 for every seed, so a
+one-point
 estimate of the integral of `x²` is 0.25 rather than 1/3 with zero seed variance.
 Digital shifting and nested schemes use finite grids, truncated tails, and seeded
 pseudorandomness. Replicate variability cannot bound those sources of bias.

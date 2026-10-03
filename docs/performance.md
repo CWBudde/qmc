@@ -1,9 +1,9 @@
 # Performance
 
-Use the controlled review benchmarks for comparisons. Historical timings in
-other source comments were collected with different index ranges and sometimes
-different machines. They are not a comparable current baseline; DOC-01 tracks
-their remaining consolidation in [PLAN.md](../PLAN.md).
+Use the controlled review benchmarks for comparisons. Current guidance links
+this report rather than repeating timings from different machines or index
+ranges. Historical changelog figures describe their release experiments;
+DOC-01's consolidation is recorded in [PLAN.md](../PLAN.md).
 
 ## Reproduce and inspect the evidence
 
@@ -34,7 +34,11 @@ matching [before](measurements/performance-2026-10-03/before-environment.json) a
 [after](measurements/performance-2026-10-03/after-environment.json) input metadata.
 The before library is commit `9f64761`, with the added test-only review harness;
 both captures explicitly record a dirty worktree. The after capture includes
-the root-cache implementation. Source hashes identify each measured snapshot.
+the root-cache implementation committed in `75c2427`. Source hashes identify
+each measured snapshot, including the dirty test harness. Later documentation
+and comment changes can alter file hashes without changing these measured
+algorithms; the archive is evidence for those snapshots rather than a hash claim
+about every subsequent HEAD.
 Timings varied materially in the first campaign, so a separate
 [cache recheck](measurements/performance-2026-10-03/cache-recheck.txt) preceded
 implementation. The final campaign corroborates its result. Medians and ranges

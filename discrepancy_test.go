@@ -588,18 +588,9 @@ func randomPoints(rng *rand.Rand, n, s int) [][]float64 {
 	return pts
 }
 
-// TestQMCBeatsPseudorandomOnStarDiscrepancy is the positive control for the
-// star walk: the statistic has to see the property the package exists for.
-//
-// The asserted factor is 1.5, far below the measured 3.9x, for the same reason
-// integration_test.go asserts 5x against a measured 16x — an unlucky
-// scrambling seed must not turn a working package red.
-//
-// Three seeds rather than ten: this shape is 2.3e7 leaves per call, which is
-// most of a second each and roughly seventeen times that under -race, and it
-// is by a wide margin the most expensive test in the package. The measured
-// spread across seeds is a few percent against an asserted margin of more than
-// twofold, so the extra seeds would buy nothing but wall clock.
+// TestQMCBeatsPseudorandomOnStarDiscrepancy checks a low-dimensional fixed-seed
+// workload with a loose empirical margin. The seed count limits enumeration
+// cost; this does not prove an ordering for arbitrary point sets.
 func TestQMCBeatsPseudorandomOnStarDiscrepancy(t *testing.T) {
 	if testing.Short() {
 		t.Skip("statistical sweep; run just test-statistical")
@@ -706,17 +697,13 @@ func TestCenteredL2SeparatesQMCFromRandomAtLowDimensions(t *testing.T) {
 // it is the reason CenteredL2Discrepancy's doc comment carries a caveat rather
 // than a recommendation.
 //
-// Three things are asserted together, and they only mean something as a set:
-// the random baseline reproduces the analytic expectation
-// sqrt(((5/4)^s - (13/12)^s)/N), which pins that the returned quantity really
-// is the square root of Hickernell's statistic; the QMC and random values sit
-// within 10% of each other, which is the blindness; and over the very same
-// point sets the integration error differs by at least 5x, which proves the
-// point sets are not in fact equivalent and that it is the statistic, not the
-// generator, that has stopped discriminating.
+// The sampled mean CD2 squared is checked against its exact i.i.d. expectation.
+// Separately, mean CD2 values differ by less than 10% while the same point sets'
+// product-integrand RMS errors differ by at least 5x. This demonstrates weak
+// separation for this workload, not a universal high-dimensional cutoff.
 //
-// If the two CD2 values ever do separate here, the documentation's caveat is
-// wrong and must be rewritten. Do not relax this test to make it pass.
+// A changed fixture result requires investigating the numerical/randomization
+// change and updating its documented measurement, not a universal conclusion.
 func TestCenteredL2SaturatesAtThirtyNineDimensions(t *testing.T) {
 	if testing.Short() {
 		t.Skip("statistical sweep; run just test-statistical")
@@ -731,6 +718,7 @@ func TestCenteredL2SaturatesAtThirtyNineDimensions(t *testing.T) {
 	rng := rand.New(rand.NewSource(20240827)) //nolint:gosec // statistical baseline, not cryptography
 
 	qmcCD2, mcCD2 := 0.0, 0.0
+	mcCD2Square := 0.0
 	qmcSqErr, mcSqErr := 0.0, 0.0
 
 	for seed := 1; seed <= streams; seed++ {
@@ -754,6 +742,7 @@ func TestCenteredL2SaturatesAtThirtyNineDimensions(t *testing.T) {
 
 		qmcCD2 += q
 		mcCD2 += m
+		mcCD2Square += m * m
 
 		qe := meanProductIntegrand(qPts) - 1
 		me := meanProductIntegrand(mPts) - 1
@@ -762,17 +751,18 @@ func TestCenteredL2SaturatesAtThirtyNineDimensions(t *testing.T) {
 	}
 
 	qmcMean, mcMean := qmcCD2/streams, mcCD2/streams
-	analytic := math.Sqrt((math.Pow(1.25, dims) - math.Pow(13.0/12.0, dims)) / n)
+	expectedSquare := (math.Pow(1.25, dims) - math.Pow(13.0/12.0, dims)) / n
+	analyticRMS := math.Sqrt(expectedSquare)
+	measuredSquare := mcCD2Square / streams
 
-	if rel := math.Abs(mcMean-analytic) / analytic; !finiteMeasurement(rel) || rel > 0.02 {
-		t.Fatalf("random CD2 = %.5f but sqrt(((5/4)^%d - (13/12)^%d)/%d) = %.5f (%.2f%% off); "+
-			"either the formula or the decision to return the square root is wrong",
-			mcMean, dims, dims, n, analytic, 100*rel)
+	if rel := math.Abs(measuredSquare-expectedSquare) / expectedSquare; !finiteMeasurement(rel) || rel > 0.02 {
+		t.Fatalf("sample mean random CD2 squared = %.5f, exact i.i.d. expectation = %.5f (%.2f%% off)",
+			measuredSquare, expectedSquare, 100*rel)
 	}
 
 	if gap := math.Abs(qmcMean-mcMean) / mcMean; !finiteMeasurement(gap) || gap >= 0.10 {
 		t.Fatalf("CD2 separates scrambled Halton (%.5f) from random (%.5f) by %.1f%% at %d dims; "+
-			"the saturation caveat in CenteredL2Discrepancy's doc comment is no longer true and must be rewritten",
+			"investigate the changed fixed-workload result and its documented measurement",
 			qmcMean, mcMean, 100*gap, dims)
 	}
 
@@ -785,10 +775,10 @@ func TestCenteredL2SaturatesAtThirtyNineDimensions(t *testing.T) {
 			ratio)
 	}
 
-	t.Logf("d=%d n=%d streams=%d: CD2 scrambled Halton %.5f, random %.5f (%.2f%% apart), "+
-		"analytic random expectation %.5f, integration RMS error %.3e vs %.3e (%.1fx)",
+	t.Logf("d=%d n=%d streams=%d: mean CD2 scrambled Halton %.5f, random %.5f (%.2f%% apart), "+
+		"analytic i.i.d. RMS CD2 %.5f, sampled mean random CD2 squared %.5f, integration RMS error %.3e vs %.3e (%.1fx)",
 		dims, n, streams, qmcMean, mcMean, 100*math.Abs(qmcMean-mcMean)/mcMean,
-		analytic, qmcRMS, mcRMS, mcRMS/qmcRMS)
+		analyticRMS, measuredSquare, qmcRMS, mcRMS, mcRMS/qmcRMS)
 }
 
 // meanProductIntegrand averages integration_test.go's smooth product
@@ -800,6 +790,35 @@ func meanProductIntegrand(pts [][]float64) float64 {
 	}
 
 	return sum / float64(len(pts))
+}
+
+// TestCenteredL2DependsOnJointAssociation checks two sets with identical
+// coordinate marginals but different association between those coordinates.
+// Exact piecewise integration of the defining nearest-corner boxes, summed
+// over both 1D projections and the 2D projection, gives squares 127/576 and 25/144.
+func TestCenteredL2DependsOnJointAssociation(t *testing.T) {
+	paired := [][]float64{{0, 0}, {0.5, 0.5}}
+	crossed := [][]float64{{0, 0.5}, {0.5, 0}}
+
+	for _, tc := range []struct {
+		name   string
+		points [][]float64
+		want   float64
+	}{
+		{name: "paired", points: paired, want: math.Sqrt(127) / 24},
+		{name: "crossed", points: crossed, want: 5.0 / 12},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := qmc.CenteredL2Discrepancy(tc.points)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if !finiteMeasurement(got) || math.Abs(got-tc.want) > 1e-14 {
+				t.Fatalf("same-marginal %s set: CD2 = %.17g, want %.17g", tc.name, got, tc.want)
+			}
+		})
+	}
 }
 
 // TestCenteredL2MatchesTheRandomExpectation pins the closed form itself across

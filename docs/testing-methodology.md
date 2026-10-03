@@ -1,188 +1,112 @@
 # Testing methodology
 
-Every claim in this repository is meant to be re-runnable. That imposes a shape on the tests,
-and the shape has a few rules that are not obvious until a test has already lied once.
+Tests distinguish API contracts, mathematical structure, finite seeded quality,
+and actual browser behavior. Passing one category does not establish the others.
+The remediation history and measured verification runs live in
+[PLAN.md](../PLAN.md); current performance evidence lives in
+[Performance](performance.md).
 
-## Gates assert ratios and orderings, never constants
+## Empirical gates and baselines
 
-`TestScrambledQMCBeatsMonteCarloAt39Dims` measures 19–28x depending on n, and asserts **5x**.
-The 5x threshold is an empirical regression margin on that smooth product and those
-budgets. It is not a universal QMC convergence guarantee, and independent samples can
-occasionally beat it by chance. A gate pinned to the observed 19x would have less room
-for seed variability or a different Go version’s `rand`. Use additional integrands and
-negative controls when assessing broader quality.
+Smooth-product tests use conservative margins against Monte Carlo for their
+specified integrand and sample budget. A measured advantage is logged rather
+than pinned as an exact assertion. Other functions include nonlinear moments,
+early/late interactions, reversed weights, a localized Gaussian, and a
+discontinuous triangle. The broad sweep permits deterioration on difficult
+functions; it does not require universal QMC superiority.
 
-The measured figures go into `t.Logf` rather than into an assertion, so a run still reports
-them and a regression is visible before it is fatal.
+`mcRMSError` uses consecutive draws from one `math/rand` source seeded with 20240823. It is reproducible pseudorandom sampling. The canonical performance
+campaign instead constructs a fresh source seeded with `20240823 + seed` for
+each replicate. These are different finite baselines; their numerical ratios
+must not be merged. Neither policy proves ideal independence.
 
-## Baselines are seeded and shared
+Large-budget integration fixtures use 40 seeds. The small-sample fixtures use
+200 seeds. RMS standard errors, where reported, apply the delta method to the
+replicate squared errors under an independent-replicate model. They describe
+finite-sample variability, not randomization bias or a confidence guarantee
+for arbitrary integrands. The small-sample comparison permits Owen within
+20% of the measured leader rather than requiring an exact winner.
 
-`mcRMSError` uses `rand.NewSource` with a fixed constant, never time or the global source, so
-a failure is reproducible and a pass is not luck. The streams are consecutive draws from one
-source rather than separately seeded generators: separately seeded ones can correlate, which
-would flatter the baseline the test is trying to beat honestly.
+Correlation tests examine each seed's worst adjacent-pair absolute Pearson
+correlation at their specified window. Zero correlation does not imply
+independence. Summary conventions are stated by the producing fixtures:
+fixed-digit correlation uses the average of the middle observations and
+nearest-rank p90; some nested/leap fixtures retain upper-middle or alternative
+quantile indices. Do not compare rounded summaries as though these conventions
+were identical.
 
-## Negative controls
+## Negative controls and independent references
 
-`TestUnscrambledStillShowsTheDefect` asserts the _unscrambled_ correlation is still at least
-0.5 (it measures ~0.81). Without it, a change that quietly destroyed the measurement would
-make the positive test pass more easily. `TestCenteredL2SaturatesAtThirtyNineDimensions` does
-the same job for CD2: it asserts the random figure lands within 2% of the analytic
-expectation, the QMC-vs-random gap is under 10%, _and_ that the same point sets still give a
-5x integration advantage — so it proves something about the statistic rather than about the
-points.
+Plain Halton retains a high-base correlation negative control, and seeded MC
+must fail the conservative QMC smooth-product gate. The CD2 saturation fixture
+compares particular QMC and pseudorandom sets, then integrates the same sets;
+it checks contrast for that workload rather than a dimensional impossibility.
+For the analytic control, compare mean **squared** CD2 with `E[CD2²]`.
+The root of that expectation is an RMS norm; mean CD2 need not equal it.
 
-The suite once could not distinguish this library's output from pseudorandom noise. The
-correlation test passes for `math/rand` (0.124, against a 0.25 threshold — better than the
-real generator's 0.141). `integration_test.go` now pins QMC integration error against Monte
-Carlo at 5x; the same substitution scores 0.9x and fails.
+Independent references include direct anchored-box enumeration, numerical
+integration of the centered-discrepancy definition, exact rational tensor
+grids, slow radical inverses, and a test-only ideal nested-permutation Owen
+implementation. Reference agreement covers the named configurations and
+tolerances, not every finite-dimensional floating-point case.
 
-## Replicate counts and uncertainty
+Nonfinite values fail quality summaries and ratio predicates. Boundary tests
+cover both integer widths, constructors, reset, cursor limits, huge permuted
+digit reversals, discrepancy range errors, and short destination buffers.
+Shared options and concurrent indexed readers run under the race detector.
 
-Correlation summaries now use thirty seeds and report the median, nearest-rank
-p90, and worst of each seed's worst adjacent-pair absolute correlation. The
-previous five-seed sample was too sensitive to re-instantiation of a scramble.
-The current fixed-digit test at 39 dimensions and 600 points after skip 64
-reports 0.0909 / 0.1139 / 0.1611 for those summaries.
+## Conditional structure needs its own tests
 
-The product integration tests use forty streams. Ten-stream comparisons between
-similar schemes proved too noisy to support a ranking: two full-permutation
-variants differing only in shuffle direction previously read 44.0x and 31.9x
-on the same ten seeds. These historical values describe that old experiment;
-they are not measurements of the current validation job.
+A bijective digit transformation can preserve net occupancy while losing the
+intended prefix conditioning. Dedicated tests exist for both schemes:
+`TestOwenScrambleIsNested` and `TestNestedPermutationsDependOnThePrefix`.
+Mutation checks recorded under TEST-01/02 in [PLAN.md](../PLAN.md) confirm that
+removing conditioning fails these tests. A partial mutation can still escape a
+structure test's sensitivity; deterministic seeded references and distribution
+fixtures provide complementary evidence. None proves ideal joint independence
+for a finite hash family.
 
-`TestIntegrationAcrossReferenceFunctionsAndBudgets` adds seven independently
-integrable cases: nonlinear moments, early/late interactions, decaying/reversed
-weights, a localized Gaussian peak, and a discontinuous triangle. It uses forty
-streams at 64/256/1024 points in 24 dimensions, sharing samples across functions.
-Sobol cases use power-of-two blocks aligned through `WithSkip(N-1)`. MC is seeded
-and shared; plain Halton is a negative control for high-base moment bias.
+## Reproduction and budgets
 
-The sweep logs absolute RMS error and an estimated standard error of that RMS
-summary (the delta method applied to replicate squared errors). These are
-empirical summaries under an independent-replicate model, not bounds on the
-seeded family's bias. The broad 3x-MC deterioration gate does not require universal
-superiority on peaks or discontinuities. Only the two smooth low-order cases at
-N=1024 require a conservative measured 2x margin. Existing smooth-product gates
-continue to require 5x at their specified workloads.
+```bash
+just test-fast                # routine contracts, -short, 3-minute Go timeout
+just test-race                # routine contracts with race detector, 5 minutes
+just test-statistical         # full ordinary/statistical suite, 10 minutes
+just test                    # same full suite plus coverage
+just test-race-statistical    # optional full statistical race audit, 40 minutes
+```
 
-Reproduce with `go test -count=1 -v -run
-'Test(IntegrationAcrossReferenceFunctionsAndBudgets|ScramblingBreaksHighDimensionalCorrelation|ScrambledQMCBeatsMonteCarlo.*|ShiftedSobolBeatsMonteCarloAt39Dims|SobolAgainstHaltonAt39Dims|SobolBeatsMonteCarloAtLowDims|OwenBeatsDigitalShiftAt39Dims)' ./...`.
-Do not infer a universal convergence rate or general ranking from these cases.
+The PR matrix executes routine tests on amd64 and executable 386 with the
+supported Go versions. Scheduled/on-demand jobs run the full statistical suite;
+release verification includes it. The optional full statistical race audit is
+separate: successful routine race checks do not imply that audit was executed.
+Budgets are limits rather than speed guarantees.
 
-## A stratification test cannot police nesting
+For specific logged quality evidence:
 
-Measured twice, independently, on both scrambling schemes: a scramble that has stopped being
-conditional on the digits above it still maps elementary intervals onto elementary intervals,
-so it still produces a valid net. Removing both bit reversals from `owenScramble` leaves the
-net-property test passing across all 1024 dimensions at m=4, 8 and 12, along with the
-bijectivity, per-node injectivity and `Next`/`At` agreement tests. Only the dedicated nesting
-test fails.
+```bash
+go test -count=1 -v -timeout=10m -run 'Test(IntegrationAcrossReferenceFunctionsAndBudgets|SmallSample.*|ScramblingBreaksHighDimensionalCorrelation|CenteredL2SaturatesAtThirtyNineDimensions)' ./...
+```
 
-**Any future scrambling scheme needs a test that pins the conditional structure directly.**
+Use [Performance](performance.md)'s measurement recipe for controlled timing
+campaigns. Keep benchmarks separate from concurrent test workloads and record
+the compiler, hardware, source revision, seeds, sample windows, repetitions,
+aggregation, and uncertainty assumptions alongside published figures.
 
-## The nesting test has a sensitivity floor
+## Demo verification
 
-Following on from that: hashing the node down to `node & 0xFF`, so roughly one node in 256
-shares a permutation with another, leaves the nesting test passing. It was caught instead by a
-chi-square over all 120 permutations of base 5 and by the golden-value test.
+The nested demo module has explicit WASM build/vet/lint gates, offline loader
+and DOM-contract tests, and actual Chrome checks through `just test-browser`.
+The runtime fixture checks digit expansions and constructor capabilities
+against the Go library. Production-page checks cover numerical references,
+typed-buffer ownership, config snapshots, cancellation, recovery/exit/reload,
+asset/cache failures, notices, keyboard input, accessibility-tree semantics,
+reduced motion, and unexpected network/console/runtime errors.
 
-**A test that detects total loss of conditioning does not detect partial loss of it.**
-
-## Reference implementations, not intuition
-
-Where a closed form is easy to get subtly wrong, the test compares against something slower
-and more obviously correct rather than against a hand-computed expectation:
-
-- `starBruteForce` in `discrepancy_test.go` enumerates boxes directly.
-- `integrateCenteredDiscrepancy` integrates CD2's definition numerically.
-- `exactOwen` in `owen_uniformity_test.go` is a full nested-permutation Owen scramble, used as
-  ground truth for the hash approximation.
-- `robustness_test.go` carries slow reference forms of both radical inverses.
-
-## Coverage
-
-Coverage sits around 93%, and the uncovered statements are precisely the defensive guards.
-That is the normal shape of coverage, not a target to chase — but the index-overflow bug lived
-in exactly that region, so the guards deserve tests rather than a higher percentage.
-
-## Known gaps
-
-The reasoning above is settled; the suite does not yet act on all of it.
-
-- **The demo module has no tests at all**, and it duplicates library logic, so nothing catches
-  the two halves drifting apart. See [the WebAssembly demo](wasm-demo.md).
-- **The defensive guards deserve tests.** The uncovered statements are precisely those guards.
-  That is the normal shape of coverage, not a target to chase — but the index-overflow bug
-  lived in exactly that region.
-
-## Ranking and nonfinite safeguards
-
-The large-budget small-sample comparison permits Owen within 20% of the measured
-leader instead of forcing an exact winner. The historical top-two gap was well
-within replicate uncertainty. This margin is an empirical regression policy,
-not a statement that Owen must be optimal for arbitrary integrands.
-
-RMS helpers, statistical ratios, and positive range predicates reject NaN/Inf.
-Adjacent-correlation aggregation propagates a nonfinite value to its caller
-instead of dropping it through a false max comparison. Reversal overflow beyond
-the fuzz mapping is tested separately with a valid reverse permutation in base
-167; that raw index fits int64 but not int32, where the test explicitly skips.
-
-Conditional structure tests exist for both scramblers. Mutation checks on
-isolated copies confirmed that removing Owen’s bit reversals fails
-`TestOwenScrambleIsNested`, and removing nested child conditioning fails
-`TestNestedPermutationsDependOnThePrefix`. Masking child-node inputs to eight bits
-still passes the latter: it has a sensitivity floor. The seeded reference test
-`TestNestedIsArchitectureIndependent` detects that partial mutation. Preserve
-both direct structure tests and reproducibility/distribution references; none
-alone proves ideal joint independence.
-
-## Verification budgets
-
-- `just test-fast`: ordinary contracts and the small smooth-product quality gate,
-  with `-short -count=1 -timeout=3m`. It also runs as executable 386 in PR CI.
-- `just test-race`: the same routine suite with the race detector and a five-minute
-  Go timeout. This includes shared options and concurrent indexed access.
-- `just test-statistical`: the complete ordinary suite, including large discrepancy,
-  broad integrands, seed-distribution, and small-sample sweeps, with a ten-minute
-  Go timeout. It runs weekly/on demand on amd64 and 386, and for release validation.
-- `just test`: that same complete suite with coverage; scheduled amd64 validation
-  runs it once instead of duplicating the statistical run.
-- `just test-race-statistical`: an optional explicit full-suite audit with a
-  forty-minute timeout, selected by the manual statistical workflow’s `full_race`
-  input. PR/release race claims refer to the complete routine suite, not to an
-  uncompleted statistical race audit.
-
-The full ordinary completed-core milestone took 162 seconds locally on Go 1.26.1,
-i7-1255U; larger replicate counts add work. Job budgets include setup overhead:
-ten minutes for PR contracts, twenty for scheduled statistics, and forty-five for
-an explicitly requested full statistical race audit. Budgets are bounds, not
-performance guarantees. CI uses the same just recipes documented here.
-
-`just test-browser` verifies both demo pages in real Chrome using an owned
-temporary build, a local server, and a test-only runtime fixture. It covers
-source/randomization switches, sweep controls, Gaussian references, typed
-transfers, request recovery, actual Go exit/reload, and missing/corrupt assets.
-Unexpected console/runtime/resource errors and third-party requests fail the
-gate. `just test-browser dist` checks an existing upload artifact. Server startup,
-page readiness, protocol requests, and the browser run have 5/30/20/120-second
-deadlines; the existing-artifact run passed in 5.790 seconds on Chrome
-144.0.7559.109 and Node 18.19.1. PR/Pages jobs use the same commands. Compile-only
-checks remain useful but do not establish runtime behavior. The suite now also
-verifies dynamic canvas summaries, named/current progressbars, textual correlation
-values through 48×48 dimensions, real keyboard navigation, Chromium accessibility
-tree semantics on both pages, reduced motion, and throttled final announcements.
-All four heavy exports run in cancellable workers and undergo normal/6× DOM
-throttling checks; `QMC_BROWSER_CPUS=0 just test-browser` additionally constrains
-all Chrome threads to one permitted Linux CPU. The batched performance check has
-a 90-second protocol deadline within the overall browser budget. DEMO-03/DEMO-07
-in [PLAN.md](../PLAN.md) record workload evidence and verification limits;
-the demo README contains manual keyboard steps and assistive-technology caveats.
-
-At this verification milestone, the corrected routine race suite completed in
-109.685 seconds and executable 386 fast checks in 48.608 seconds. Full ordinary
-statistical validation took 306.323 seconds, within its ten-minute budget. The previous
-short-mode snapshot still entered expensive star-discrepancy statistics and hit
-a five-minute timeout. The new exclusions resolve that budget problem while
-retaining the complete indexed-access/option/boundary race contracts.
+`just test-browser dist` checks a particular built artifact. Browser startup,
+page readiness, and protocol requests have bounded deadlines; the browser run
+has a two-minute budget. `QMC_BROWSER_CPUS=0 just test-browser` offers a
+single-permitted-CPU profile on Linux. Automated Chromium accessibility checks
+do not replace testing with assistive technology or other browser engines.
+See the [demo README](../examples/wasm-demo/README.md) and
+[toolchain](toolchain.md) for setup, manual inspection, and shared CI gates.

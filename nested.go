@@ -23,56 +23,9 @@ package qmc
 // deeper entries are evaluated lazily by nestedDigit. See docs/performance.md
 // for the separate root, shallow-node, and full-tree measurements.
 //
-// # This used to be an affine construction, and the swap is measured
-//
-// Until this version the permutation at a node was drawn not from all p! but
-// from the p(p-1) affine maps x -> (a*x + b) mod p, a in [1,p). That is free
-// of shuffles — p is prime and a is never 0, so every such map is a bijection
-// by arithmetic — and it made the scheme about five times cheaper than it is
-// now. What it cost was the shape of the correlation distribution. At 600
-// points a large-base coordinate has only its first digit varying, and on that
-// digit an affine map is a ramp of another slope rather than a scattering; two
-// neighbouring dimensions that draw commensurate slopes then ramp together
-// much as the unscrambled ones did. The affine family is also a vanishingly
-// thin slice of the permutations it stands in for — 20 of 120 at base 5, and
-// worse from there.
-//
-// Both constructions measured at 39 dimensions on this machine, against
-// random-digit scrambling. Integration is the RMS relative error of the
-// product integrand at n=4096 as a factor against plain Monte Carlo, over 10
-// and over 40 scrambling seeds; correlation is the worst adjacent-pair |r| at
-// 600 points after skipping 64, over 30 seeds; cost is one 39-dimensional
-// point, median of seven runs.
-//
-//	                     integration          adjacent-pair |r|       one point
-//	                     10 str.  40 str.   median    p90    worst        ns
-//	random-digit          17.7x    24.4x     0.093  0.126    0.161        548
-//	nested affine (was)   53.2x    49.9x     0.090  0.195    0.373       4038
-//	nested full (is)      31.9x    41.1x     0.089  0.123    0.141      20881
-//
-// The affine row's cost is that construction's digit loop timed on its own,
-// since it is no longer reachable through AtInto; the two harnesses agree to
-// within half a percent on the row that both can measure.
-//
-// The correlation tail is gone: 0.141 worst against affine's 0.373, now under
-// random-digit's own 0.161 rather than more than double it, and the 90th
-// percentile has come back from 0.195 to 0.123. That is the whole reason for
-// the change, and it is what the affine restriction was suspected of causing.
-//
-// On this integrand, integration error exceeds affine's and is below
-// random-digit's over forty seeds. The
-// 10-seed figures are too noisy to read — the same 10 seeds gave 44.0x for a
-// full-permutation variant that differed only in the direction of the shuffle
-// — so the 40-seed column is the one to compare: 41.1x against affine's 49.9x
-// and random-digit's 24.4x, with 80 seeds giving 41.9x against 26.2x. So about
-// a sixth of the integration advantage was paid for the tail. That is the
-// trade this change makes, and it is deliberate: the callers most likely to
-// reach for a stronger scrambling are the ones a 0.37 correlation would
-// mislead.
-//
-// The cost column is the part that is not a trade. Five times the affine
-// price, and thirty-eight times random-digit's, buys the uniformity; there is
-// no version of a full permutation that is as cheap as two hashed integers.
+// Historical affine permutations, correlation comparisons, and the measured
+// lazy-shuffle/cache tradeoffs are documented in docs/randomization.md and
+// docs/performance.md. They are workload observations, not uniformity proofs.
 //
 // Reference: Owen, A. B. (1995), "Randomly permuted (t,m,s)-nets and
 // (t,s)-sequences".
@@ -157,14 +110,10 @@ func (n *nestedScrambler) rootPermutation(dim int) []int32 {
 
 // nestedRoot derives the tree root for one dimension.
 //
-// The dimension is mixed into the stream seed rather than drawn from one
-// shared stream, for the reason newPermutation does the same: a generator
-// built for 5 dimensions and one built for 39 must agree on their first 5.
-// Drawing roots consecutively from a single stream would tie every dimension's
-// randomization to how many dimensions were asked for, so a caller who widened
-// a search from 5 knobs to 39 would silently get a different sequence in the 5
-// knobs that had not changed, and the two runs' results would stop being
-// comparable with nothing in the API to say so.
+// Per-dimension keying keeps each root a function of seed and dimension,
+// independent of the requested dimension count. A stream with one fixed-size
+// draw per root could also preserve shared prefixes; keying is the chosen
+// construction, not a mathematical requirement.
 func nestedRoot(seed uint64, dim int) uint64 {
 	rng := splitMix64(seed ^ (uint64(dim)+1)*0x2545F4914F6CDD1D)
 	// The same warm-up as newPermutation: adjacent dimensions differ in few
@@ -177,22 +126,16 @@ func nestedRoot(seed uint64, dim int) uint64 {
 
 // nestedChild returns the node reached from node by descending through digit.
 //
-// The tree is walked rather than addressed. The obvious alternative — hash
-// (seed, dim, depth, prefix), with the prefix the integer formed by the digits
-// above the current one — is the same idea, but the prefix of a depth-k node
-// in base p is a k-digit base-p number and the leading-zero tail below keeps
-// extending it: in base 2 it overflows uint64 after 64 digits, and the tail
-// alone reaches depth 56. Past that, distinct nodes would alias onto one hash
-// and the scramble would quietly stop being nested at the depths where it was
-// still contributing digits. Chaining carries the whole path in 64 mixed bits
-// at any depth, for the same one mix per digit.
+// Hash chaining avoids storing an arbitrarily long base-p digit prefix in an
+// integer. The node remains a deterministic function of the original path;
+// finite 64-bit hashes can still collide and do not prove independent nodes.
 func nestedChild(node uint64, digit uint64) uint64 {
 	rng := splitMix64(node ^ (digit+1)*0x9E3779B97F4A7C15)
 
 	return rng.next()
 }
 
-// nestedPermutation writes the node's uniform permutation of
+// nestedPermutation writes the node's seeded permutation of
 // {0..len(perm)-1} into perm.
 //
 // This is newPermutation's Fisher-Yates over newPermutation's rejection
@@ -204,7 +147,7 @@ func nestedChild(node uint64, digit uint64) uint64 {
 //
 // The third difference is the load-bearing one: the swap loop runs upwards,
 // i = 0, 1, ... n-1 with j drawn uniformly from [i, n), where newPermutation
-// runs downwards. Both orders give a uniform permutation. Only the upward one
+// runs downwards. Both orders are uniform under independent uniform draws. Only the upward one
 // finishes position i at step i and never touches it again, which is what lets
 // nestedDigit evaluate a single entry without running the rest — see there.
 // The two functions must agree entry for entry, and
@@ -232,15 +175,9 @@ func nestedPermutation(node uint64, perm []int32) {
 // prefix of the same stream — this is not an approximation of the permutation,
 // it is the permutation, read at one point.
 //
-// That matters for cost, not for tidiness. Measured at 39 dimensions, 366 of
-// the 484 nodes a point visits are in the leading-zero tails, and every one of
-// those asks for digit 0. Digit 0 is settled by the very first draw, out of an
-// identity array, so it needs no array at all and no shuffle: one uniformBelow
-// and done. Over the same 39-dimensional digit loop, medians of seven runs,
-// evaluating the full permutation at every node costs 129740 ns against this
-// version's 20790. The difference is almost entirely the 64-bit division
-// uniformBelow does per draw: the full shuffle pays it base-1 times per node,
-// digit 0 pays it once, and a digit d pays it d+1 times.
+// Digit zero settles on the first draw and needs no scratch array or shuffle.
+// A nonzero digit d evaluates steps 0..d; later steps cannot change its entry.
+// See docs/performance.md for measured lazy/full-shuffle comparisons.
 //
 // scratch must have room for base entries; only positions 0..digit and the
 // swap partners drawn above them are touched, but the identity fill is over
@@ -299,18 +236,9 @@ const nestedPermStack = 512
 //
 // so the loop stops once result + p*f is result: the point past which no
 // remaining digit can move the float64, whatever those digits turn out to be.
-// That is a statement about the arithmetic rather than a guess at a depth.
-// Measured for index 4160 it runs 42 extra digits in base 2 and 6 in base 167,
-// worst case over indices 1..20000 being 56 and 8, for 366 of the 484 nodes a
-// 39-dimensional point visits.
-//
-// Stopping earlier would not be a rounding matter. Dropping the tail entirely
-// biases every coordinate low by its mean — measured over the 600 indices of
-// the correlation test, 0.0014 in base 2 and 0.0005 in base 167 — and, far
-// worse, puts short indices back on the coarse lattice that scrambling exists
-// to break: without the tail an index with m digits lands exactly on a
-// multiple of p^-m, so every one-digit index in base 167 would sit exactly on
-// some k/167.
+// The stopping test uses the remaining-tail bound rather than a fixed depth.
+// Omitting the tail would instead force short indices onto a coarse lattice;
+// a one-digit base-p index would land on a multiple of p^-1.
 //
 // The digits are accumulated straight into the float, most significant first,
 // rather than reversed into a uint64 as scrambledRadicalInverse does. That

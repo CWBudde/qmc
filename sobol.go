@@ -28,18 +28,12 @@ const maxSobolRawIndex = min(uint64(math.MaxInt), uint64(math.MaxUint32))
 // Sobol generates points of the Sobol sequence in a fixed number of
 // dimensions, using the Joe-Kuo direction numbers.
 //
-// The sequence is generated in Gray-code order, which is the order Joe and
-// Kuo's own generator produces and the order every reference value in this
-// package's tests was taken from. That choice is not cosmetic and it is not
-// reversible later: point i is the direct-form point at index gray(i) =
-// i XOR (i>>1), so Gray-code order and index order visit the same points in
-// different sequences, and a caller who recorded outputs under one would not
-// recognise the other. The reason to pick it is that it is the only ordering
-// in which the stateful path can advance with a single XOR per dimension —
-// consecutive Gray codes differ in exactly one bit, so exactly one direction
-// number enters or leaves the accumulator. Index order would need a variable
-// number of XORs per step and would make Next no cheaper than At, which would
-// leave the stateful path with no reason to exist.
+// The sequence uses Gray-code order: point i is the direct-form point at
+// gray(i) = i XOR (i>>1). This matches the published reference values used in
+// the tests. Consecutive Gray codes differ in one bit, so this implementation
+// advances with one direction-number XOR per dimension. Other orderings can
+// use different precomputed recurrences; changing the ordering would change
+// the public sequence's indexed outputs.
 //
 // The reordering costs nothing that matters. Gray coding is a bijection on
 // [0, 2^m), so the first 2^m points are the same point set either way and the
@@ -55,45 +49,25 @@ const maxSobolRawIndex = min(uint64(math.MaxInt), uint64(math.MaxUint32))
 //
 // A base-2 (t,m,s)-net places 2^t points in each elementary interval of
 // volume 2^(t-m); one-point occupancy requires t=0. This property concerns
-// a block of 2^m raw indices that begins on a multiple of 2^m. It is not a statement about any
-// 2^m consecutive points, and this is the single most likely reason for a
-// caller to conclude the sequence is broken when it is not.
+// a block of 2^m raw indices that begins on a multiple of 2^m. Arbitrary
+// windows of 2^m consecutive points lack the same general guarantee.
 //
-// Point i is raw index skip+1+i, so the default skip of 0 hands out raw
-// indices 1..2^m, which straddles two aligned blocks and is short by exactly
-// the one point at the far end. Measured here at 40 dimensions and m=8, over
-// the first 256 points: with skip 0 all 40 dimensions are unbalanced, each one
-// leaving a single interval of the 256 empty and another holding two points.
-// It degrades from there rather than staying near-miss — with skip 100 the
-// same run leaves up to 101 of the 256 intervals empty. With WithSkip(2^m - 1)
-// the raw indices are 2^m..2^(m+1)-1, one aligned block, and all 40 dimensions
-// come out exactly balanced.
-//
-// So a stratification check has to choose its window: WithSkip(2^m - 1) is
-// what this package's own balance tests construct with, and the reason is
-// stated here rather than left as a magic constant in the tests. WithSkip
-// chooses which aligned block you get. There is no option that makes an
-// unaligned window a net, because no such option could exist.
+// Point i has raw index skip+1+i with leap 1. Default skip 0 starts at raw
+// index 1 and does not provide the usual first aligned power-of-two block.
+// For N=2^m points, WithSkip(q*N-1), q>=1, selects an aligned later block,
+// provided the entire block fits the supported raw-index range. The origin
+// block is not exposed by this API. Arbitrary unaligned windows lack the
+// general net guarantee, though a particular window may satisfy a net property.
+// See docs/api-design.md for checked examples and the compatibility decision.
 //
 // # Not every two-dimensional projection is a t=0 net
 //
-// Joe and Kuo's D(6) criterion optimises two-dimensional projections; it does
-// not make them all t=0, and nothing about a correct table promises that it
-// would. Measured over all 780 pairs among the first 40 dimensions, on an
-// aligned block: 18 pairs are balanced at every split at m=8 and 4 at m=10,
-// and (0,1) is the only pair in both lists.
-//
-// The gap between a good pair and a bad one is wide enough to be alarming.
-// Dimensions 0 and 1 put one point in every cell of every 2^a x 2^b grid with
-// a+b = 8. Dimensions 12 and 23, over the same 256 points, leave 224 of the
-// 256 cells of the 16x16 grid empty and pile 8 points into one cell. Both are
-// correct output from the correct table. A caller who plots two dimensions to
-// eyeball the sequence and happens to pick a pair like (12, 23) is looking at
-// a real property of Sobol sequences. A projection inherits the full net's
-// t guarantee (and can have a better t), but need not be a t=0 net.
-// Picking a different pair is the cheap answer. A digital shift is not: it
-// translates the whole net, so every shift of a poor projection is equally
-// poor, which is the point WithDigitalShift's own doc comment makes.
+// Joe and Kuo's D(6) criterion optimizes two-dimensional projections without
+// making them all t=0 nets. A projection inherits the full net's t guarantee
+// and may have a better t. Digital shifting and nested dyadic scrambling
+// preserve these counts rather than repairing a poor direction-number table.
+// Projection measurements and their sample blocks are in
+// docs/choosing-a-sequence.md.
 //
 // A Sobol generator is not safe for concurrent use through its stateful
 // methods (Next, NextInto, Reset). At and AtInto are stateless and may be
@@ -117,9 +91,9 @@ type Sobol struct {
 	shift []uint32
 
 	// owen is one hash seed per dimension, or nil unless Owen scrambling is
-	// on. It is never combined with shift: Owen scrambling already contains a
-	// random flip of the whole coordinate at the root of its tree, which is
-	// what a digital shift is.
+	// on. This API chooses one seeded randomization scheme at construction,
+	// so it is never combined with shift. Node flips already randomize each
+	// digit, including the first-digit flip at the root.
 	//
 	// Unlike shift, it cannot be folded into the accumulator. A digital shift
 	// is an XOR and therefore commutes with the Gray-code recurrence, so
@@ -133,8 +107,8 @@ type Sobol struct {
 	skip int
 
 	// leap is 1 unless WithLeap is on: point i is raw index skip+1+i*leap. Any
-	// value above 1 costs this generator its Gray-code fast path and its net
-	// balance, both explained at WithLeap.
+	// value above 1 costs this generator its Gray-code fast path and the
+	// general aligned-block guarantee, both explained at WithLeap.
 	leap int
 
 	// counter is the raw sequence index of the point Next will return, and
@@ -222,14 +196,14 @@ var embeddedTable = sync.OnceValues(func() ([]directionRow, error) {
 //     single missing line moves every later dimension onto another dimension's
 //     polynomial — valid numbers, wrong dimension, no visible symptom.
 //   - each row carries exactly s direction numbers.
-//   - every m_i is odd. An even one clears the leading bit of V_i and destroys
+//   - every m_i is odd. An even one clears V_i's new pivot bit and destroys
 //     the linear independence the net property rests on.
 //   - every m_i is below 2^i, so that m_i << (32-i) does not shift bits off
 //     the top of the word.
 //   - a fits exactly s-1 interior coefficient bits; at s=1 only a=0 is valid.
 //   - the polynomial 1<<s | a<<1 | 1 is primitive over GF(2), not merely
-//     irreducible. This is the check a corrupted a field cannot pass by luck,
-//     and the one the direction-number recurrence actually depends on.
+//     irreducible. This rejects nonprimitive coefficients, but cannot authenticate
+//     provenance or exclude valid-looking corruption.
 //   - s is between 1 and 32. Above 32 there is nowhere to put the initial
 //     direction numbers. The largest degree anywhere in the embedded 1024
 //     dimensions is 13, so this bound only fires on a file that is not a
@@ -253,12 +227,8 @@ func WithDirectionNumbers(r io.Reader) Option {
 // WithDigitalShift turns on digital shifting with the given seed: one seeded
 // pseudorandom 32-bit word per dimension, XORed into every point's accumulator.
 //
-// This is the cheapest randomization a digital net admits. It costs one XOR
-// per coordinate against a word drawn at construction, which measures as 20%
-// on AtInto at 39 dimensions and nothing at all on NextInto, where the shift
-// is folded into the accumulator once at Reset and never touched again.
-// Halton's digit scrambling, which has to look up a permutation for every
-// digit of every coordinate, costs 27% on the same machine.
+// The fixed XOR can be folded into the stateful accumulator at reset.
+// Indexed/stateful timing comparisons are documented in docs/performance.md.
 //
 // With independent uniform shift words, each point would be uniform on the
 // 32-bit grid, so estimates would be unbiased for that grid average, not
@@ -341,7 +311,7 @@ func NewSobol(dims int, opts ...Option) (*Sobol, error) {
 	// the Gray code — which is the leading bit of every coordinate whose
 	// direction numbers all carry their own leading bit. Dimension 1 is one of
 	// those in the embedded table, so an even leap confines it to a half of
-	// [0,1) and multiplies the integration error by several hundred. Neither a
+	// [0,1). Neither a
 	// digital shift nor an Owen scramble rescues it: both rewrite that leading
 	// bit, but they rewrite it the same way for every point, so it stays
 	// constant. The full argument is at WithLeap.
@@ -367,12 +337,8 @@ func NewSobol(dims int, opts ...Option) (*Sobol, error) {
 		expandDirections(row, s.directions[d*sobolBits:(d+1)*sobolBits])
 	}
 
-	// A switch rather than two ifs, because the two are mutually exclusive by
-	// construction and saying so here is what stops a later edit from setting
-	// both. Owen scrambling already contains a random flip of the whole
-	// coordinate at the root of its tree; XORing a digital shift on top would
-	// not be wrong so much as meaningless, and it would make the seed mean two
-	// different things at once.
+	// The configuration selects one seeded randomization scheme. Keep the two
+	// state representations mutually exclusive.
 	switch cfg.randomize {
 	case randomizeDigitalShift:
 		s.shift = newDigitalShift(dims, cfg.seed)
@@ -395,20 +361,11 @@ func loadDirectionRows(r io.Reader) ([]directionRow, error) {
 	return parseDirectionNumbers(r)
 }
 
-// newDigitalShift draws one uniform word per dimension.
+// newDigitalShift derives one seeded pseudorandom word per dimension.
 //
-// The words are consecutive draws from one splitMix64 stream rather than
-// per-dimension streams the way newPermutation does it. The difference is that
-// a permutation consumes a variable amount of randomness — it depends on the
-// base, and on how often the rejection loop retries — so Halton has to key
-// each dimension separately to keep a 5-dimensional generator agreeing with a
-// 39-dimensional one on their shared dimensions. Here each dimension consumes
-// exactly one draw, so a single stream already has that property, and adding a
-// per-dimension key would only be ceremony.
-//
-// The low half of the output is taken with no attempt to prefer the high half:
-// splitMix64 ends in an avalanche finalizer, so every output bit already
-// depends on every state bit and there is no weak end to avoid.
+// Consecutive draws from one stream preserve shared-coordinate prefixes when
+// the requested dimension count changes. The low 32 bits are the established
+// output convention; the generator and these warm-up draws are reproducible.
 func newDigitalShift(dims int, seed uint64) []uint32 {
 	rng := splitMix64(seed)
 	rng.next()
@@ -463,9 +420,7 @@ func (s *Sobol) NextInto(dst []float64) {
 	}
 
 	// The branch is hoisted out of the loop rather than tested per dimension.
-	// This is the one place in the package where that matters: unrandomized,
-	// NextInto is 65 ns/op across 39 dimensions, so a predictable but repeated
-	// test is a measurable share of the whole call.
+	// This avoids testing the randomization branch once per coordinate.
 	if s.owen == nil {
 		for d, x := range s.state {
 			dst[d] = float64(x) * twoPowMinus32
@@ -515,17 +470,11 @@ func (s *Sobol) Reset() {
 // caller wants as their first sample, and with an unshifted generator it is
 // exactly (0, 0, ..., 0).
 //
-// The mapping from i to a raw index is what decides whether a range of points
-// is balanced, so it is worth being explicit about here rather than only in
-// the type doc. A leap above one forfeits the general block guarantee; the rest of
-// this paragraph is about an unleaped generator. The (t,m,s)-net property holds over 2^m raw indices starting
-// on a multiple of 2^m; At(0)..At(2^m-1) is that block only when skip+1 is a
-// multiple of 2^m — which is what WithSkip(2^m - 1) arranges, and what the
-// default skip of 0 does not. Measured at 40 dimensions and m=8, taking
-// At(0)..At(255) with skip 0 leaves every one of the 40 dimensions with an
-// empty interval and a doubled one. See the type doc for the rest of it; the
-// short version is that an unaligned window of a Sobol sequence is not a net
-// and never was.
+// With leap 1, N=2^m indexed points form a guaranteed aligned net block when
+// skip+1 is a multiple of N. WithSkip(q*N-1), q>=1, selects such a later block
+// if all N raw indices fit the ceiling. Default skip 0 and arbitrary unaligned
+// windows lack that general guarantee; leap above one also forfeits it.
+// See the type documentation and docs/api-design.md.
 //
 // Negative i is treated as 0. The raw index must be at most the smaller of
 // math.MaxInt and 2^32-1; exceeding this limit panics. Next and NextInto return

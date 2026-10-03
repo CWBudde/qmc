@@ -64,6 +64,14 @@ browser recipe reports these samples; they measure JavaScript/canvas command
 submission in headless Chrome, not end-to-end frame presentation or every device.
 Runs were sequential, with no concurrent benchmark workload.
 
+Reproduce with `just test-browser` using the publishing compiler Go 1.26.1
+and Node 18.19.1. The fixture renders a 48-dimensional correlation matrix from
+64 points with skip 0, plain Halton, seed 1, and leap 1;
+`scripts/test-demo-browser.mjs` is the generating harness. It sorts
+100 samples and reports element 50 as median and element 95 as p95. These are
+finite order statistics, with no confidence interval. Geometry and DPR are
+recorded in its output; the second profile uses a 1280×900 emulated viewport.
+
 These modest costs do not presently justify a retained bitmap and its separate
 data/size/theme ownership. Revisit caching if a representative slower device
 or larger layout demonstrates a material problem. Current redraws always use
@@ -90,10 +98,10 @@ the pinned publishing toolchain are explained in [toolchain](toolchain.md).
 The demo uses system fonts and same-origin static downloads. Computation is
 local, with no analytics, submissions, or third-party font requests.
 
-## Remaining work
+## Review decisions
 
-All DEMO-01 through DEMO-10 findings have completion evidence in
-[PLAN.md](../PLAN.md). Measurement/API
-consolidation remains DOC-01; PERF-01 and API-01 have measured or documented
-decisions. Use the task records and current demo
-README for implementation status.
+DEMO-01 through DEMO-10, PERF-01, and API-01 have implementation or decision
+evidence in [PLAN.md](../PLAN.md). DOC-01/02 reconcile claims and contributor
+guidance. Keep future remediation status in that plan, with explanations here
+when the change affects demo behavior. Hover bitmap caching remains a measured
+deferral rather than an unimplemented requirement.

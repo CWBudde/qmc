@@ -6,45 +6,11 @@ import "fmt"
 // point.
 //
 // Point i then corresponds to raw index skip+1+i*n, so WithLeap(1) is exactly
-// an unleaped generator and nothing about the sequence changes. Leaping is the
-// third remedy this package offers for the Halton defect it exists to fix,
-// after WithSkip and the two scrambling schemes, and it is the only
-// deterministic one: it needs no seed, so a leaped generator is still plain
-// QMC rather than RQMC and two runs of it are identical without anyone having
-// to record a seed.
-//
-// # What it buys, measured
-//
-// At the package's design point — 39 dimensions, skip 64 — over forty
-// admissible leaps against forty scrambling seeds, on the product integrand of
-// integration_test.go at 4096 points:
-//
-//	unleaped, unscrambled     1.4x Monte Carlo
-//	WithLeap                 54.3x
-//	WithScrambling           24.4x
-//	WithNestedScrambling     41.1x
-//
-// So it integrates better than either scrambling scheme, and it does it without
-// a seed. The catch is the other statistic. Worst adjacent-pair |r| at 600
-// points, over thirty leaps against thirty seeds:
-//
-//	unleaped, unscrambled     0.81   (one draw; it is deterministic)
-//	WithLeap                  median 0.097, p90 0.23, worst 0.32
-//	WithScrambling            median 0.093, p90 0.13, worst 0.16
-//	WithNestedScrambling      median 0.089, p90 0.12, worst 0.14
-//
-// The medians agree; the tail does not. A leap only reorders the digits a
-// coordinate visits, so two dimensions whose bases interact with the leap in
-// commensurate ways still ramp together, and roughly one leap in ten draws such
-// a pair. That is the same shape of defect the affine nested scrambling had,
-// and it points the same way: leaping suits integration, where the average is
-// what you get, and does not suit a parameter sweep, where the worst case is
-// what you feel.
-//
-// It is not free either, though the reason is not the multiply. A leaped
-// generator reaches raw index skip+1+i*n instead of skip+1+i, so its radical
-// inverses carry about log(n) more digits: measured at 39 dimensions, AtInto
-// costs 634 ns/op at a leap of 173 against 512 unleaped.
+// an unleaped generator and nothing about the sequence changes. Leaping is
+// a deterministic alternative to scrambling. WithSkip is deterministic too.
+// Integration and correlation comparisons depend on the integrand, window,
+// dimensions, and leap; see docs/leaping.md for those workloads and
+// docs/performance.md for comparable timing measurements.
 //
 // # The shared-factor trap
 //
@@ -88,27 +54,22 @@ import "fmt"
 //
 // Dimension 1 is such a dimension in the embedded Joe-Kuo table — all 32 of its
 // direction numbers carry bit 31 — so an even leap confines it at every skip.
-// A leap divisible by 4 additionally pins dimension 0, whose leading bit is the
-// low bit of gray(m). Measured at 16 dimensions over 4096 points, the
-// integration error of the product integrand goes from 2.6e-04 unleaped to
-// 1.2e-01 at a leap of 2 and 4.1e-01 at a leap of 4 — a factor of several
-// hundred, from a change that looks like a tuning knob.
+// A leap divisible by 4 additionally pins dimension 0, whose leading bit is
+// the low bit of gray(m). Neither digital shifting nor nested scrambling
+// rescues a fixed leading bit: it remains fixed after being permuted.
 //
 // # On Sobol it costs two more things, even with an odd leap
 //
 // It is accepted there for symmetry, and measured, but it is not the remedy to
-// reach for: Sobol has no ramp defect to cure, and WithOwenScrambling or
-// WithDigitalShift is what decorrelates it. An odd leap still costs Sobol:
+// reach for: Sobol avoids Halton's growing prime bases. Its randomizations
+// preserve aligned-block dyadic occupancy. A leap above one costs Sobol:
 //
-//   - the (t,m,s)-net balance property, unconditionally. That property is a
+//   - the general aligned-block (t,m,s)-net guarantee. That guarantee is a
 //     statement about a block of 2^m consecutive raw indices beginning on a
 //     multiple of 2^m — see the Sobol type doc — and a leaped run visits a
 //     strided subset of the raw indices, which is not such a block at any n>1.
-//     Measured at 16 dimensions over 4096 points, an odd leap of 3 integrates
-//     at 8.8e-03 against 1.8e-04 unleaped: legal, and still a factor of fifty
-//     worse;
 //   - the Gray-code fast path on Next. NextInto advances by one XOR per
-//     dimension because consecutive raw indices differ in exactly one bit;
+//     dimension because consecutive Gray codes differ in exactly one bit;
 //     indices n apart do not, so a leaped NextInto falls back to the same work
 //     AtInto does.
 //

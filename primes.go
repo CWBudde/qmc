@@ -8,15 +8,14 @@ import (
 // primesUpTo returns the first n prime numbers.
 //
 // The bases of a Halton sequence are the primes, one per dimension, so the
-// dimensionality a caller may ask for is bounded only by how many primes we
-// are willing to compute. Generating them beats a hand-written table: a table
+// supported dimension count depends on representable sieve sizes and memory,
+// rather than a fixed table. Generating them replaces a hand-written table: a table
 // has to be grown by hand every time a caller adds a dimension, and the growth
 // is silent until some run fails at exactly the wrong moment.
 //
-// The bound is Rosser's theorem, p_n < n*(ln n + ln ln n) for n >= 6, with a
-// small constant floor for the first few primes. Overshooting the sieve costs
-// a few kilobytes; undershooting would cost correctness, so the loop below
-// also grows the limit until it has found enough.
+// The initial size 15*n is a heuristic, not a guaranteed upper bound on p_n.
+// Checked doubling handles an undershoot until enough primes are found or
+// the sieve's representable size is exhausted. Small counts use a fixed floor.
 func primesUpTo(n int) ([]int, error) {
 	if n < 1 {
 		return nil, nil

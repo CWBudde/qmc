@@ -13,7 +13,7 @@ const leapExamples = 5
 // whether the number now in the box is a leap this generator will accept, and
 // if not, which nearby number is.
 //
-// It exists because leaping is the only control on this page whose legal
+// It exists because leaping is a control on this page whose legal
 // values depend on the other controls. A burn-in of 500 is as valid at two
 // dimensions as at sixty; a leap of 4 is refused at every dimension count
 // because 2 is always a base, and a leap of 169 is fine at six dimensions and
@@ -105,8 +105,8 @@ func leapAdmissible(source string, dims, leap int) (bool, string) {
 // The scan stops at maxLeap rather than running until it has want of them: on
 // a source and dimension count where admissible leaps are sparse near the top
 // of the range the loop would otherwise be bounded only by the clamp, and this
-// runs on the browser's only thread. A short list is a fine answer; a stalled
-// tab is not.
+// runs in the calling realm. A short list is a fine answer; an unbounded scan
+// is not.
 func admissibleLeaps(source string, dims, from, want int) []int {
 	out := make([]int, 0, want)
 

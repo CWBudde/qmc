@@ -1,6 +1,7 @@
 // Package qmc provides quasi-Monte Carlo sequences: deterministic,
-// low-discrepancy point sets that fill a unit hypercube more evenly than
-// independent random sampling does.
+// point sets designed to reduce integration error through low discrepancy.
+// Their advantage over independent random sampling depends on the integrand,
+// sample budget, effective dimension, and selected sequence block.
 //
 // Two sequences are implemented, both satisfying Sequence. Points are returned
 // as coordinates in [0,1), so a caller maps them onto its own parameter
@@ -19,7 +20,7 @@
 // Halton's growing prime bases, which makes it a useful default above
 // a handful of dimensions; it is limited to the 1024 dimensions the embedded
 // Joe-Kuo direction numbers cover, unless a caller supplies their own table.
-// Halton has no dimension ceiling at all and is the one to keep if you need a
+// Halton has no fixed direction-table ceiling and is useful if you need a
 // sequence whose construction is simple enough to reproduce by hand, but above
 // roughly twenty dimensions its early points can have strongly correlated
 // coordinates. Scrambling often helps at small sample budgets. See
@@ -36,12 +37,8 @@
 // seed spread measures variability, not discretization or randomization bias.
 // See docs/randomization.md for assumptions and limitations.
 //
-// The measured reason to use any of this, on a smooth 39-dimensional product
-// integrand at 4096 points over ten streams: plain Monte Carlo reaches an RMS
-// relative error of 4.3e-03, scrambled Halton 2.4e-04, Sobol with a digital
-// shift 1.5e-04. These are measurements of one integrand and budget, not a
-// universal convergence rate. Accuracy depends on smoothness, effective
-// dimension, direction numbers, and the sample block selected.
+// See docs/choosing-a-sequence.md for accuracy comparisons and their sampling
+// assumptions, and docs/performance.md for reproducible performance evidence.
 package qmc
 
 import (

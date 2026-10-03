@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation and statistical labels
+
+- Distinguish the analytic uniform-point RMS discrepancy baseline
+  `sqrt(E[CD2²])` from mean CD2 across source, metadata, browser labels and docs.
+  The baseline formula and generated points are unchanged; its control test
+  now checks the sampled squared statistic against the squared expectation.
+- Consolidate current cost/accuracy comparisons into the reproducible performance
+  report, remove unsupported historical figures from current guidance, and scope
+  independence, projection, saturation and quality claims to their assumptions.
+- Star-discrepancy refusal wording now describes implementation work limits and
+  the measured CD2 caveat without claiming a universal computability ceiling.
+
 ### API contracts
 
 - Document private option settings, reader ownership, and the separate

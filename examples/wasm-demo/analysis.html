@@ -35,7 +35,7 @@
         #corrHead #corrBody            dynamically generated headers and values
         #worstAdjacent        big |r| readout for the worst adjacent pair
         #worstPairLabel       "dimensions 37 and 38" sub-line
-        #docReference         comparison against the README's figures
+        #docReference         current measurement configuration
         #corrDims #corrDimsOut        dimensions
         #corrCount #corrCountOut      points
         #corrSkip #corrSkipOut        burn-in
@@ -124,6 +124,16 @@
         </div>
       </header>
 
+      <noscript>
+        <p class="callout">
+          This interactive demo requires JavaScript and WebAssembly. Enable
+          JavaScript in a WebAssembly-capable browser to run the calculations.
+          The
+          <a href="https://github.com/CWBudde/qmc">source and documentation</a>
+          remain available without JavaScript.
+        </p>
+      </noscript>
+
       <div class="status" id="status" data-state="loading">
         Loading WebAssembly…
       </div>
@@ -136,9 +146,9 @@
             Cell (<i>i</i>, <i>j</i>) is the Pearson correlation between
             coordinate <i>i</i> and coordinate <i>j</i> over the whole point
             set. Correlation is <b>signed</b>, so the scale is diverging and
-            centred on zero: cool is negative, warm is positive, ground is
-            independent. The diagonal is 1 by construction. Hover any cell for
-            the pair and <i>r</i
+            centred on zero: cool is negative, warm is positive, ground is near
+            zero linear association. The diagonal is 1 by construction. Hover
+            any cell for the pair and <i>r</i
             ><span id="corrBaseNote">, and for their prime bases</span>.
           </p>
 
@@ -437,11 +447,11 @@
             The quantity the phrase "low-discrepancy sequence" actually refers
             to, measured against <i>N</i> on log–log axes: the sequence's
             discrepancy, a pseudorandom sample's over the same <i>N</i>, and —
-            for centred L2 — the closed-form expectation
+            for centred L2 — the analytic random RMS baseline
             <b>√(((5/4)<sup>s</sup> − (13/12)<sup>s</sup>)/N)</b> of the random
-            one. The headline is the ratio <b>random ÷ sequence</b>, and a ratio
-            of <b>1.00</b> needs no interpretation: the statistic has stopped
-            distinguishing the two point sets.
+            one, <b>√E[CD2²]</b>, rather than mean discrepancy E[CD2]. The
+            headline is the measured ratio <b>random ÷ sequence</b>; a ratio
+            near one means these two sets have similar scores on this metric.
           </p>
 
           <div class="verdict">
@@ -449,8 +459,9 @@
               <span class="k">random ÷ sequence</span>
               <span class="big" id="dRatio">—</span>
               <span class="sub" id="discVerdict">
-                Press Start. The page opens on 39 dimensions and centred L2,
-                which is the configuration in which this statistic says nothing.
+                Press Start to compare the selected point sets. At high
+                dimensions centred L2 can distinguish useful sequences from
+                random points only weakly.
               </span>
             </div>
           </div>
@@ -535,7 +546,7 @@
                   <span class="v" id="dRandom" data-tone="plain">—</span>
                 </div>
                 <div>
-                  <span class="k">analytic E[·]</span>
+                  <span class="k">analytic random RMS</span>
                   <span class="v" id="dAnalytic">—</span>
                 </div>
                 <div>
@@ -593,8 +604,8 @@
           <div class="chart-legend">
             <span class="qmc"><i></i>the sequence — circles</span>
             <span class="mc"><i></i>pseudo-random — crosses</span>
-            <span class="ref"
-              ><i></i>analytic random expectation — no markers</span
+            <span class="ref" data-analytic-reference
+              ><i></i>analytic random RMS baseline — no markers</span
             >
           </div>
         </div>
@@ -604,39 +615,39 @@
         <h3>Reading the numbers</h3>
         <p>
           <b>Correlation is a symptom, not the disease.</b> A low-discrepancy
-          sequence promises even coverage of the whole box, and pairwise
-          correlation only catches the most visible way that promise fails. Zero
-          everywhere is necessary, not sufficient.
+          sequence aims for even coverage of the whole box. Pairwise correlation
+          measures linear association; small sample coefficients neither
+          establish independence nor guarantee low discrepancy or integration
+          accuracy.
         </p>
         <p>
           <b>A single seed is a single sample.</b> With any randomization
-          selected this is randomized quasi-Monte Carlo: every seed gives a
-          different, equally valid point set, and both the worst pair and the
-          error curve wobble from one to the next. One displayed seed does not
-          summarize the distribution over seeds or measure undetected bias.
+          selected this is randomized quasi-Monte Carlo: seeds can give
+          different point sets, and both the worst pair and the error curve can
+          vary. One displayed seed does not summarize the distribution over
+          seeds or measure undetected bias.
         </p>
         <p>
-          <b>Centred L2 saturates; that is not a bug in the panel.</b> Its
-          expectation over <i>N</i> uniform points is exactly √(((5/4)<sup
-            >s</sup
+          <b
+            >Centred L2 can separate point sets only weakly at high
+            dimensions.</b
           >
-          − (13/12)<sup>s</sup>)/<i>N</i>), and the (5/4)<sup>s</sup> term —
-          which depends only on each coordinate's marginal spread — swamps
-          everything a well-spread point set can improve. At 39 dimensions it is
-          100.4% of the total, so the ratio reads about 1.02 and the three
-          curves lie on top of one another. Drop the dimension slider and watch
-          them separate. Star discrepancy does not saturate, but it is NP-hard
-          in the dimension, so the library refuses it above six dimensions and a
-          few dozen points — the metric menu prints that refusal in the
-          library's own words rather than restating the limit here.
+          For independent continuous uniform points, its random RMS baseline
+          √E[CD2²] is √(((5/4)<sup>s</sup> − (13/12)<sup>s</sup>)/<i>N</i>).
+          This is not the mean E[CD2]. The (5/4)<sup>s</sup> term dominates that
+          squared expectation as dimensions grow, but does not determine the
+          ratio for a particular seed or sequence. Compare lower dimensions and
+          available metrics. Generic multi-point star evaluation has dimension
+          and work limits; the library also has cheap one-point and
+          one-dimensional paths. The menu reports acceptance for the demo's
+          minimum of two points, separately from its own work ceilings.
         </p>
         <p>
-          <b>The discrepancy panel's N ceiling moves.</b> Every other control on
-          these pages has a fixed range. This one does not: general centred L2
-          costs O(<i>N</i>²<i>s</i>), so its work-policy cap falls as dimensions
-          are added. One dimension uses a cheaper formula. These caps bound
-          computation work; they do not promise the same runtime on every
-          device.
+          <b>The discrepancy panel's N ceiling moves with dimensions.</b>
+          General centred L2 costs O(<i>N</i>²<i>s</i>), so its work-policy cap
+          falls as dimensions are added. One dimension uses a cheaper formula.
+          These caps bound computation work; they do not promise the same
+          runtime on every device.
         </p>
         <p>
           <b>The sweep runs in a computation worker.</b> Each Go call covers one

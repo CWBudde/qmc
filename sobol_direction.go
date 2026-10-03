@@ -10,11 +10,10 @@ package qmc
 // fetched with curl's --insecure flag because this project's CA store cannot
 // build a chain to that host. That is worth stating plainly: the bytes arrived
 // over a connection nobody authenticated, so trusting them because of where
-// they appeared to come from is not available. They are trusted instead
-// because they are checked against properties a corrupted or truncated
-// download cannot satisfy by accident — see validateDirectionRows below, and
-// TestEmbeddedTableSatisfiesItsInvariants, which runs those checks over the
-// committed asset on every test run.
+// they appeared to come from is not available. Structural validation detects
+// classes of malformed input but cannot authenticate provenance or exclude
+// valid-looking corruption. Committed hashes identify the reviewed bytes;
+// TestEmbeddedTableSatisfiesItsInvariants checks their mathematical structure.
 //
 // third_party/joe-kuo/LICENSE.txt is the licence from
 // https://web.maths.unsw.edu.au/~fkuo/sobol/licence, verbatim: BSD-3-Clause,
@@ -226,18 +225,14 @@ func parseDirectionRow(fields []string) (directionRow, error) {
 	return row, nil
 }
 
-// validateDirectionRows proves that rows are a usable Joe-Kuo table.
+// validateDirectionRows checks that rows are structurally usable direction data.
 //
-// This is the function that stands in for the authentication the download did
-// not have. Each check below rejects a whole class of damage that would
-// otherwise reach the generator and come back out as points — and points are
-// the one form of output where being wrong is invisible, because a table of
-// corrupted direction numbers still produces numbers in [0,1) that scatter
-// across the cube. There is nothing to notice.
+// These checks detect malformed input; they do not authenticate provenance or
+// certify projection quality. Valid-looking corruption can still pass.
 //
 //   - Every m_i must be odd. The direction number V_i is m_i << (32-i), and
 //     the (t,m,s)-net structure needs the V_i to be linearly independent over
-//     GF(2); an even m_i leaves V_i's leading bit clear and collapses that
+//     GF(2); an even m_i leaves V_i's new pivot bit clear and collapses that
 //     independence. Truncation and byte corruption both produce even values
 //     roughly half the time, so this is the cheapest check that catches them.
 //
@@ -245,11 +240,11 @@ func parseDirectionRow(fields []string) (directionRow, error) {
 //     past the top of the word. An out-of-range value would be shifted out of
 //     the uint32 and the dimension would quietly lose its leading digits.
 //
-//   - The polynomial must be primitive over GF(2). This is the one that cannot
-//     be passed by accident. Primitive polynomials of degree s are a small
+//   - The polynomial must be primitive over GF(2). Valid primitive
+//     polynomials can also occur in corrupted input: they are a small
 //     fraction of the 2^(s-1) candidates — for s = 13 it is 630 out of 4096 —
 //     so a corrupted a field fails it with high probability, and a row that
-//     survives it is doing arithmetic that only a real table does. It is also
+//     survives it has a usable polynomial, not proven provenance. It is also
 //     the property the construction actually depends on: expandDirections runs
 //     a linear recurrence over GF(2) whose characteristic polynomial is this
 //     one, and the recurrence only has full period 2^s-1 when the polynomial

@@ -299,6 +299,39 @@ try {
       check(el('integrandNote').textContent.includes(el('tExact').textContent),'note/readout disagreement '+dims);
     }
     const info=qmc.info();
+    // The analytic curve is RMS discrepancy, not its mean. Keep the existing
+    // numeric field while making that statistical interpretation explicit.
+    const referenceKinds=new Map(info.discrepancies.map(s=>[s.key,s]));
+    for(const metric of ['cl2','star']) {
+      const metadata=referenceKinds.get(metric);
+      const capabilities=qmc.metrics({dims:2}).metrics.find(s=>s.key===metric);
+      const result=qmc.discrepancy({metric,dims:2,n:4,skip:0,seed:7});
+      const kind=metric==='cl2'?'rms':'none';
+      for(const entry of [metadata,capabilities,result]) {
+        check(entry.analyticKind===kind,'analytic reference kind '+metric);
+        check(entry.analyticLabel===metadata.analyticLabel,'analytic reference label '+metric);
+      }
+      if(metric==='cl2') {
+        const rms=Math.sqrt((1.25**2-(13/12)**2)/4);
+        check(Math.abs(result.analytic/rms-1)<1e-12,'random RMS formula');
+        check(metadata.analyticLabel.includes('RMS'),'mean-labelled analytic reference');
+        check(!/12x|about 2x|degenerate point set|perfect one/.test(result.verdict),'unsupported discrepancy verdict');
+      } else {
+        check(result.analytic===null,'star unexpectedly has analytic reference');
+      }
+    }
+    set('discMetric','cl2');
+    const analyticLegend=document.querySelector('[data-analytic-reference]');
+    check(el('dAnalytic').previousElementSibling.textContent===referenceKinds.get('cl2').analyticLabel,'analytic readout label differs from RMS metadata');
+    check(!el('dAnalytic').parentElement.hidden,'RMS readout unexpectedly hidden');
+    check(!analyticLegend.hidden && getComputedStyle(analyticLegend).display!=='none','RMS legend unexpectedly hidden');
+    check(analyticLegend.textContent.includes(referenceKinds.get('cl2').analyticLabel),'analytic legend differs from RMS metadata');
+    set('discMetric','star');
+    check(el('dAnalytic').previousElementSibling.textContent===referenceKinds.get('star').analyticLabel,'star readout label differs from no-baseline metadata');
+    check(el('dAnalytic').parentElement.hidden && getComputedStyle(el('dAnalytic').parentElement).display==='none','star shows an unsupported analytic readout');
+    check(analyticLegend.hidden && getComputedStyle(analyticLegend).display==='none','star shows an unsupported RMS legend');
+    set('discMetric','cl2');
+    check(!document.body.textContent.includes('100.4%'),'historical ratio presented as current behavior');
     const plain=source=>info.sources.find(s=>s.key===source).randomizations.find(r=>r.key==='none').description;
     check(plain('halton')!==plain('sobol'),'identical source descriptions');
     check(plain('sobol').includes('base 2') && plain('halton').includes('High prime'),'source-specific explanation');

@@ -65,14 +65,8 @@ func sobolRMSError(t *testing.T, randomize func(uint64) qmc.Option, dims, n, str
 // generator that had quietly stopped integrating well; this is the test that
 // would not.
 //
-// The threshold is 5x, the same figure and the same argument as the Halton
-// gate: no generator producing independent samples can reach it, because the
-// gap on this measured smooth-product workload is reproducible, while it leaves
-// room for an unlucky seed and for a future change to the randomization that
-// shifts the constant without giving up the rate. Measured here, shifted Sobol
-// comes in at 29.5x against math/rand at these settings, so the margin is
-// wide — deliberately, because a test pinned near the measured value would
-// fail on noise and a test that fails on noise gets deleted.
+// The threshold is an empirical margin for these fixed seeds and this product
+// integrand, not an impossible outcome for arbitrary independent samples.
 func TestShiftedSobolBeatsMonteCarloAt39Dims(t *testing.T) {
 	if testing.Short() {
 		t.Skip("statistical sweep; run just test-statistical")
@@ -103,24 +97,8 @@ func TestShiftedSobolBeatsMonteCarloAt39Dims(t *testing.T) {
 		dims, n, streams, sobolErr, mcErr, ratio)
 }
 
-// TestSobolAgainstHaltonAt39Dims measures the two generators against each
-// other and asserts almost nothing.
-//
-// The measurement is worth having: it is the number that answers "should I
-// switch?", and the answer at this package's design point is 1.67x — Sobol's
-// RMS error is a little under two thirds of scrambled Halton's at 39
-// dimensions and 4096 points. That is a real improvement and it is smaller
-// than the folklore suggests, which is exactly why it should be logged rather
-// than remembered.
-//
-// The assertion is loose on purpose. Which of two low-discrepancy sequences
-// wins on a given integrand at a given n is not a stable fact — it moves with
-// the integrand's effective dimension, with n relative to powers of two, and
-// with the randomization. A test pinned at 1.67x would be a test of this
-// integrand rather than of either generator, and it would fail on a change
-// that improved Halton. All that is asserted is that Sobol is not
-// dramatically worse, which would mean something is broken; the number itself
-// goes to the log, where a human can read it.
+// TestSobolAgainstHaltonAt39Dims compares both generators on a fixed workload.
+// Its slack guards a large regression, not a universal ordering of methods.
 func TestSobolAgainstHaltonAt39Dims(t *testing.T) {
 	if testing.Short() {
 		t.Skip("statistical sweep; run just test-statistical")

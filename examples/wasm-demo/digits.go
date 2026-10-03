@@ -18,13 +18,12 @@ import (
 // a request naming any other source is refused with a message rather than
 // reaching a nil method and taking the whole wasm instance down with it.
 //
-// This is the part of the demo that explains the rest. The heatmap shows that
-// high dimensions correlate and that scrambling fixes it; only the digit view
-// shows why. At index 0 in base 167 the expansion is a single digit, so the
-// unscrambled coordinate is that digit over 167 — the ramp, visible as a
-// number — while the scrambled one is the permuted digit plus the contribution
-// of the infinitely many leading zeros, which is the term that lifts short
-// indices off the coarse lattice.
+// The inspector connects a coordinate to the raw index behind it. With the
+// default skip 64, point index zero uses raw index 65, one digit in base 167.
+// Fixed digit scrambling includes the mathematically defined repeated-zero
+// tail; the library returns a finite-precision result. Nested scrambling uses
+// a different conditional permutation at each node and a truncated tail, so
+// it cannot be explained by a single fixed permutation table.
 func jsDigits(opts js.Value) any {
 	source := readString(opts, "source", defaultSource)
 

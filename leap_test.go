@@ -637,10 +637,8 @@ func TestLeapingBreaksHighDimensionalCorrelation(t *testing.T) {
 // TestLeapingIntegratesBetterThanAnUnleapedSequence is the other half of the
 // measurement, on the statistic integration_test.go uses.
 //
-// Forty leaps rather than ten, for the reason recorded in
-// docs/testing-methodology.md: a ten-stream figure cannot separate two good
-// schemes, and two statistically identical constructions once read 44.0x and
-// 31.9x on the same ten seeds.
+// Forty fixed admissible leaps share the same integrand and sample budget.
+// The comparison is workload evidence, not a guarantee for an arbitrary leap.
 func TestLeapingIntegratesBetterThanAnUnleapedSequence(t *testing.T) {
 	const (
 		dims    = 39

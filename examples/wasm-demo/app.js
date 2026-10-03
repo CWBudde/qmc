@@ -8,7 +8,8 @@
  * export in the Go bridge instead — a demo that reimplements the library in
  * JavaScript is demonstrating the JavaScript.
  *
- * No modules; this file is an IIFE and depends only on window.Render.
+ * No modules; shared rendering, runtime, worker, and accessibility helpers
+ * are loaded before this controller.
  */
 (function () {
   "use strict";
@@ -837,12 +838,11 @@
 
     // Nested scrambling is randomized but has no permutation table to
     // show: its permutation depends on the digits above the one being
-    // rewritten, so there is one per node of a tree that is derived on the fly
-    // and never stored. The library returns nil for exactly this reason, and
-    // reporting it as "off" would contradict the two values below, which do
-    // differ.
+    // rewritten. The library may cache immutable shallow-node permutations,
+    // but there is no single table covering every point and digit. An absent
+    // fixed table does not mean that randomization is off.
     if (!d.permutation) {
-      return `<b>Randomized (${d.randomization}).</b> There is no single permutation to show: this scheme draws one per digit position, conditioned on the digits above it, so the row below is the raw expansion. The two coordinates underneath still differ, which is the randomization at work.`;
+      return `<b>Randomized (${d.randomization}).</b> There is no single permutation to show: this scheme uses one per tree node, conditioned on the digits above it, so the row below is the raw expansion. Compare the two finite-precision coordinates underneath; one coincident value would not imply that randomization is off.`;
     }
 
     const perm = Array.from(d.permutation);

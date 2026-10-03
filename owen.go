@@ -17,8 +17,8 @@ import "math/bits"
 // that tree, so the decision to swap the two halves at depth k depends on the
 // path taken through depths 0..k-1. Because the flip at each node maps the
 // node's two children onto each other, every elementary interval maps onto
-// another elementary interval of the same size: the point set is still the
-// same (t,m,s)-net. This preserves its t value rather than repairing a poor
+// another elementary interval of the same size: an input (t,m,s)-net remains
+// a (t,m,s)-net. This preserves its t value rather than repairing a poor
 // direction-number table. Empirical correlations can change.
 //
 // The obvious implementation stores the tree, which is not affordable: 2^32
@@ -50,9 +50,9 @@ import "math/bits"
 // nearest equivalent for Halton is WithNestedScrambling, and NewHalton says so
 // by name rather than ignoring the option.
 //
-// Prefer this to WithDigitalShift unless the cost matters. Both make the
-// generator a randomized QMC sequence and both leave the (t,m,s)-net structure
-// intact, but a digital shift translates the whole point set rigidly, so a
+// Consider this when nested randomization suits the estimator and its extra
+// work is acceptable. Both schemes preserve an input aligned block's
+// (t,m,s)-net structure, but a digital shift translates the whole point set, so a
 // poorly distributed projection retains its dyadic occupancy under every
 // shift. Nested scrambling changes positions while also preserving t; it
 // cannot improve the table's t value. The stronger theoretical variance rates
@@ -60,25 +60,14 @@ import "math/bits"
 // and are not a guarantee for this seeded hash approximation. Coordinates
 // remain on a finite 32-bit grid; seed spread cannot measure its bias.
 //
-// It subsumes the digital shift: the flip at the root of the tree is a random
-// bit flip of the whole coordinate, which is what a one-bit digital shift is.
-// So there is no reason to want both, and the two options are mutually
-// exclusive rather than combinable — see the randomization type in options.go.
+// The root flip randomizes the first digit, and deeper node flips randomize
+// subsequent digits. The API chooses one seeded randomization scheme;
+// digital shifting and hash-based Owen scrambling are mutually exclusive.
 //
-// What it buys and what it costs, both measured at 39 dimensions. On the
-// integrand in sobol_integration_test.go it is 1.08x more accurate than a
-// digital shift over ten streams — a real but small margin, and small is the
-// honest word for it on that integrand. This measurement does not establish
-// a gain for other integrands or sample counts.
-//
-// The cost is lopsided, and which entry point you use decides it. On AtInto it
-// is nearly free: 369.6 ns/op against 359.9 for a digital shift, because that
-// path already XORs one direction number per set bit of the index and a few
-// more ALU operations disappear into it. On NextInto it is 196.6 ns/op against
-// 65.2, a factor of three — because the Gray-code recurrence is exactly what
-// cannot carry a non-linear scramble, so every coordinate has to be hashed on
-// the way out and the cheap path stops being cheap. A caller drawing points
-// with Next in an inner loop should price that before choosing.
+// The scramble is applied when converting each raw accumulator to a
+// coordinate. Its nonlinear permutation cannot be folded into the XOR
+// recurrence. Accuracy comparisons and the different costs of indexed and
+// stateful access are documented in docs/randomization.md and docs/performance.md.
 func WithOwenScrambling(seed uint64) Option {
 	return func(s *settings) {
 		s.randomize = randomizeOwen
@@ -88,11 +77,9 @@ func WithOwenScrambling(seed uint64) Option {
 
 // newOwenSeeds derives one scrambling seed per dimension.
 //
-// The dimension is mixed into the stream seed rather than drawn from one
-// shared stream, for the reason newPermutation in scramble.go gives: a
-// generator built for 5 dimensions and one built for 1024 must agree on the
-// scrambling of their first 5, or a caller who widens their search space
-// silently changes every coordinate they had already computed.
+// Per-dimension keying makes the seed a function of seed and dimension alone,
+// so widening a generator preserves its shared coordinates. A fixed-size
+// draw per dimension from a common stream could also preserve that prefix.
 func newOwenSeeds(dims int, seed uint64) []uint32 {
 	out := make([]uint32, dims)
 	for d := range out {
@@ -117,8 +104,8 @@ func newOwenSeeds(dims int, seed uint64) []uint32 {
 // the domain where the dependency arithmetic already has is the one Owen
 // wants, permuted there, and reversed back.
 //
-// The permutation itself must fix nothing and must be a bijection on all 2^32
-// values, or two distinct coordinates would collide and the point set would
+// The permutation must be a bijection on all 2^32 values; fixed points are
+// allowed. Otherwise distinct coordinates would collide and the point set would
 // stop being a net. Each x ^= x * C step is a bijection precisely because C is
 // even: the low bit of x*C is then always 0, so bit 0 of x survives, and by
 // induction each bit is determined by the bits below it plus itself. Changing

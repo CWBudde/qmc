@@ -66,12 +66,9 @@ const (
 	// page having to know what the new source's menu contains.
 	randomizationNone = "none"
 
-	// defaultMetric aims the discrepancy panel at the defect the same way
-	// defaultDims aims the scatter plot at it. Centred L2 at 39 dimensions is
-	// the configuration in which the statistic says nothing — the sequence's
-	// curve and the pseudorandom one lie on top of each other and the ratio
-	// reads about 1.02 — so the page opens on the null result and the note
-	// beside it explains how to get a real one.
+	// defaultMetric opens on centred L2 at 39 dimensions, where this metric can
+	// distinguish point sets only weakly. Start computes the actual chosen sets;
+	// no fixed ratio or seed-independent outcome is promised.
 	defaultMetric = "cl2"
 )
 
@@ -252,10 +249,12 @@ func jsInfo(opts js.Value) any {
 	for _, key := range discrepancyOrder {
 		spec := discrepancies[key]
 		metricList = append(metricList, map[string]any{
-			"key":         spec.key,
-			"label":       spec.label,
-			"description": spec.description,
-			"analytic":    spec.analytic != nil,
+			"key":           spec.key,
+			"label":         spec.label,
+			"description":   spec.description,
+			"analytic":      spec.analytic != nil,
+			"analyticKind":  spec.analyticKind,
+			"analyticLabel": spec.analyticLabel,
 		})
 	}
 

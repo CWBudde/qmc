@@ -115,13 +115,9 @@ func mcRMSError(t *testing.T, dims, n, streams int) float64 {
 	return result
 }
 
-// TestScrambledQMCBeatsMonteCarloAt39Dims is the package's design point: 39
-// knobs, a budget of a few thousand evaluations. Measured here, scrambled QMC
-// comes in around 19-28x more accurate than plain Monte Carlo depending on n.
-//
-// The 5x margin is an empirical regression guard with room for replicate
-// variation. It is not a theorem about arbitrary independent samples or a
-// guarantee of the convergence rate on other integrands.
+// TestScrambledQMCBeatsMonteCarloAt39Dims compares RMS error on the same smooth
+// product integrand, budget, and fixed streams. The threshold is an empirical
+// regression guard, not a convergence theorem or a guarantee on other functions.
 func TestScrambledQMCBeatsMonteCarloAt39Dims(t *testing.T) {
 	if testing.Short() {
 		t.Skip("statistical sweep; run just test-statistical")

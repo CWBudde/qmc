@@ -22,25 +22,11 @@ import (
 // bypass this implementation's enumeration policy.
 const maxStarDims = 6
 
-// starBoxBudget caps the number of boxes the pruned enumeration is allowed to
-// visit, measured in leaves of the search tree.
-//
-// A dimension ceiling on its own is not a gate. Five dimensions and 3000
-// points is well inside maxStarDims and is 2.0e15 leaves — a hang, not an
-// answer. The budget is what makes the refusal see N as well as s.
-//
-// The number is measured, not asserted. BenchmarkStarDiscrepancy walks the two
-// shapes that bracket the tree: 1024 points in 2 dimensions is wide and
-// shallow at 5.26e5 leaves and takes 14.6 ms, and 160 points in 4 dimensions is
-// narrow and deep at 2.91e7 leaves and takes 764 ms. Those are 27.7 and 26.3
-// nanoseconds per leaf — the cost per leaf is flat across shapes, which is what
-// makes a leaf count a usable proxy for wall clock at all. 3e7 leaves is
-// therefore about 0.8 seconds on the machine this was measured on (a 12th-gen
-// mobile i7): a wait, not a hang, which is the line this constant is drawing.
-//
-// Raising it is a decision about how long a caller should be made to wait, not
-// a way to reach a larger problem: the cost is N^s/s!, so ten times the budget
-// buys about 3.2 times the points in two dimensions and 1.5 times in six.
+// starBoxBudget bounds generic enumeration using the unpruned leaf count.
+// Together with maxStarDims it limits this implementation's accepted work;
+// it is not a universal computability boundary or a wall-clock guarantee.
+// The retained policy and benchmark methods are described in
+// docs/discrepancy.md and docs/performance.md.
 const starBoxBudget = 3e7
 
 // StarDiscrepancy returns the exact star discrepancy D*_N of a point set in
@@ -51,8 +37,8 @@ const starBoxBudget = 3e7
 //	D*_N(P) = sup over b in (0,1]^s of | vol([0,b)) - A(b)/N |
 //
 // where vol(b) is the product of the b_k and A(b) counts the points strictly
-// inside the half-open box [0,b). It is the worst relative error any
-// origin-anchored box makes about how much of the cube it covers, so it is
+// inside the half-open box [0,b). It is the largest absolute difference
+// between a box's empirical point fraction and its volume, so it is
 // the quantity the Koksma-Hlawka bound multiplies by an integrand's variation
 // — the number the phrase "low-discrepancy sequence" refers to.
 //
@@ -91,7 +77,7 @@ const starBoxBudget = 3e7
 // (N+1)^s grid into C(N+s,s) leaves, but C(N+s,s) is still about N^s/s!.
 // The one-point O(s) and one-dimensional O(N log N) closed forms bypass
 // enumeration. Other sets are refused above maxStarDims dimensions or above
-// starBoxBudget leaves, and returns (0, error) rather than a partial answer.
+// starBoxBudget leaves, returning (0, error) rather than a partial answer.
 // At the current budget the affordable point counts are 7744 at 2 dimensions,
 // 562 at 3, 161 at 4, 78 at 5 and 49 at 6. Above that, use
 // CenteredL2Discrepancy — but read its saturation caveat before believing the
@@ -184,49 +170,24 @@ func StarDiscrepancy(points [][]float64) (float64, error) {
 // gives sqrt((13/12)^s - 1), and one point at the origin in one dimension
 // gives sqrt(1/3).
 //
-// # The saturation, which is the whole reason to read this comment
+// # Interpreting the statistic
 //
-// For N independent uniform points the expectation is exactly
+// For N independent uniform points,
 //
-//	E[CD2^2] = ( (5/4)^s - (13/12)^s ) / N
+//	E[CD2^2] = ( (5/4)^s - (13/12)^s ) / N.
 //
-// because each one-dimensional integral collapses: the single sum's factor
-// integrates to 13/12, so does the double sum's off-diagonal factor, and the
-// double sum's diagonal factor 1 + u integrates to 5/4. At 39 dimensions and
-// 1024 points that is (6018.5 - 22.7)/1024 = 5.855, so E[CD2] = 2.4198 — and
-// measured over ten scrambling seeds, random comes in at 2.4046 and scrambled
-// Halton at 2.3657, a difference of 1.6%.
+// Its square root is the RMS CD2, not E[CD2]. The expected diagonal
+// contribution is (5/4)^s/N. Each diagonal term is a product of the point's
+// coordinate distances from the centre; it can depend on joint coordinate
+// association even when each coordinate's marginal distribution is unchanged.
+// It contains no comparisons between distinct points.
 //
-// The mechanism is visible in the same arithmetic. The diagonal i=j terms
-// alone contribute (5/4)^s/N = 5.877 of that 5.855 total — 100.4% of it.
-// Everything the statistic was supposed to measure lives in a residual of
-// -0.02, and the diagonal depends only on each coordinate's marginal spread,
-// not at all on how the points sit relative to one another. Over the very same
-// point sets the RMS integration error of a smooth product integrand differs
-// by 16x.
-//
-// Measured at N=1024 over ten seeds, the random-to-Halton ratio decays with
-// the dimension count and takes the diagonal's share of the expectation with
-// it:
-//
-//	 s     CD2 Halton   CD2 random   ratio   diagonal share
-//	 2       0.00137      0.01705    12.4x        402%
-//	 5       0.00638      0.04020     6.3x        196%
-//	10       0.03374      0.08057     2.4x        131%
-//	15       0.09751      0.15911     1.6x        113%
-//	20       0.22000      0.28085     1.3x        106%
-//	30       0.81877      0.88577     1.08x       101%
-//	39       2.36573      2.40461     1.02x       100.4%
-//
-// Read that as: informative below roughly ten dimensions, weak by twenty, and
-// dead by thirty. It is not a cliff, so there is no honest dimension at which
-// to refuse — which is why this returns a number and documents the caveat
-// where StarDiscrepancy returns an error.
-//
-// The self-check to run before believing a CD2 number: compare it against
-// sqrt(((5/4)^s - (13/12)^s)/N). If your point set is not several times below
-// that, the statistic is telling you about your marginals and nothing else,
-// and you want an integration test or StarDiscrepancy in a projection instead.
+// In the high-dimensional workloads measured in docs/discrepancy.md, the
+// diagonal contribution makes this statistic a weak predictor of the measured
+// integration error. That is a statistical limitation of those comparisons,
+// not a universal dimensional cutoff or a loss of floating-point precision.
+// Compare against independent integral references and, where affordable,
+// star discrepancy in relevant projections when choosing a sampling method.
 //
 // # Arithmetic range
 //
@@ -255,8 +216,9 @@ func StarDiscrepancy(points [][]float64) (float64, error) {
 // reference or a stable special case when small discrepancies need precision.
 //
 // Unlike StarDiscrepancy this has genuine multiply-add shapes in its inner
-// product, so a Go compiler may fuse them on arm64. The result is reproducible
-// to within a few ulps across architectures, not bit-identical.
+// product, so a Go compiler may fuse them on arm64. Rounding can vary across
+// architectures, and cancellation can magnify the relative difference;
+// bit-identical results are not promised.
 //
 // Reference: Hickernell, F.J. (1998), "A generalized discrepancy and
 // quadrature error bound", Mathematics of Computation 67(221), 299-322,
@@ -501,11 +463,8 @@ func starLeafCount(n, s int) float64 {
 // ceiling and the work budget say the same thing rather than drifting apart —
 // the same reason errLeapConflict exists.
 //
-// It names the cost, the budget, that the limit is a property of the problem
-// and not a tuning knob, what is actually affordable per dimension, and the
-// alternative *with* its caveat attached. Pointing at CenteredL2Discrepancy
-// bare would trade a refusal for a number that means nothing at the dimension
-// counts that trigger this message.
+// The diagnostic identifies the gate that failed and suggests centered L2
+// discrepancy with a caveat about interpreting the measured statistic.
 func errStarTooBig(n, s int, boxes float64) error {
 	// The two gates fail for different reasons and must not claim each other's.
 	// Seven dimensions and twenty points is only 8.9e5 leaves — well inside the
@@ -518,12 +477,10 @@ func errStarTooBig(n, s int, boxes float64) error {
 
 	return fmt.Errorf(
 		"qmc: star discrepancy over %d points in %d dimensions would enumerate %s boxes and %s; "+
-			"exact star discrepancy is NP-hard in the dimension, so this is a ceiling on what is "+
-			"computable and not a tuning knob. "+
+			"generic exact star enumeration has combinatorial cost; these limits bound this implementation's work. "+
 			"Affordable point counts are 7744 at 2 dimensions, 562 at 3, 161 at 4, 78 at 5 and 49 at 6. "+
 			"Use CenteredL2Discrepancy above that, but read its saturation caveat first: "+
-			"by twenty dimensions it scores a low-discrepancy set within 30%% of a random one and by "+
-			"thirty within 8%%",
+			"the documented high-dimensional benchmarks show weak separation from random points despite different integration errors",
 		n, s, formatBoxes(boxes), reason,
 	)
 }

@@ -1087,6 +1087,10 @@ canvas#convChart {
   gap: 7px;
 }
 
+.chart-legend span[hidden] {
+  display: none;
+}
+
 .chart-legend i {
   width: 18px;
   height: 0;

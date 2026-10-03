@@ -7,85 +7,12 @@ import (
 	"testing"
 )
 
-// What the hash in owenScramble costs, measured rather than argued.
-//
-// owen.go is careful to say that hash-based Owen scrambling is exact in its
-// nesting and approximate in the uniformity of the permutation at each node.
-// This file puts a number on the approximation, on the tree directly and then
-// on the two instruments the package already trusts. The reference it measures
-// against is exactOwen below: a textbook Owen scramble that draws one
-// independent fair bit per node of the tree from splitMix64 and stores it,
-// which is exactly the thing the hash replaces and exactly the thing that does
-// not fit in memory outside a test.
-//
-// Node by node the hash is indistinguishable from fair coins. Sweeping 40000
-// scrambling seeds through every one of the 8191 nodes at depths 0..12, the
-// worst node flips with probability 0.00962 away from 1/2 — 3.85 sigma at that
-// seed count, where the largest of 8191 independent fair coins is expected to
-// land near 3.9 sigma on its own. The worst sibling or parent-child pair
-// correlates at |phi| = 0.0198, 3.97 sigma over 12285 pairs. Both are the
-// numbers a fair coin gives; the exact reference, measured the same way,
-// gives 3.07 sigma. There is no per-node bias and no pairwise dependence to
-// find.
-//
-// Jointly across a level there is, and it is large. For a fixed seed a true
-// Owen scramble flips a Binomial(2^k, 1/2) number of the nodes at depth k; the
-// reference reproduces that variance to within 4% at every depth measured. The
-// hash does not. Over 2000 seeds its flip count per level has variance, as a
-// fraction of the binomial value: 1.02 at depth 1, 0.49 at 2, 0.76 at 3, 0.50
-// at 4, 0.34 at 5, 0.21 at 6, 0.55 at 7, 0.27 at 8, 0.21 at 9, 0.22 at 10,
-// 1.21 at 11, 3.06 at 12, 0.09 at 13, 0.90 at 14, 0.41 at 15, 0.42 at 16. Most
-// levels are far more evenly balanced than independent coins would be, depth
-// 13 is almost rigidly balanced, and depth 12 is over-dispersed instead. The
-// flips at one level are individually fair and pairwise almost independent but
-// collectively nothing like independent — which is the honest shape of the
-// approximation, and is not visible in any per-node statistic.
-//
-// What it costs downstream, on the package's own instruments, is very little.
-// Integration at 39 dimensions and n=4096 on the integrand of
-// integration_test.go, hash against reference, RMS relative error over the
-// same stream seeds: 1.06x worse over 10 streams, 1.07x over 40, 1.12x over
-// 120. The direction is consistent and the size is at the edge of what stream
-// noise explains — the standard error of that ratio at 120 streams is about
-// 6%. Against the shared math/rand baseline of integration_test.go the hash
-// comes in at 32.0x and the reference at 33.8x over ten streams, 42.1x and
-// 47.2x over 120 — the baseline itself moves with the stream count, which is
-// why only ratios measured at the same count are comparable. So the price of
-// the approximation is on the order of a tenth of the RMS error, on an
-// integrand where Owen scrambling as a whole only buys 1.08x over a digital
-// shift; it is not something a caller can
-// notice. The hash figure is the library's own: 1.350e-04 is what
-// TestOwenBeatsDigitalShiftAt39Dims logs for WithOwenScrambling at the same
-// settings, so the path built here out of accumulate reproduces the shipped
-// one exactly rather than merely resembling it.
-//
-// The correlation instrument reads the other way and is worth reading
-// carefully. Worst adjacent-pair |r| at 39 dimensions and 600 points over
-// thirty seeds: hash 0.1116 with a median of 0.0537, reference 0.1104 with a
-// median of 0.1043. The reference's median sits at the noise floor of 600
-// samples — the largest of 38 sample correlations of independent columns is
-// about 0.10 — while the hash's median is half of that, and an unrandomized
-// or merely digitally shifted Sobol set scores 0.027 through the same
-// harness. The hash is not better here; it is *less randomizing*, leaving the
-// point set nearer the deterministic Sobol structure it started from, which
-// this statistic rewards.
-// A lower number on this measurement does not mean a better scramble, and a
-// two-sided gate on it would fail on a correct implementation.
-//
-// Verdict: measured, and it costs nothing a caller of this package can spend.
-// The per-node fairness the theory asks for is there. The joint independence
-// across a level is not, by a wide margin, and that is a real difference from
-// Owen's construction rather than a rounding error — but it moves integration
-// error by at most a tenth and moves the correlation statistic in the
-// direction of more structure, not less. Nothing here argues for a fifth
-// Laine-Karras round or different constants; the constants are pinned by
-// TestOwenPermutationConstantsAreEven and TestOwenIsArchitectureIndependent
-// and are not touched. If anyone wants to try, the level-variance table above
-// is the instrument to try it on, because it is the only one of these
-// measurements with enough resolution to show a change.
-//
-// The expensive sweeps are behind testing.Short, which no other file in this
-// package needed before; go test -short runs the cheap structural half.
+// These tests compare hash-based node flips with a seeded full-tree reference.
+// They measure individual bias, pair correlations, level flip-count variance,
+// and fixed-workload integration error. Passing finite statistical thresholds
+// does not prove ideal joint independence or bound errors on other integrands.
+// Historical results belong in docs/randomization.md; current seed/budget
+// details and measured values are logged by the corresponding tests.
 
 // exactOwenTableDepth is how many levels of the binary tree the reference
 // implementation stores explicitly.
@@ -472,15 +399,9 @@ func levelFlipVarianceRatio(k uint, seeds int, forSeed func(int) func(uint, uint
 // TestOwenFlipsAreNotJointlyIndependentAcrossALevel is measurement three, and
 // the one that finds something.
 //
-// It asserts almost nothing about the hash on purpose. The measured ratios run
-// from 0.09 to 2.98 depending on depth and are a stable property of the
-// construction, not a defect that could be fixed without changing constants
-// this package has pinned; asserting a range around them would be pinning
-// Burley's hash rather than testing this package's use of it. What is asserted
-// is that the level has not collapsed to a deterministic pattern, which is
-// what a scramble whose seed had stopped reaching the deeper levels would look
-// like, and that the reference really does behave like independent coins —
-// without which every comparison in this file is against nothing.
+// The loose floor checks that seed-dependent level counts have not collapsed.
+// The full-tree seeded reference is compared with binomial variance under an
+// ideal independent-word model; finite thresholds do not prove independence.
 func TestOwenFlipsAreNotJointlyIndependentAcrossALevel(t *testing.T) {
 	if testing.Short() {
 		t.Skip("sweeps every node of sixteen levels over 2000 seeds; -short skips it")
@@ -491,13 +412,11 @@ func TestOwenFlipsAreNotJointlyIndependentAcrossALevel(t *testing.T) {
 		maxDepth = 16
 
 		// A level whose flip count never moves is the failure this can catch.
-		// The measured minimum is 0.09 at depth 13, so the floor is set an
-		// order of magnitude below that.
+		// The loose floor is a fixture policy, not a uniformity guarantee.
 		floor = 0.01
 
-		// The reference is 2^k independent fair bits by construction, so its
-		// ratio is 1 up to the sampling error of 2000 seeds, which is about
-		// 3%. The bounds are wide enough that only a broken reference fails.
+		// The independent-word model targets binomial variance. These broad
+		// finite-seed bounds check the reference against that target.
 		refLo, refHi = 0.8, 1.25
 	)
 
@@ -690,7 +609,7 @@ func TestOwenApproximationCostsNothingOnIntegration(t *testing.T) {
 		streams = 40
 
 		// The two scrambles are different randomizations, not two runs of one,
-		// so their RMS over ten streams differs by stream noise even if the
+		// so their RMS over forty fixed streams has sampling variability even if the
 		// hash were perfect. A factor of 1.5 is the same tolerance
 		// TestOwenBeatsDigitalShiftAt39Dims uses for the same reason.
 		tolerance = 1.5

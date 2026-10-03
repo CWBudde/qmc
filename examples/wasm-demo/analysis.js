@@ -15,7 +15,8 @@
  * correlation and every integration error arrives from the Go library as a
  * finished number.
  *
- * No modules; this file is an IIFE and depends only on window.Render.
+ * No modules; the shared rendering, runtime, worker, and accessibility helpers
+ * are loaded before this controller.
  */
 (function () {
   "use strict";
@@ -114,6 +115,19 @@
     analytic: el("dAnalytic"),
     ceiling: el("dCeiling"),
   };
+  const analyticLegend = document.querySelector("[data-analytic-reference]");
+
+  function updateAnalyticReference(entry) {
+    const available = entry?.analyticKind === "rms";
+    const label = entry?.analyticLabel || "No analytic random baseline";
+    discReadout.analytic.previousElementSibling.textContent = label;
+    discReadout.analytic.parentElement.hidden = !available;
+    analyticLegend.hidden = !available;
+    analyticLegend.replaceChildren(
+      document.createElement("i"),
+      document.createTextNode(`${label} — no markers`),
+    );
+  }
 
   const reducedMotion =
     window.matchMedia &&
@@ -563,9 +577,8 @@
   }
 
   // Each source carries its own dimension ceiling, and the discrepancy panel
-  // ranges from 1 rather than from 2: star discrepancy in one dimension has a
-  // closed form the library's tests pin, and it is the one place on this page
-  // where the sequence beats random by a factor of forty.
+  // ranges from 1 rather than from 2. The library's one-dimensional formulas
+  // are cheaper than its general discrepancy evaluation.
   function applyDiscSource() {
     const spec = sourceSpec(discSource);
 
@@ -1340,13 +1353,11 @@
   // metric can be computed at the dimension count now on the slider, and how
   // many points it can afford there.
   //
-  // Neither answer is derived here. The star ceiling is a property of the
-  // library's own work budget and the centred-L2 ceiling is a property of a
-  // measured js/wasm cost model, and both live in the Go file that owns them.
+  // Neither answer is derived here. Library acceptance and the demo's retained
+  // work-policy caps both live in the Go file that owns them.
   // When the library refuses, its sentence is printed verbatim: it names the
-  // dimension count, the leaf count, that the ceiling is a property of the
-  // problem rather than a tuning knob, and the affordable point counts per
-  // dimension. No paraphrase of that is worth writing.
+  // dimension count, the leaf count, the implementation's work policy, and
+  // affordable point counts. Keep that diagnostic instead of a second copy.
   function refreshMetrics() {
     const result = call("metrics", {
       source: discSource.value,
@@ -1356,6 +1367,7 @@
     state.metrics = result;
 
     const entry = currentMetric();
+    updateAnalyticReference(entry);
 
     if (!entry) {
       discMetricNote.textContent =
@@ -1383,7 +1395,7 @@
       discStart.disabled = true;
       discReadout.ceiling.textContent = "—";
       discCeilingNote.textContent =
-        "There is no N ceiling to report: this metric cannot be computed at this dimension count at any point count.";
+        "This metric is unavailable at these dimensions for the demo's minimum of two points. Library special cases may support smaller inputs.";
 
       return;
     }
@@ -1397,14 +1409,12 @@
     discCeilingNote.innerHTML = ceilingSentence(entry);
   }
 
-  // The sentence that keeps a moving ceiling from reading as a bug. It is the
-  // only control on either page whose range changes when a different control
-  // moves, and the two metrics move it for entirely different reasons.
+  // Explain the dimension-dependent cap separately from library acceptance.
   function ceilingSentence(entry) {
     const affordable = `<b>${entry.maxPoints.toLocaleString("en-US")}</b> points at <b>${entry.dims}</b> dimensions`;
 
     if (entry.key === "star") {
-      return `<b>The N ceiling moves with the dimension slider.</b> Exact star discrepancy is NP-hard in the dimension, so its ceiling does not fall as dimensions are added — it collapses: ${affordable}, against a few thousand at two. Expect a short ladder, two or three rungs wide, and read the ratio rather than the slope.`;
+      return `<b>The N ceiling moves with the dimension slider.</b> Generic star-discrepancy work grows quickly with dimensions. The library's acceptance check and the demo's work policy permit ${affordable}. Each rung runs in a cancellable worker. Compare the measured sets and retain their configuration; the cap does not promise a duration or improvement.`;
     }
 
     return `<b>The N ceiling moves with the dimension slider.</b> General centred L2 costs O(N²s), with a cheaper one-dimensional path. Each rung runs in a worker; Stop terminates its computation and keeps completed rungs. The cap bounds total work — ${affordable} — rather than guaranteeing a duration on every device.`;
@@ -1422,7 +1432,7 @@
     discReadout.random.textContent = "—";
     discReadout.analytic.textContent = "—";
     discVerdict.textContent =
-      "Press Start. The page opens on 39 dimensions and centred L2, which is the configuration in which this statistic says nothing.";
+      "Press Start to compare the selected point sets. At high dimensions centred L2 can distinguish useful sequences from random points only weakly.";
     updateProgress(
       { bar: discProgressBar, text: discProgressText },
       0,
@@ -1479,8 +1489,8 @@
         state.disc.seq.push({ x: result.n, y: result.value });
         state.disc.rnd.push({ x: result.n, y: result.randomValue });
 
-        // Star has no closed form for the random expectation, so its third
-        // series simply stays empty and the chart draws two.
+        // This demo provides no analytic random reference for star. Centred
+        // L2 uses sqrt(E[CD2²]), the RMS baseline, not mean discrepancy.
         if (result.analytic !== null && result.analytic !== undefined) {
           state.disc.analytic.push({ x: result.n, y: result.analytic });
         }
@@ -1502,19 +1512,17 @@
     discRows.append(row);
   }
 
-  // Both the tone and the sentence are Go's. Whether 1.28 counts as "still
-  // separating them" is a judgement about a measured decay, and the threshold
-  // it was picked from lives beside the measurements in discrepancy.go; a page
-  // that re-decided it here would be a second copy of that judgement, free to
-  // disagree with the constant.
+  // Go supplies the display-policy threshold and factual ratio description.
+  // Neither the tone nor one measured ratio is a statistical significance test.
   function updateDiscReadout(result) {
+    updateAnalyticReference(result);
     discReadout.ratio.textContent = times(result.ratio);
     discReadout.ratio.dataset.tone = result.separates ? "good" : "bad";
     discReadout.value.textContent = sci(result.value);
     discReadout.random.textContent = sci(result.randomValue);
     discReadout.analytic.textContent =
       result.analytic === null || result.analytic === undefined
-        ? "no closed form"
+        ? "not provided"
         : sci(result.analytic);
     discReadout.ceiling.textContent = result.maxPoints.toLocaleString("en-US");
     discVerdict.textContent = result.verdict;
@@ -1554,11 +1562,9 @@
         },
       ],
       {
-        // No reference slopes, deliberately. Neither statistic's theoretical
-        // rate is a power law — the classical star bound carries a (log N)^s —
-        // so a straight 1/N line here would be a decoration that read as a
-        // claim. The analytic random expectation is drawn instead, and that
-        // one is exact.
+        // No universal convergence-rate claim is made for these finite point
+        // sets. When available, the dotted curve is the analytic random RMS
+        // baseline sqrt(E[CD2²]); it is not E[CD2] or a measured third set.
         xLabel: "N — points drawn",
         yLabel: "discrepancy",
         empty: "press Start to sweep N",
