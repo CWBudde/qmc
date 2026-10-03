@@ -177,60 +177,27 @@
   // Identical in contract to the Point Lab's: a missing export, a thrown error
   // and an {error} result all collapse to "message on the status line, return
   // null". Nothing from wasm is permitted to throw into a draw call.
+  const runtime = WasmRuntime.create({
+    onError: (message) => setStatus(message, "error"),
+    onTerminal: (message) => {
+      state.dead = true;
+      state.ready = false;
+      state.runId += 1;
+      if (state.sweep) finishSweep(state.sweep, "runtime terminated");
+      for (const input of document.querySelectorAll("input, select, button")) {
+        input.disabled = input.id !== "reloadWasm";
+      }
+      el("reloadWasm").hidden = false;
+      rack.dataset.boot = "failed";
+      bootRing.dataset.state = "error";
+      setStatus(message, "error");
+    },
+  });
+
+  el("reloadWasm").addEventListener("click", () => window.location.reload());
+
   function call(name, opts, callOpts) {
-    const silent = callOpts && callOpts.silent;
-
-    // A panic aborts the instance. Once one is reported the module is rubble,
-    // so the gate stays shut until the page is reloaded.
-    if (state.dead) {
-      return null;
-    }
-
-    const api = globalThis.qmc;
-
-    if (!api || typeof api[name] !== "function") {
-      if (!silent) {
-        setStatus(`export "${name}" is unavailable`, "error");
-      }
-
-      return null;
-    }
-
-    let result;
-
-    try {
-      result = api[name](opts);
-    } catch (err) {
-      console.error(err);
-
-      if (!silent) {
-        setStatus(`${name} failed: ${err && err.message}`, "error");
-      }
-
-      return null;
-    }
-
-    if (result && result.error) {
-      console.error(result.error);
-
-      if (result.panic) {
-        state.dead = true;
-        setStatus(
-          `${name} panicked: ${result.error} — the WebAssembly instance is dead. Reload the page.`,
-          "error",
-        );
-
-        return null;
-      }
-
-      if (!silent) {
-        setStatus(result.error, "error");
-      }
-
-      return null;
-    }
-
-    return result;
+    return runtime.call(name, opts, callOpts);
   }
 
   // cacheSinks re-wraps the whole ArrayBuffer rather than storing the returned
@@ -1707,10 +1674,12 @@
 
     // Deliberately not awaited: the demo's main() ends in select{} so this
     // promise never resolves. Awaiting it would hang the page forever.
-    go.run(result.instance);
+    runtime.start(go, result.instance);
 
     // Give the Go side one turn of the event loop to publish globalThis.qmc.
     await new Promise((resolve) => setTimeout(resolve, 0));
+
+    if (state.dead) return;
 
     const info = call("info", undefined);
 
@@ -1745,10 +1714,8 @@
   }
 
   initWasm().catch((err) => {
-    console.error(err);
-    setStatus(
-      "WebAssembly failed to load. Serve this page over HTTP — a file:// URL cannot fetch a .wasm — and check that qmc.wasm is sent with Content-Type: application/wasm.",
-      "error",
+    runtime.terminate(
+      `WebAssembly failed to load: ${err.message || err}. Serve the page over HTTP and check its assets.`,
     );
   });
 })();

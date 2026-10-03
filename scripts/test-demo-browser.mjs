@@ -6,6 +6,8 @@ import { resolve, extname } from "node:path";
 import { tmpdir } from "node:os";
 
 const root = resolve(process.argv[2] || "dist");
+const runtimeFixture = process.argv[3] ? resolve(process.argv[3]) : null;
+let useFixture = false;
 const mime = {
   ".wasm": "application/wasm",
   ".js": "text/javascript",
@@ -20,7 +22,9 @@ const server = createServer(async (req, res) => {
       "." + decodeURIComponent(new URL(req.url, "http://local").pathname),
     );
     if (!path.startsWith(root + "/")) throw new Error("path");
-    const data = await readFile(path);
+    const data = await readFile(
+      useFixture && path.endsWith("/qmc.wasm") ? runtimeFixture : path,
+    );
     res.writeHead(200, {
       "Content-Type": mime[extname(path)] || "application/octet-stream",
       "Content-Length": data.length,
@@ -238,8 +242,87 @@ try {
     const matrix=qmc.correlate({dims:3,count:10}).matrix, pair=make(36);
     output=qmc.correlate({dims:3,count:10,out:{matrix:pair}});
     check(equal(output.matrix,matrix) && output.matrix.buffer===pair.f32.buffer,'correlation buffer reuse');
+    const names=['info','points','correlate','converge','digits','leaps','metrics','discrepancy'];
+    const canonical=v=>ArrayBuffer.isView(v)||Array.isArray(v)?Array.from(v,canonical):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])):v;
+    for(const name of names) {
+      const baseline=qmc[name]({});
+      check(!baseline.error,'default object rejected by '+name);
+      for(const opts of [undefined,null,false,1,'bad',[],{dims:NaN,count:Infinity,n:-Infinity,skip:null,leap:'bad',seed:NaN,source:null,randomization:false}]) {
+        const result=qmc[name](opts);
+        check(!result.error && JSON.stringify(canonical(result))===JSON.stringify(canonical(baseline)),'default/fallback mismatch '+name);
+      }
+    }
+    check(typeof qmc.testExit==='undefined','fixture export in production build');
+    const rejected=qmc.converge({integrand:'unknown'});
+    check(rejected.error && rejected.panic===false,'request was not explicitly rejected');
+    check(!qmc.converge({integrand:'sum',dims:2,n:4}).error,'valid request after rejection');
     return {cases,transitions:true,gaussianDimensions:[1,4,32],sourceDescriptions:true,typedArrayCases:mismatches.length+3};
   })()`);
+  if (runtimeFixture) {
+    useFixture = true;
+    for (const page of ["analysis.html", "index.html"]) {
+      await send(
+        "Page.navigate",
+        { url: `http://127.0.0.1:${server.address().port}/${page}` },
+        sessionId,
+      );
+      const deadline = Date.now() + 30000;
+      while (
+        !(await evaluate(
+          'document.getElementById("rack")?.dataset.boot === "ready" && typeof qmc?.testExit === "function"',
+        ))
+      ) {
+        assert(Date.now() < deadline, "runtime fixture boot deadline");
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      const recovery = await evaluate(`(async () => {
+        const el=id=>document.getElementById(id), check=(v,msg)=>{if(!v)throw new Error(msg)};
+        const failure=qmc.testPanic();
+        check(failure.panic && failure.error.includes('fixture request panic'),'fixture did not recover Go panic');
+        check(!qmc.points({dims:2,count:2}).error,'valid request after recovered panic');
+        const analysis=!!el('start'), method=analysis?'converge':'points', original=qmc[method];
+        qmc[method]=()=>failure;
+        if(analysis)el('start').click();else {el('count').value='10';el('count').dispatchEvent(new Event('input'));}
+        await new Promise(r=>setTimeout(r,100));
+        check(el('status').dataset.state==='error' && el('rack').dataset.boot==='ready','recovered panic marked instance terminal');
+        check(el('reloadWasm').hidden,'reload required after recovered panic');
+        qmc[method]=original;
+        if(analysis){el('start').click();el('stop').click();check(el('convRows').children.length>0,'valid sweep after panic');}
+        else {el('count').value='11';el('count').dispatchEvent(new Event('input'));await new Promise(r=>setTimeout(r,100));check(el('tPoints').textContent.includes('11'),'valid points after panic');}
+        const exit=qmc.testExit;
+        exit();
+        await new Promise(r=>setTimeout(r,20));
+        check(el('rack').dataset.boot==='failed' && !el('reloadWasm').hidden,'actual exit did not expose reload');
+        check(Array.from(document.querySelectorAll('input,select,button')).every(e=>e.id==='reloadWasm'||e.disabled),'controls active after runtime exit');
+        let threw=false; try {qmc.points({dims:2,count:2});}catch(e){threw=true;}
+        check(threw,'fixture did not actually terminate Go');
+        return {recoveredPanic:true,actualExit:true};
+      })()`);
+      assert.deepEqual(recovery, { recoveredPanic: true, actualExit: true });
+      await evaluate('document.getElementById("reloadWasm").click(); true');
+      const reloadDeadline = Date.now() + 30000;
+      while (
+        !(await evaluate(
+          'document.getElementById("rack")?.dataset.boot === "ready"',
+        ))
+      ) {
+        assert(Date.now() < reloadDeadline, "reload recovery deadline");
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      assert(
+        await evaluate(
+          'document.getElementById("reloadWasm").hidden && !qmc.points({dims:2,count:2}).error',
+        ),
+        "reload did not create a usable instance",
+      );
+    }
+    useFixture = false;
+    console.log("Both pages passed recovered-panic and actual Go-exit checks.");
+  } else {
+    console.log(
+      "Runtime-exit checks require the optional test-fixture WASM argument.",
+    );
+  }
   assert.equal(errors.length, 0, JSON.stringify(errors));
   console.log("Browser sweep contracts passed:", JSON.stringify(result));
 } finally {

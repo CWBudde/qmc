@@ -31,8 +31,8 @@ const (
 	// A leap multiplies the raw index: point i is raw index skip+1+i*leap, so
 	// the largest raw index this page can ask for is maxLeap times the largest
 	// count any export offers. Sobol's direction numbers run out at 2^32 and
-	// fill panics past that, which guard() would turn into a dead instance
-	// rather than a red box. The binding case is the convergence sweep at
+	// fill panics past that, which guard() turns into a failed request. The
+	// binding case is the convergence sweep at
 	// maxConvergeN = 200,000 points; 200,000 * 1000 is 2e8, two decimal orders
 	// below the ceiling, and every other export is smaller still. Halton has
 	// no such wall but does grow a digit per factor of the base, which is the

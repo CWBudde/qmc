@@ -288,14 +288,31 @@ sequence-against-random is the one comparison these pages exist to make.
 
 ## Two things that look odd and are not
 
-**`guard()` wraps every Go export.** A panic that unwinds out of a `js.Func`
-aborts the whole WebAssembly instance, so one bad request would brick the page
-until a reload. Every export returns its failures as `{error, panic}` data
-instead, and the JS `call()` wrapper collapses a missing export, a thrown error
-and an `{error}` result into the same thing: a message on the status line and a
-`null` return. Nothing from the wasm side is ever allowed to throw into a draw
-call. When a result carries `panic: true` the instance really is dead, so the
-page says so and stops calling rather than filling the console with noise.
+**`guard()` wraps every Go export.** Recovered callback panics return
+`{error, panic: true}` as a failed request; explicit validation failures carry
+`panic: false`. Both can be followed by a valid request. The shared `runtime.js`
+monitor reports request errors in the status line and observes actual runtime
+exit, rejected `go.run()`, and WebAssembly traps separately. Terminal failures
+disable the controls and expose **Reload WebAssembly**, which starts a fresh page
+and instance. Recovery cannot catch every runtime throw or trap.
+
+Missing, null, or non-object options use defaults. Missing/wrong-type fields and
+nonfinite numeric fields use their individual fallback values; finite numeric
+values are clamped to the export's documented range. Unknown source, integrand,
+randomization, or metric strings are rejected rather than silently substituted.
+
+For the complete request/termination regression, compile the test-only fixture
+and pass it as the runner's second argument:
+
+```sh
+GOOS=js GOARCH=wasm go test -C examples/wasm-demo -c -tags=qmc_browser_fixture -o /tmp/qmc-runtime-fixture.wasm .
+node scripts/test-demo-browser.mjs dist /tmp/qmc-runtime-fixture.wasm
+```
+
+Its recovered-panic and `os.Exit(0)` exports exist only in the tagged test binary;
+the runner verifies that production builds do not contain them. Both pages are
+checked for continued operation after a recovered panic, disabled controls after
+exit, and a working reload action.
 
 **The convergence sweep loops in JavaScript, not in Go.** A synchronous call
 into Go blocks the event loop for its whole duration, which means a click on

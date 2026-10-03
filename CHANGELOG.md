@@ -40,6 +40,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Typed output buffers are reused only when their kinds, backing buffer,
   offsets, and capacities match. Invalid, detached, shared, or undersized pairs
   receive fresh buffers. The bridge checks the byte-copy count.
+- Missing or malformed top-level demo options now follow the documented
+  defaults. Recovered callback panics remain request failures; actual runtime
+  termination disables controls and exposes Reload WebAssembly on both pages.
+  Added a test-only Go-exit fixture and verified recovery/reload in Chrome.
 
 ### Scientific contract corrections
 

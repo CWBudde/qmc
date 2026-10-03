@@ -502,13 +502,13 @@ Existing sweep/Gaussian browser checks and explicit js/wasm vet pass.
 
 ### DEMO-05 — Distinguish recovered request failures from runtime termination (P1)
 
-- [ ] Do not permanently mark the instance dead solely because a callback panic
+- [x] Do not permanently mark the instance dead solely because a callback panic
       was recovered. Determine whether subsequent safe calls remain usable.
-- [ ] Provide an explicit reset/reload action and coherent disabled controls when
+- [x] Provide an explicit reset/reload action and coherent disabled controls when
       the runtime has actually terminated or cannot be trusted.
-- [ ] Make documented fallback behavior consistent for missing, null, malformed,
+- [x] Make documented fallback behavior consistent for missing, null, malformed,
       and nonfinite options, including default calls that later access `opts.Get`.
-- [ ] Test a rejected request followed by a valid request and a genuine runtime
+- [x] Test a rejected request followed by a valid request and a genuine runtime
       termination separately.
 
 Evidence: [bridge.go](examples/wasm-demo/bridge.go),
@@ -517,6 +517,20 @@ Evidence: [bridge.go](examples/wasm-demo/bridge.go),
 
 Acceptance: recoverable failures remain recoverable; terminal failures have a clear
 recovery path; default/malformed option handling matches its documented contract.
+
+Verification (2026-10-03): Chrome regressions fail against the previous bridge
+with `default/fallback mismatch points`, and against the previous controllers
+with `valid sweep after panic`. All eight exports now match their default object
+results for missing/null/non-object options, arrays, malformed fields, and
+nonfinite numeric fields (56 comparisons, independent of JS property order).
+An unknown integrand is explicitly rejected and a subsequent valid request works.
+A tagged test-only WASM binary produces a recovered Go panic and invokes actual
+`os.Exit(0)`: both pages remain usable after recovery, disable every computation
+control after exit, expose Reload WebAssembly, and return to usable fresh instances
+when it is clicked. The runner checks that production has no fixture exports.
+Existing sweep, Gaussian, and buffer browser checks pass; js/wasm vet with the
+fixture tag passes. The shared runtime monitor also handles rejected run promises
+and WASM traps without conflating them with recovered request failures.
 
 ### DEMO-06 — Add behavioral demo verification (P1)
 
