@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### API contracts
+
+- Document private option settings, reader ownership, and the separate
+  digit-reversal panic boundary without changing public method signatures.
+- Verify later aligned Sobol blocks and constructor-supported demo menus;
+  remove the demo's copied library table ceiling.
+
 ### Performance
 
 - Cache a bounded prefix of nested Halton root permutations at construction,

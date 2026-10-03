@@ -46,6 +46,12 @@ wants `WithSkip(2^m - 1)`. With the default skip of 0, all 40 of the first 40 di
 out unbalanced at m=8; at skip 255, none of them do. The alignment is stated on the type and
 on `At`.
 
+For any later aligned block, use `WithSkip(q*2^m - 1)` with representable
+`q >= 1` and leap 1, checking that the entire block fits the raw-index ceiling.
+The raw-origin block is not exposed by this API. Later-block and maximum-block
+regressions, and the decision to retain skip rather than add another helper,
+are described in [API design](api-design.md).
+
 **Not every projection is a t=0 net.** Projections inherit the full-dimensional t
 guarantee and can improve it. The D(6) direction numbers optimise two-dimensional
 projections without making them all nets. Of the 780 pairs among the first 40 dimensions, 18

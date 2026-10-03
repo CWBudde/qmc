@@ -94,5 +94,6 @@ local, with no analytics, submissions, or third-party font requests.
 
 All DEMO-01 through DEMO-10 findings have completion evidence in
 [PLAN.md](../PLAN.md). Measurement/API
-proposals remain DOC-01/PERF-01/API-01. Use the task records and current demo
+consolidation remains DOC-01; PERF-01 and API-01 have measured or documented
+decisions. Use the task records and current demo
 README for implementation status.

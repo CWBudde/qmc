@@ -211,6 +211,9 @@ func (h *Halton) Reset() { h.cursor = 0 }
 // before scrambling, is never returned.
 //
 // Negative i is treated as 0. A raw index above math.MaxInt panics.
+// Fixed digit scrambling can also panic at very large representable raw
+// indices when reversing the permuted digits would overflow uint64; those
+// indices are refused rather than returning truncated coordinates.
 // Next and NextInto return the final admissible point normally and panic on
 // subsequent draws until Reset is called.
 func (h *Halton) At(i int) []float64 {

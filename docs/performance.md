@@ -139,9 +139,9 @@ the same valid-input seeded coordinates and the same indexed concurrency contrac
   dimension-first prototype 244754 ns, with overlapping ranges and zero
   allocations. The initial noisy run's larger apparent advantage did not
   persist. The evidence does not justify a new cross-generator batch contract.
-  Keep caller-owned Into buffers and Draw's contiguous matrix; coordinate any
-  future workspace/bulk proposal through API-01 rather than adding overlapping
-  allocation surfaces.
+  Keep caller-owned Into buffers and Draw's contiguous matrix. API-01's
+  [design decision](api-design.md) records why another allocation surface is
+  deferred until representative consumer evidence exists.
 
 The separate [CPU profile](measurements/performance-2026-10-03/after-profile-top.txt)
 covers the arithmetic and bulk candidates, not a universal application workload.
@@ -189,8 +189,8 @@ coordinate above that threshold: 0 at 97 dimensions, 1 at 98, and 3 at 100.
 The root cache preserves this contract. Allocation regressions cover both
 methods; BenchmarkNestedHaltonScratchThreshold measures the boundary workload.
 Shared mutable scratch would break concurrent indexed reads. The documented
-fallback stays in place pending a demonstrated consumer need for a coordinated
-caller-owned workspace design under API-01.
+fallback stays in place; [API design](api-design.md) records the decision to
+defer a caller-owned workspace until a representative consumer demonstrates need.
 
 ## Discrepancy and browser workloads
 

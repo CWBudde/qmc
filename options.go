@@ -9,6 +9,10 @@ import "io"
 // place.
 // Value options may be reused across concurrent constructors. WithDirectionNumbers
 // instead owns a consumable reader; see that option's lifecycle documentation.
+// The settings type is intentionally private: callers compose the supported
+// With functions rather than creating options that bypass constructor invariants.
+// This also allows internal configuration fields to evolve without exposing them
+// as public API. Nil options are not supported.
 type Option func(*settings)
 
 // randomization names the scheme that turns a deterministic sequence into a

@@ -12,6 +12,7 @@ import (
 // regression runner. Neither fixture export exists in production builds.
 func TestBrowserRuntimeFixture(t *testing.T) {
 	verifyDigitInspector(t)
+	verifyDemoCapabilities(t)
 
 	exports["testPanic"] = func(js.Value) any { panic("browser fixture request panic") }
 	exports["testExit"] = func(js.Value) any {

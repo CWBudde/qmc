@@ -163,18 +163,11 @@ type sourceSpec struct {
 
 // sobolMaxDims is the largest dimension count this page offers for Sobol.
 //
-// The embedded Joe-Kuo table covers 1024 dimensions and NewSobol refuses more,
-// but that constant is unexported, so the number is written out here rather
-// than read from the library. The minimum against maxDims is what makes it
-// safe: today the shared clamp is far below 1024 and binds first, so the
-// figure below is not load-bearing, and if a future table were smaller than
-// maxDims this is where the page would learn it — from a per-source field the
-// controls already respect, not from an error after the fact.
-const sobolMaxDims = min(sobolTableDims, maxDims)
-
-// sobolTableDims is the dimension count of the embedded Joe-Kuo table, which
-// NewSobol will not exceed.
-const sobolTableDims = 1024
+// This is a product workload limit, not a duplicate of the library's embedded
+// table capacity. Constructors remain the authority on supported dimensions
+// and options; the browser fixture checks every offered endpoint/configuration
+// against them so changes cannot silently make the capability menu invalid.
+const sobolMaxDims = maxDims
 
 // sourceOrder fixes the order the page lists sequences in.
 var sourceOrder = []string{"halton", "sobol", "random"}
