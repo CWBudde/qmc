@@ -1,19 +1,19 @@
 # Repository review remediation plan
 
-Date: 2026-10-03. Status: in progress; completed tasks carry verification notes below.
+Date: 2026-10-03. Status: complete; all 32 tasks have verification or decision evidence below.
 
 This plan covers the core library, mathematical claims, public API, concurrency,
 tests, performance, browser demo, accessibility, privacy, tooling, documentation,
 release process, and third-party packaging findings from the repository review.
-The overall review rating was 7/10. Each item below has an implementation or
-decision task and an acceptance criterion.
+The original review rating was 7/10. The final evidence-based assessment is
+8/10, with category ratings and remaining limitations below. Each item has an
+implementation or decision task and an acceptance criterion.
 
 ## Coverage and current status
 
-There are 32 remediation tasks: 31 have recorded completion evidence and one
-remains open. Checkboxes track verified completion; unchecked tasks describe the
-work still required. Changes under development count as open until their
-acceptance criteria are met.
+All 32 remediation tasks have recorded completion evidence. Checkboxes track
+verified completion, including explicit decisions to defer optional proposals.
+No original remediation task remains open.
 
 | Review area                                                  | Tasks                                       | Current status |
 | ------------------------------------------------------------ | ------------------------------------------- | -------------- |
@@ -28,7 +28,7 @@ acceptance criteria are met.
 | Workflow security and release validation                     | TOOL-04                                     | Verified       |
 | Build consistency                                            | SHIP-01                                     | Verified       |
 | Distribution notices                                         | SHIP-02                                     | Verified       |
-| Documentation accuracy and contributor guidance              | DOC-01, DOC-02                              | DOC-02 open    |
+| Documentation accuracy and contributor guidance              | DOC-01, DOC-02                              | Verified       |
 | Performance evidence                                         | PERF-01                                     | Verified       |
 | API decisions                                                | API-01                                      | Verified       |
 
@@ -37,8 +37,8 @@ reliable checks and delivery, followed by documentation and measured design
 decisions. Each detailed task includes the affected files, specific actions,
 and an acceptance criterion so it can be implemented and reviewed independently.
 
-For the remaining work, finish DOC-02's contributor/status reconciliation,
-then record the final completion audit and updated category scores.
+The final completion audit and updated category scores follow the task records.
+Future opportunities listed there are outside this completed remediation scope.
 
 ## Working rules
 
@@ -1126,15 +1126,15 @@ Pinned formatting checks 106 files with zero changes; diff checks pass.
 
 ### DOC-02 — Reconcile open work and document contribution/release commands (P2)
 
-- [ ] Link this plan from the documentation index and reconcile the existing
+- [x] Link this plan from the documentation index and reconcile the existing
       distributed "known gaps"/"still open" lists with these task IDs.
-- [ ] Remove stale gap statements, including the claim that no conditional-structure
+- [x] Remove stale gap statements, including the claim that no conditional-structure
       test exists when direct nesting tests are already present.
-- [ ] Document the actual package-comment location and tracked toolchain setup;
+- [x] Document the actual package-comment location and tracked toolchain setup;
       remove references to local-only Trunk configuration as required project state.
-- [ ] Add concise contributor instructions covering setup, fast/slow tests,
+- [x] Add concise contributor instructions covering setup, fast/slow tests,
       browser checks, benchmark reproduction, and release validation.
-- [ ] Update completed-task status and related topic pages together, keeping
+- [x] Update completed-task status and related topic pages together, keeping
       explanatory documentation near the design reasoning.
 
 Evidence: [docs/README.md](docs/README.md),
@@ -1143,6 +1143,30 @@ Evidence: [docs/README.md](docs/README.md),
 
 Acceptance: contributors have one current checklist and clear reproducible commands;
 topic-page open-work lists cannot disagree silently with the implementation or plan.
+
+Verification (2026-10-03): implementation committed as `c081e43`.
+CONTRIBUTING.md covers tracked pinned setup, both modules, fast/statistical/race
+budgets, executable 386/minimum Go, real Chrome and artifact checks, benchmark
+reproduction, and reviewed-source release validation. Commands are checked
+against justfile and the actual runner environment (`CHROME_BIN`); publishing
+is an explicit subsequent maintainer action. No local-only editor/Trunk state
+is required. Package documentation is correctly located in sequence.go.
+
+README and the documentation index link this authoritative plan and the guide.
+Topic-page explanations retain design reasoning without competing open-work
+lists. Stale absent-demo-test and absent-nesting-test claims are removed.
+The historical approximate-star proposal is explicitly deferred: current callers
+use the exact API; an estimator would need a separate accuracy/randomness
+contract and independent validation. CORE-06's work limits and API-01's small
+surface remain intact. Optional cache/workspace/capability proposals also have
+recorded measured or documented decisions rather than ambiguous open flags.
+
+All 196 local links across 15 documentation files resolve; the audit finds no
+competing topic-page open-work headings. Shared `just check` passes both modules,
+tidy/verify, lint, explicit WASM build/vet/stub, routine tests (3.351 s), and pinned
+formatting (106 files, zero changes). Diff checks pass. The preceding DOC-01
+shared release/Chrome/statistical gates cover the final functional source;
+DOC-02 changes contributor guidance, links and decision records only.
 
 ## Measured optimization and API decisions
 
@@ -1276,9 +1300,79 @@ are unchanged; remaining historical claim/open-list consolidation stays DOC-01/0
 - [x] DEMO-10 resolves the smaller maintenance gaps with regressions or documented decisions.
 - [x] TOOL-01 through TOOL-04 run reproducibly in a clean environment for both modules.
 - [x] SHIP-01 and SHIP-02 verify complete, consistent artifacts and notices.
-- [ ] DOC-01 and DOC-02 reconcile every affected public claim and open-work list.
+- [x] DOC-01 and DOC-02 reconcile every affected public claim and open-work list.
 - [x] PERF-01 and API-01 have measured implementations or documented decisions.
-- [ ] Final ordinary, required race, statistical, WASM, browser, formatting, lint,
+- [x] Final ordinary, required race, statistical, WASM, browser, formatting, lint,
       and release-artifact checks pass under the agreed budgets.
-- [ ] Re-review category scores using evidence from the completed work; do not
+- [x] Re-review category scores using evidence from the completed work; do not
       raise scores solely because checklist items were marked complete.
+
+## Final verification and assessment
+
+The final audit confirms 32 unique remediation IDs, checked actions, acceptance
+criteria, and verification records. Implementation/decision commits precede
+completion markings. Source, topic docs, contributor commands, and plan status
+are reconciled. The combined local gates pass on the implemented source:
+
+| Check                                                                                          | Final observed result                                                                      |
+| ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Both modules' verify/tidy/lint; production WASM build/vet and native stub                      | Passed under shared release gates and subsequent `just check`                              |
+| Routine race contracts, Go 1.26.1 linux/amd64                                                  | Passed, 23.873 s, five-minute test budget                                                  |
+| Full ordinary/statistical suite, Go 1.26.1 linux/amd64                                         | Passed, 46.871 s, ten-minute test budget                                                   |
+| Routine minimum Go 1.23.0 amd64 / executable 386                                               | Passed, 5.425 / 11.408 s                                                                   |
+| Minimum Go 1.23.0 demo compatibility                                                           | Module verify/tidy, production WASM build/vet, fixture vet and native stub passed          |
+| Actual Chrome production pages and runtime fixture                                             | Passed, 23.627 s, zero unexpected errors; latest 21-file artifact ID recorded under DOC-01 |
+| Artifact/publication/notice, installer, formatter, module-drift and release-policy regressions | Passed under the shared 25-minute release-verification budget                              |
+| Final fast check and pinned formatting                                                         | Passed; routine tests 3.351 s, 106 files checked with zero formatting changes              |
+| Documentation references                                                                       | All 196 audited local links resolve; one remediation checklist                             |
+
+Timings are observations from Go 1.26.1/1.23.0 on Linux/amd64, i7-1255U;
+Chrome 144.0.7559.109 and Node 18.19.1 were used for actual browser checks.
+Commands, budgets, earlier specialized checks, and measurement limitations
+remain in the individual task records. Required race evidence covers the routine
+contract suite. The optional 40-minute full statistical race audit was not run
+to completion and is not claimed passed. No remote CI execution, actual release
+tag/publication/deployment, native macOS/arm64 run, Firefox/Safari run, physical
+mobile test, or assistive-technology combination is claimed verified here.
+
+Three subagents independently re-reviewed the mathematics/core, API/statistics/
+measurement evidence, and demo/tooling/delivery. Their source reviews complement
+the executed gates. Two final source-comment corrections and three small demo
+label/no-JavaScript issues were fixed before the corresponding final checks.
+No additional confirmed ordinary-input algorithm defect was found in that pass.
+Ratings are engineering judgments on a 0 (worst) to 10 (best) scale, not a
+certification or a score inferred from completed checkboxes.
+
+| Category                               | Rating | Reason and remaining limit                                                                                                                              |
+| -------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mathematical correctness and contracts | 8.5    | Reference vectors, polynomial checks, precise net/randomization claims; finite hashes are not ideal independent randomness                              |
+| Numerical robustness                   | 8      | Checked boundaries and stable 1D discrepancy; general CD2 cancellation and intermediate range limits remain                                             |
+| API and concurrency                    | 8.5    | Small interface, immutable options/cache, explicit buffer/cursor ownership and public regressions; reader/stateful coordination remains caller-owned    |
+| Numerical test quality                 | 9      | Brute-force, defining-integral, exact rational, mutation and architecture references provide independent evidence                                       |
+| Statistical test quality               | 8      | Diverse integrands, budgets, negative controls and uncertainty; deterministic seed fixtures do not prove universal superiority                          |
+| Performance engineering and evidence   | 8.5    | Measured immutable caching, raw metadata and end-to-end work; one machine and a limited canonical accuracy workload                                     |
+| Documentation and contributor guidance | 8.5    | Current RMS labels, canonical measurements, working commands and one checklist; ongoing scientific/toolchain upkeep is necessary                        |
+| Core architecture and maintainability  | 8      | Compact production surface and contiguous storage; statistical helper duplication and long harnesses remain                                             |
+| Demo UX and result integrity           | 8      | Snapshots, cancellation, workers and recovery verified; the interface remains mathematically dense                                                      |
+| Accessibility                          | 7      | Keyboard/text/AX/progress/reduced-motion checks; actual screen readers and broader visual audits remain unverified                                      |
+| Demo maintainability                   | 7      | Shared helpers and behavioral tests; controllers and custom CDP infrastructure still require coordinated maintenance                                    |
+| Privacy                                | 9      | Local computation, system fonts and no third-party requests, analytics, submissions or application storage found                                        |
+| Tooling and CI security                | 8      | Pinned/checksummed tools/actions, both modules, minimal permissions and bounded gates; platform prerequisites and changing browser/runner images remain |
+| Build, distribution and release policy | 8      | Atomic verified bundles, complete notices and reviewed-source identity; native macOS and actual remote execution remain unverified                      |
+
+Overall: **8/10**. The correctness and verification failures from the original
+review are addressed. The main remaining costs are maintainability, broad
+platform/accessibility evidence, and explicit numerical/statistical limitations.
+
+Basic future improvements, outside the completed tasks:
+
+- Unify correlation quantile conventions and reduce duplicated statistical
+  helpers when the next quality test is added.
+- Add native arm64/macOS and another browser smoke path, plus manual screen-reader
+  checks. Observe remote CI/Pages execution before extending delivery claims.
+- Add an aligned/stateful Sobol accuracy-cost campaign and archive exact source
+  snapshots alongside future benchmark hashes. Use independently selected seeds
+  and relevant integrands when publishing broader comparisons.
+- Consider scaled/high-precision multidimensional discrepancy only with a concrete
+  caller need and independent references; evaluate workspace or deeper cache APIs
+  against demonstrated workloads rather than adding them speculatively.
