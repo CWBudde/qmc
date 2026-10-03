@@ -46,6 +46,10 @@ run-wasm-demo: build-wasm-demo
 check-wasm-demo:
     cd examples/wasm-demo && GOOS=js GOARCH=wasm go build -o /dev/null . && go build -o /dev/null ./...
 
+# Bounded real-Chrome checks; optional site argument validates an existing build
+test-browser $qmc_browser_site="":
+    bash ./scripts/test-wasm-demo.sh
+
 # Install the formatters and linters used by `just fmt` / `just lint`
 setup-deps:
     #!/usr/bin/env bash

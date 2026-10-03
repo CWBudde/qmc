@@ -4,10 +4,13 @@ import { createServer } from "node:http";
 import { readFile, mkdtemp, rm } from "node:fs/promises";
 import { resolve, extname } from "node:path";
 import { tmpdir } from "node:os";
+import { StringDecoder } from "node:string_decoder";
 
+const started = Date.now();
 const root = resolve(process.argv[2] || "dist");
 const runtimeFixture = process.argv[3] ? resolve(process.argv[3]) : null;
 let useFixture = false;
+let failureMode = null;
 const mime = {
   ".wasm": "application/wasm",
   ".js": "text/javascript",
@@ -22,6 +25,19 @@ const server = createServer(async (req, res) => {
       "." + decodeURIComponent(new URL(req.url, "http://local").pathname),
     );
     if (!path.startsWith(root + "/")) throw new Error("path");
+    if (
+      (failureMode === "missing-wasm" && path.endsWith("/qmc.wasm")) ||
+      (failureMode === "missing-runtime" && path.endsWith("/wasm_exec.js"))
+    ) {
+      res.writeHead(503);
+      res.end("deliberate smoke-test asset failure");
+      return;
+    }
+    if (failureMode === "corrupt-wasm" && path.endsWith("/qmc.wasm")) {
+      res.writeHead(200, { "Content-Type": "application/wasm" });
+      res.end("invalid WASM fixture");
+      return;
+    }
     const data = await readFile(
       useFixture && path.endsWith("/qmc.wasm") ? runtimeFixture : path,
     );
@@ -39,11 +55,16 @@ const server = createServer(async (req, res) => {
 });
 const profile = await mkdtemp(resolve(tmpdir(), "qmc-chrome-"));
 let chrome;
+let chromeExited = false;
+let deadlineExceeded = false;
+const decoder = new StringDecoder("utf8");
 const pending = new Map();
 let serial = 0,
   buffer = "";
 const errors = [];
 const requests = [];
+const consoleErrors = [];
+const resourceErrors = [];
 const rejectPending = (error) => {
   for (const p of pending.values()) {
     clearTimeout(p.timer);
@@ -52,13 +73,21 @@ const rejectPending = (error) => {
   pending.clear();
 };
 const budget = setTimeout(() => {
+  deadlineExceeded = true;
   rejectPending(new Error("Browser deadline exceeded"));
   chrome?.kill("SIGKILL");
 }, 120000);
 try {
   await new Promise((ok, fail) => {
+    const timer = setTimeout(
+      () => fail(new Error("Local server startup deadline exceeded")),
+      5000,
+    );
     server.once("error", fail);
-    server.listen(0, "127.0.0.1", ok);
+    server.listen(0, "127.0.0.1", () => {
+      clearTimeout(timer);
+      ok();
+    });
   });
   chrome = spawn(
     process.env.CHROME_BIN || "google-chrome",
@@ -75,12 +104,13 @@ try {
   );
   chrome.stderr.on("data", () => {});
   chrome.on("error", rejectPending);
-  chrome.once("exit", () =>
-    rejectPending(new Error("Chrome exited before the test finished")),
-  );
+  chrome.once("exit", () => {
+    chromeExited = true;
+    rejectPending(new Error("Chrome exited before the test finished"));
+  });
   chrome.stdio[3].on("error", rejectPending);
   chrome.stdio[4].on("data", (chunk) => {
-    buffer += chunk.toString();
+    buffer += decoder.write(chunk);
     let end;
     while ((end = buffer.indexOf("\0")) >= 0) {
       const packet = JSON.parse(buffer.slice(0, end));
@@ -96,10 +126,34 @@ try {
         errors.push(packet.params.exceptionDetails);
       else if (packet.method === "Network.requestWillBeSent")
         requests.push(packet.params.request.url);
+      else if (
+        packet.method === "Runtime.consoleAPICalled" &&
+        packet.params.type === "error"
+      )
+        consoleErrors.push(
+          packet.params.args.map((arg) => arg.value || arg.description),
+        );
+      else if (
+        packet.method === "Log.entryAdded" &&
+        packet.params.entry.level === "error"
+      ) {
+        const entry = packet.params.entry;
+        const expected =
+          entry.source === "network" &&
+          ((failureMode === "missing-wasm" &&
+            entry.url?.endsWith("/qmc.wasm")) ||
+            (failureMode === "missing-runtime" &&
+              entry.url?.endsWith("/wasm_exec.js")));
+        if (!expected) resourceErrors.push(entry);
+      }
     }
   });
   const send = (method, params = {}, sessionId) =>
     new Promise((resolve, reject) => {
+      if (chromeExited || deadlineExceeded) {
+        reject(new Error("Browser is no longer running within its deadline"));
+        return;
+      }
       const id = ++serial,
         timer = setTimeout(() => {
           pending.delete(id);
@@ -125,6 +179,7 @@ try {
   await send("Runtime.enable", {}, sessionId);
   await send("Page.enable", {}, sessionId);
   await send("Network.enable", {}, sessionId);
+  await send("Log.enable", {}, sessionId);
   const evaluate = async (expression) => {
     const r = await send(
       "Runtime.evaluate",
@@ -327,14 +382,106 @@ try {
       "Runtime-exit checks require the optional test-fixture WASM argument.",
     );
   }
+  // Switch sources and all their randomizations through the actual Point Lab UI.
+  await send(
+    "Page.navigate",
+    { url: `http://127.0.0.1:${server.address().port}/index.html` },
+    sessionId,
+  );
+  let pageDeadline = Date.now() + 30000;
+  while (
+    !(await evaluate(
+      'document.getElementById("rack")?.dataset.boot === "ready"',
+    ))
+  ) {
+    assert(Date.now() < pageDeadline, "Point Lab boot deadline");
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  const switching = await evaluate(`(async () => {
+    const el=id=>document.getElementById(id), check=(v,msg)=>{if(!v)throw new Error(msg)};
+    const set=(id,value,event='change')=>{el(id).value=String(value);el(id).dispatchEvent(new Event(event,{bubbles:true}));};
+    set('count',10,'input'); set('dims',4,'input');
+    for(const [source,randomizations] of [['halton',['none','scramble','nested']],['sobol',['none','shift','owen']]]) {
+      set('source',source); await new Promise(r=>setTimeout(r,100));
+      check(Array.from(el('randomization').options,o=>o.value).join(',')===randomizations.join(','),'incorrect randomization menu '+source);
+      for(const randomization of randomizations) {
+        set('randomization',randomization); await new Promise(r=>setTimeout(r,100));
+        check(el('seqTitle').textContent=== (source==='halton'?'Halton':'Sobol'),'stale sequence title');
+        check(el('tPoints').textContent==='10','point-count result mismatch');
+        check(el('digitPanel').hidden===(source==='sobol'),'digit inspector visibility');
+        check(el('tBaseXRow').hidden===(source==='sobol'),'prime-base visibility');
+        check(el('status').dataset.state==='ready','source/randomization request failed');
+      }
+    }
+    set('scrub',3,'input'); check(el('revealReadout').textContent.includes('3 / 10'),'scrub failed');
+    el('play').click(); await new Promise(r=>setTimeout(r,100)); el('play').click();
+    check(el('play').getAttribute('aria-pressed')==='false','pause failed');
+    return true;
+  })()`);
+  assert(switching);
+  // Deliberate loading failures are allowed only for their precise asset URLs.
+  for (const page of ["index.html", "analysis.html"]) {
+    for (const mode of ["missing-wasm", "corrupt-wasm", "missing-runtime"]) {
+      failureMode = mode;
+      await send(
+        "Page.navigate",
+        { url: `http://127.0.0.1:${server.address().port}/${page}` },
+        sessionId,
+      );
+      pageDeadline = Date.now() + 30000;
+      while (
+        !(await evaluate(
+          'document.getElementById("rack")?.dataset.boot === "failed"',
+        ))
+      ) {
+        assert(
+          Date.now() < pageDeadline,
+          "loading failure was not reported: " + page + " " + mode,
+        );
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      assert(
+        await evaluate(
+          '!document.getElementById("reloadWasm").hidden && document.getElementById("status").dataset.state === "error"',
+        ),
+        "missing loading-failure recovery action",
+      );
+      await new Promise((r) => setTimeout(r, 100));
+      failureMode = null;
+      await evaluate('document.getElementById("reloadWasm").click(); true');
+      pageDeadline = Date.now() + 30000;
+      while (
+        !(await evaluate(
+          'document.getElementById("rack")?.dataset.boot === "ready"',
+        ))
+      ) {
+        assert(
+          Date.now() < pageDeadline,
+          "loading failure reload did not recover",
+        );
+        await new Promise((r) => setTimeout(r, 100));
+      }
+    }
+  }
   assert.equal(errors.length, 0, JSON.stringify(errors));
+  assert.deepEqual(consoleErrors, [], "unexpected browser console errors");
+  assert.deepEqual(resourceErrors, [], "unexpected resource/browser errors");
   const thirdParty = requests.filter(
     (url) =>
       /^https?:/.test(url) &&
       new URL(url).origin !== `http://127.0.0.1:${server.address().port}`,
   );
   assert.deepEqual(thirdParty, [], "demo requested third-party resources");
-  console.log("Browser sweep contracts passed:", JSON.stringify(result));
+  console.log(
+    "Browser smoke passed:",
+    JSON.stringify({
+      ...result,
+      pointLabSwitching: true,
+      loadingFailureCases: 6,
+      unexpectedErrors: 0,
+      elapsedSeconds: (Date.now() - started) / 1000,
+    }),
+  );
 } finally {
   clearTimeout(budget);
   if (chrome && chrome.exitCode === null) {

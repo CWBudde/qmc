@@ -179,17 +179,23 @@ or documentation link explicitly navigates away. The Go library itself has no
 network activity or runtime dependencies; serving/downloading the demo is a
 separate browser activity.
 
-After building, run `node scripts/test-demo-browser.mjs dist` from the repository
-root. Node 18 or newer and Chrome on PATH are required (`CHROME_BIN` can select
-another Chrome executable). The runner serves the built files on an ephemeral
-local port, creates a private browser profile, and cleans up both processes.
-Startup, protocol requests, and the overall run have explicit deadlines.
+Run `just test-browser` from the repository root. It builds a production demo
+and the test-only runtime fixture in an owned temporary directory, serves them
+on an ephemeral local port, starts Chrome with a private profile, and cleans up
+on success or failure. To check an existing build, use `just test-browser dist`.
+Node 18 or newer and Chrome on PATH are required (`CHROME_BIN` can select another
+Chrome executable). Server startup, page readiness, protocol requests, and the
+overall browser run have 5/30/20/120-second deadlines respectively. Compilation
+is also bounded by the CI job's timeout.
 
-The initial regression covers control changes, panel switching,
+The regression covers both pages and source/randomization switching, control
+changes, panel switching,
 Stop/restart, unavailable metrics, result configuration snapshots, source-specific
 descriptions, and Gaussian metadata/notes/readouts at dimensions 1, 4, and 32
-against an independent numerical integral. Broader
-two-page and failure-state coverage is tracked in PLAN.md under DEMO-06.
+against an independent numerical integral. It also checks typed buffers, option
+fallbacks, recovered request failures, actual Go exit/reload, and missing/corrupt
+asset recovery. Unexpected console, runtime, resource, and third-party network
+errors fail the suite. PR and Pages artifact validation use this same command.
 
 Changing a sweep control clears that panel's results and cancels its active job.
 Stop keeps partial results and their displayed configuration. Starting again

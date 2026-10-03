@@ -143,6 +143,17 @@ jobs:
       - name: Check the WebAssembly demo builds
         run: just check-wasm-demo
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Verify Chrome is available
+        run: google-chrome --version
+
+      - name: Verify the demo in Chrome
+        run: just test-browser
+
       # wasip1/wasm shares the js/wasm compiler backend, so this catches a
       # target-specific miscompile or an unsupported stdlib call in the library
       # itself. It is not a 32-bit check: GOARCH=wasm has a 64-bit int and only

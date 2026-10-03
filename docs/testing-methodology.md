@@ -160,8 +160,17 @@ ten minutes for PR contracts, twenty for scheduled statistics, and forty-five fo
 an explicitly requested full statistical race audit. Budgets are bounds, not
 performance guarantees. CI uses the same just recipes documented here.
 
-Browser verification remains tracked under DEMO-06 and is required before
-closing TEST-03. The current compile check does not prove runtime behavior.
+`just test-browser` verifies both demo pages in real Chrome using an owned
+temporary build, a local server, and a test-only runtime fixture. It covers
+source/randomization switches, sweep controls, Gaussian references, typed
+transfers, request recovery, actual Go exit/reload, and missing/corrupt assets.
+Unexpected console/runtime/resource errors and third-party requests fail the
+gate. `just test-browser dist` checks an existing upload artifact. Server startup,
+page readiness, protocol requests, and the browser run have 5/30/20/120-second
+deadlines; the existing-artifact run passed in 5.790 seconds on Chrome
+144.0.7559.109 and Node 18.19.1. PR/Pages jobs use the same commands. Compile-only
+checks remain useful but do not establish runtime behavior. Accessibility and
+constrained-device responsiveness are tracked separately under DEMO-07/DEMO-03.
 
 At this verification milestone, the corrected routine race suite completed in
 109.685 seconds and executable 386 fast checks in 48.608 seconds. Full ordinary

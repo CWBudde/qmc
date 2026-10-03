@@ -46,6 +46,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Added a test-only Go-exit fixture and verified recovery/reload in Chrome.
 - Both demo pages and canvas labels now use system fonts, removing Google Fonts
   requests. Browser regressions enforce same-origin resources.
+- `just test-browser` now verifies both pages, source switching, sweep controls,
+  numerical notes, typed transfers, error recovery, and loading failures with
+  bounded Chrome/server lifetimes. Unexpected browser errors fail the gate;
+  PR validation and Pages uploads require it.
 
 ### Scientific contract corrections
 

@@ -376,7 +376,7 @@ used its documented parallel-runner flag to avoid a shared temporary lock confli
       job, with a smaller justified PR gate and a full release check.
 - [x] Complete a race run covering the required contract tests and record the
       full-suite race strategy rather than claiming an uncompleted suite passed.
-- [ ] Complete browser verification after DEMO-06 provides a bounded smoke suite.
+- [x] Complete browser verification after DEMO-06 provides a bounded smoke suite.
 
 Evidence: [test workflow](.github/workflows/test.yml), [justfile](justfile),
 [discrepancy tests](discrepancy_test.go), [small-sample tests](small_sample_test.go).
@@ -385,7 +385,7 @@ Acceptance: each required job completes within an explicit budget on supported
 runners; routine and slow commands are reproducible locally; no verification
 status is inferred from incomplete or compile-only runs.
 
-Progress (2026-10-03): added fast/race/statistical/full-statistical-race recipes,
+Verification (2026-10-03): added fast/race/statistical/full-statistical-race recipes,
 short-mode exclusions for costly discrepancy and high-dimensional integration
 sweeps, routine PR race/386 jobs, a scheduled/manual statistical workflow, and
 release contract-race plus full ordinary checks. Routine race validation passes
@@ -395,7 +395,10 @@ The pre-exclusion short race snapshot exceeded five minutes in the star statisti
 sweep; that is a timeout, not an assertion failure. The corrected short suite
 completes within its five-minute budget. Full ordinary statistical validation
 (`just test-statistical`) passes in 306.323 seconds, within its ten-minute budget.
-Browser completion depends on DEMO-06; this task is not yet marked done.
+DEMO-06 now supplies the required real-browser gate: both local entry points pass
+within the 120-second browser budget, with the existing-artifact run taking
+5.790 seconds. Full statistical race remains an explicitly optional 40-minute
+audit rather than an unverified required check; its completion is not claimed.
 
 ## Browser demo
 
@@ -534,14 +537,14 @@ and WASM traps without conflating them with recovered request failures.
 
 ### DEMO-06 — Add behavioral demo verification (P1)
 
-- [ ] Introduce a small browser smoke suite and a deterministic local test server
+- [x] Introduce a small browser smoke suite and a deterministic local test server
       with bounded startup/readiness waits and cleanup on failure.
-- [ ] Cover both pages, source/randomization switching, Gaussian dimensions,
+- [x] Cover both pages, source/randomization switching, Gaussian dimensions,
       sweep control changes, Stop/restart, unavailable metrics, error recovery,
       typed-array transfers, and loading failures.
-- [ ] Test pure helper functions where useful; extract testable Go logic from
+- [x] Test pure helper functions where useful; extract testable Go logic from
       js/wasm-only files when it reduces duplication or enables meaningful tests.
-- [ ] Capture browser errors and fail the smoke suite on unexpected console/runtime
+- [x] Capture browser errors and fail the smoke suite on unexpected console/runtime
       errors. Add the suite to PR validation before Pages deployment.
 
 Evidence: [demo module](examples/wasm-demo/go.mod),
@@ -551,6 +554,25 @@ Evidence: [demo module](examples/wasm-demo/go.mod),
 Acceptance: runtime boot and key user flows are verified in a real browser;
 broken WASM/static assets and the identified result-consistency bugs fail CI;
 startup polls cannot hang indefinitely.
+
+Verification (2026-10-03): `just test-browser` builds in an owned temporary
+directory, compiles the tagged runtime fixture, runs Chrome, and cleans up.
+`just test-browser /path/to/site` checks an existing production artifact with
+the same fixture; this run passed in 5.790 seconds. The CDP runner has a five-second
+server startup deadline, thirty-second page readiness deadlines, twenty-second
+request deadlines, and a 120-second overall browser deadline. It checks both
+pages, all six Point Lab source/randomization combinations, transport/scrubbing,
+fifteen sweep-setting changes and transitions, Gaussian dimensions 1/4/32,
+fifteen buffer cases, eight exports' option fallbacks, rejected requests,
+recovered Go panics, actual runtime exit/reload, and six missing/corrupt asset
+recovery cases. The shared runtime helper is exercised through both production
+controllers and the Go fixture rather than a duplicated mock implementation.
+Unexpected console, runtime, resource, and third-party request errors fail the
+runner; an isolated `console.error` mutation proves the console gate fails.
+Only the deliberately injected missing-asset URLs are exempt during their
+specific test phase. PR validation and Pages artifact upload now require this
+same command. YAML parsing, shellcheck, shell formatting, and diff checks pass.
+Accessibility and constrained-device responsiveness remain DEMO-07/DEMO-03.
 
 ### DEMO-07 — Make heatmap and progress information accessible (P2)
 
@@ -805,7 +827,7 @@ behavior remain stable unless an intentional change is documented.
 ## Completion checklist
 
 - [x] SCI-01 and CORE-01 through CORE-08 are resolved with regressions and accurate contracts.
-- [ ] TEST-01 through TEST-03 establish meaningful, bounded verification for supported targets.
+- [x] TEST-01 through TEST-03 establish meaningful, bounded verification for supported targets.
 - [ ] DEMO-01 through DEMO-09 are verified in browser, accessibility, and failure-state checks.
 - [ ] TOOL-01 through TOOL-04 run reproducibly in a clean environment for both modules.
 - [ ] SHIP-01 and SHIP-02 verify complete, consistent artifacts and notices.
