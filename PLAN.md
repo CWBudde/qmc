@@ -10,7 +10,7 @@ decision task and an acceptance criterion.
 
 ## Coverage and current status
 
-There are 32 remediation tasks: 24 have recorded completion evidence and eight
+There are 32 remediation tasks: 25 have recorded completion evidence and seven
 remain open. Checkboxes track verified completion; unchecked tasks describe the
 work still required. Changes under development count as open until their
 acceptance criteria are met.
@@ -26,7 +26,8 @@ acceptance criteria are met.
 | Demo duplication and rendering maintenance                   | DEMO-10                                     | Open           |
 | Reproducible tooling and module coverage                     | TOOL-01 through TOOL-03                     | Verified       |
 | Workflow security and release validation                     | TOOL-04                                     | Open           |
-| Build consistency and distribution notices                   | SHIP-01, SHIP-02                            | Open           |
+| Build consistency                                            | SHIP-01                                     | Verified       |
+| Distribution notices                                         | SHIP-02                                     | Open           |
 | Documentation accuracy and contributor guidance              | DOC-01, DOC-02                              | Open           |
 | Performance evidence and API decisions                       | PERF-01, API-01                             | Open           |
 
@@ -35,7 +36,7 @@ reliable checks and delivery, followed by documentation and measured design
 decisions. Each detailed task includes the affected files, specific actions,
 and an acceptance criterion so it can be implemented and reviewed independently.
 
-For the remaining work, finish SHIP-01 and SHIP-02 before TOOL-04 so release
+For the remaining work, finish SHIP-02 before TOOL-04 so release
 validation can require the final artifact and notice checks. Complete PERF-01
 before closing the related API-01 workspace/bulk decisions. Resolve DEMO-10's
 maintenance decisions and reconcile DOC-01 and DOC-02 with those outcomes, then
@@ -917,15 +918,15 @@ limited to their intended jobs.
 
 ### SHIP-01 — Produce clean, versioned demo artifacts safely (P2)
 
-- [ ] Build in a fresh staging directory and publish the resulting complete set
+- [x] Build in a fresh staging directory and publish the resulting complete set
       atomically or with an equivalent deployment boundary.
-- [ ] Validate output destinations and avoid deleting or overwriting unrelated
+- [x] Validate output destinations and avoid deleting or overwriting unrelated
       caller-owned content when implementing cleanup.
-- [ ] Include an explicit recursive asset policy or manifest covering future
+- [x] Include an explicit recursive asset policy or manifest covering future
       images, fonts, JSON, and subdirectories, as well as existing assets.
-- [ ] Version/hash HTML references to scripts, styles, WASM, and its compiler-matched
+- [x] Version/hash HTML references to scripts, styles, WASM, and its compiler-matched
       runtime so a returning visitor cannot mix incompatible builds.
-- [ ] Add artifact checks for expected pages, linked assets, and absence of removed
+- [x] Add artifact checks for expected pages, linked assets, and absence of removed
       assets; verify paths work from different invoking directories.
 
 Evidence: [build script](scripts/build-wasm-demo.sh),
@@ -935,6 +936,33 @@ Evidence: [build script](scripts/build-wasm-demo.sh),
 Acceptance: consecutive builds cannot retain deleted assets; all references resolve
 within a consistent build; output handling is safe for caller-owned directories;
 the runtime and WASM always originate from the same toolchain.
+
+Verification (2026-10-03): implementation committed as `70e72fc`. Builds use
+fresh sibling staging, exact ownership/inventory hashes, a bounded managed lock,
+and native atomic directory exchange. A full-content build namespace binds
+all payload bytes and compiler metadata; public pages select it through a
+relative base URL. The runtime comes from the compiler used for the WASM.
+
+`just test-demo-artifact` passes offline regressions for fresh/existing concurrent
+builds, stable content identity, recursive images/fonts/JSON, removed assets,
+compile/runtime/compiler-change failures, unresolved references, protected paths,
+spaces/different working directories, symlinks/nonregular assets, unrelated lock
+content, caller files/edits, and caller edits racing publication. Five hundred
+native Linux exchanges under a reader produce only complete old/new entries.
+Edited preceding trees are retained instead of deleted after publication.
+
+The public recipe invoked from `/tmp` with a spaced output path produced
+build `eed774608ee86475d1d654da9b53abfd5fd0ec06581e46fccf28f6364dac7093`
+with 15 verified files and Go 1.26.1. Its full Chrome suite passes on `/`
+(26.555 s) and `/qmc/` (26.481 s), including a running old page during a
+new-build deployment: the removed original namespace fails cleanly, never
+serves new bytes, and Reload recovers into the new namespace. Both report
+zero unexpected errors. Required pinned formatting/shell diagnostics and
+Python/workflow syntax checks pass. CI requires artifact regressions; Pages
+checks the exact artifact before browser verification/upload. Linux publication
+was exercised natively; macOS exchange is implemented but not claimed tested
+on this host. Unsupported exchange fails preserving the prior output. Notice
+packaging remains SHIP-02.
 
 ### SHIP-02 — Include distribution notices and credits (P2)
 
