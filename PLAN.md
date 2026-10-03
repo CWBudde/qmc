@@ -10,7 +10,7 @@ decision task and an acceptance criterion.
 
 ## Coverage and current status
 
-There are 32 remediation tasks: 28 have recorded completion evidence and four
+There are 32 remediation tasks: 29 have recorded completion evidence and three
 remain open. Checkboxes track verified completion; unchecked tasks describe the
 work still required. Changes under development count as open until their
 acceptance criteria are met.
@@ -29,16 +29,17 @@ acceptance criteria are met.
 | Build consistency                                            | SHIP-01                                     | Verified       |
 | Distribution notices                                         | SHIP-02                                     | Verified       |
 | Documentation accuracy and contributor guidance              | DOC-01, DOC-02                              | Open           |
-| Performance evidence and API decisions                       | PERF-01, API-01                             | Open           |
+| Performance evidence                                         | PERF-01                                     | Verified       |
+| API decisions                                                | API-01                                      | Open           |
 
 The basic improvements are organized around concrete failures first, then
 reliable checks and delivery, followed by documentation and measured design
 decisions. Each detailed task includes the affected files, specific actions,
 and an acceptance criterion so it can be implemented and reviewed independently.
 
-For the remaining work, complete PERF-01
-before closing the related API-01 workspace/bulk decisions. Reconcile DOC-01 and
-DOC-02 with those outcomes, then run the final completion checklist.
+For the remaining work, resolve API-01 against the completed PERF-01 measurements.
+Reconcile DOC-01 and DOC-02 with those outcomes, then run the final completion
+checklist.
 
 ## Working rules
 
@@ -1112,16 +1113,16 @@ topic-page open-work lists cannot disagree silently with the implementation or p
 
 ### PERF-01 — Re-establish comparable performance evidence (P3)
 
-- [ ] Measure Halton and Sobol on the same machine/toolchain, using repeated runs
+- [x] Measure Halton and Sobol on the same machine/toolchain, using repeated runs
       and reporting allocation counts alongside throughput and constructor memory.
-- [ ] Document scrambled Halton construction cost at its call site, including
+- [x] Document scrambled Halton construction cost at its call site, including
       high-dimensional memory growth and guidance to reuse generators.
-- [ ] Profile base-2 specialization, reciprocal-based arithmetic, and a bulk fill
+- [x] Profile base-2 specialization, reciprocal-based arithmetic, and a bulk fill
       API before choosing optimizations; verify mathematical and reproducibility effects.
-- [ ] Evaluate bounded, immutable root/shallow-node permutation caches separately
+- [x] Evaluate bounded, immutable root/shallow-node permutation caches separately
       from caching every nested node. Replace the categorical claim that caching
       "cannot" work with the measured conclusion for each design.
-- [ ] Compare options by end-to-end work and relevant integration accuracy as well
+- [x] Compare options by end-to-end work and relevant integration accuracy as well
       as per-point cost; retain the efficient Sobol recurrence and contiguous storage.
 
 Evidence: [bench_test.go](bench_test.go), [sobol_bench_test.go](sobol_bench_test.go),
@@ -1130,6 +1131,47 @@ Evidence: [bench_test.go](bench_test.go), [sobol_bench_test.go](sobol_bench_test
 Acceptance: performance comparisons share a reproducible baseline; each proposed
 optimization is implemented with measured benefit or closed with a recorded
 reason; allocation, concurrency, accuracy, and compatibility checks remain green.
+
+Verification (2026-10-03): implementation committed as `75c2427`. The public
+`just measure-performance NEW_DIRECTORY` recipe records five sequential repeats,
+fixed 4096-index workloads, constructor allocations, 40-seed integration error
+and work, source/environment hashes, and a separate CPU profile. Both campaigns
+use Go 1.26.1 on the same i7-1255U, logical CPU 2, GOMAXPROCS=1. Raw before/after,
+the cache recheck, full-tree counter, and cold Sobol observation are committed
+under docs/measurements; the performance topic records exact commands, ranges,
+seeds, uncertainty assumptions, and limits. Final-campaign Go source hashes
+match the implementation. Other test suites and benchmarks were kept separate
+from the timed campaigns; host CPU frequency was not locked.
+
+The bounded eager root cache is implemented as immutable contiguous entries and
+prefix offsets. It preserves every tested seeded value and child/tail path,
+requires no sampling-time mutations, and caps digit tables at 64 KiB. Indexed
+nested throughput improves from 15445 to 7202 ns median; the 40-stream integration
+workload improves from 2.723 to 1.287 s with unchanged error metrics. Constructor
+work/memory increases and is documented at the call site. Scratch allocations
+at 97/98/100 dimensions remain 0/1/3. Bounded-memory, exact-value (including
+maximum indices and 1000 dimensions), dimension-prefix, and shared-read
+regressions verify the cache.
+
+Shallow caching is feasible but deferred: its modest incremental gain has
+overlapping timing ranges and materially higher construction/memory. Full-tree
+caching is rejected separately using 1.284 node reuse and an estimated 381.9 MB
+footprint excluding map buckets. Bit reversal changes 1019/4096 full-width test
+values; reciprocal arithmetic changes boundary/reference values. Neither
+replaces the reproducible arithmetic. Bulk loop medians differ by less than 2%
+with overlapping ranges, so no batch API is added. Sobol's recurrence and
+contiguous storage are retained. These decisions and end-to-end accuracy/cost
+comparisons replace categorical optimization claims.
+
+Shared `just release-verify` passes both modules, lint, routine race contracts
+(24.790 s), full ordinary/statistical tests (43.303 s), real Chrome (28.638 s,
+zero unexpected errors), and all artifact/tooling/release regressions. Go 1.23.0
+routine amd64 and executable 386 suites pass (3.504/9.674 s), as do its explicit
+WASM build/vet/module checks. Go 1.26.1 executable 386 passes (10.009 s), and
+the separate routine race suite passes (24.172 s). Formatting checks 103 files
+with zero changes; diff checks pass. DOC-01 still consolidates historical source
+tables and the remaining documentation measurements; API-01 decides the other
+public-surface proposals.
 
 ### API-01 — Resolve remaining API proposals explicitly (P3)
 
