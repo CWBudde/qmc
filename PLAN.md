@@ -10,7 +10,7 @@ decision task and an acceptance criterion.
 
 ## Coverage and current status
 
-There are 32 remediation tasks: 26 have recorded completion evidence and six
+There are 32 remediation tasks: 27 have recorded completion evidence and five
 remain open. Checkboxes track verified completion; unchecked tasks describe the
 work still required. Changes under development count as open until their
 acceptance criteria are met.
@@ -25,7 +25,7 @@ acceptance criteria are met.
 | Responsiveness, accessibility, privacy, and idle work        | DEMO-03, DEMO-07 through DEMO-09            | Verified       |
 | Demo duplication and rendering maintenance                   | DEMO-10                                     | Open           |
 | Reproducible tooling and module coverage                     | TOOL-01 through TOOL-03                     | Verified       |
-| Workflow security and release validation                     | TOOL-04                                     | Open           |
+| Workflow security and release validation                     | TOOL-04                                     | Verified       |
 | Build consistency                                            | SHIP-01                                     | Verified       |
 | Distribution notices                                         | SHIP-02                                     | Verified       |
 | Documentation accuracy and contributor guidance              | DOC-01, DOC-02                              | Open           |
@@ -36,11 +36,9 @@ reliable checks and delivery, followed by documentation and measured design
 decisions. Each detailed task includes the affected files, specific actions,
 and an acceptance criterion so it can be implemented and reviewed independently.
 
-For the remaining work, complete TOOL-04 using the final artifact and notice
-checks established by SHIP-01 and SHIP-02. Complete PERF-01
-before closing the related API-01 workspace/bulk decisions. Resolve DEMO-10's
-maintenance decisions and reconcile DOC-01 and DOC-02 with those outcomes, then
-run the final completion checklist.
+For the remaining work, resolve DEMO-10's maintenance decisions. Complete PERF-01
+before closing the related API-01 workspace/bulk decisions. Reconcile DOC-01 and
+DOC-02 with those outcomes, then run the final completion checklist.
 
 ## Working rules
 
@@ -896,13 +894,13 @@ and passes the corrected one. Routine CI and the WASM workflow require it.
 
 ### TOOL-04 — Pin workflow dependencies and match release validation to promises (P2)
 
-- [ ] Pin GitHub Actions to reviewed commit SHAs, retaining readable version
+- [x] Pin GitHub Actions to reviewed commit SHAs, retaining readable version
       comments and Dependabot updates.
-- [ ] Keep permissions minimal per job, limiting Pages write permissions to jobs
+- [x] Keep permissions minimal per job, limiting Pages write permissions to jobs
       that need them.
-- [ ] Ensure release validation includes the required race, statistical, module,
+- [x] Ensure release validation includes the required race, statistical, module,
       WASM, browser, and artifact checks with explicit budgets.
-- [ ] Keep version validation and local release commands consistent and verify
+- [x] Keep version validation and local release commands consistent and verify
       releases correspond to clean, reviewed source and documented changes.
 
 Evidence: [test workflow](.github/workflows/test.yml),
@@ -913,6 +911,42 @@ Evidence: [test workflow](.github/workflows/test.yml),
 Acceptance: workflow dependencies change through reviewable updates; release
 checks match the documented support and verification claims; permissions remain
 limited to their intended jobs.
+
+Verification (2026-10-03): implementation committed as `5c1cdda`. Eight external
+Actions use full upstream-verified commit SHAs with readable major-version
+comments and weekly Dependabot updates. Reviewed action metadata exposed a
+floating nested uploader in the Pages composite; a verified regular-file TAR
+and directly pinned uploader replace it. Every job has a deadline. Workflow
+defaults are read-only, checkout credentials are not persisted, and only the
+Pages deployment job receives Pages/OIDC write permissions. Just 1.21.0 is
+explicitly selected, matching the locally exercised recipe syntax.
+
+Shared local/workflow release policy validates strict ASCII SemVer, an exact
+nonempty changelog section, module paths, a clean worktree, and the full reviewed
+HEAD SHA before and after the required gates. Existing versions cannot identify
+different source. The SHA is the maintainer's explicit review attestation;
+these checks do not query or substitute for human PR approval. Tag validation
+binds an annotated Reviewed-Commit trailer, checkout, workflow event, and main
+ancestry. Local tag creation additionally checks remote main before/after the
+gates; no tag was created in this repository. Literal recipe arguments close a
+shell injection reproduced against the preceding committed recipe. Required
+checks share a 25-minute total deadline within the 30-minute workflow job and
+clean up descendant processes on timeout or failure.
+
+`just test-release-gates` passes offline private Git fixtures covering malformed
+versions, literal shell payloads, metadata/source drift, stale version tags,
+tag attestations, event identity, main ancestry, minimal permissions, floating
+dependencies, and deadline cleanup. Archive tests verify exact inventory,
+round-trip extraction, required notices, and preservation of caller archives.
+A real archive of the SHIP-02 artifact contains 22 regular files and validates
+after extraction. No remote workflow, upload, or deployment is claimed executed.
+
+The shared `just release-verify` passes both modules' verify/tidy/lint/build/vet,
+routine race contracts (28.986 s), full statistical/ordinary tests (53.997 s),
+the actual production Chrome suite (26.933 s, zero unexpected errors), artifact,
+installer, formatter, module-drift, and release regressions. The subsequent
+version-to-source regression passes its focused fixture suite; final pinned
+formatting processes 97 files with zero changes, and diff checks pass.
 
 ## Build artifacts and third-party materials
 
@@ -1099,7 +1133,7 @@ behavior remain stable unless an intentional change is documented.
 - [x] TEST-01 through TEST-03 establish meaningful, bounded verification for supported targets.
 - [x] DEMO-01 through DEMO-09 are verified in browser, accessibility, and failure-state checks.
 - [ ] DEMO-10 resolves the smaller maintenance gaps with regressions or documented decisions.
-- [ ] TOOL-01 through TOOL-04 run reproducibly in a clean environment for both modules.
+- [x] TOOL-01 through TOOL-04 run reproducibly in a clean environment for both modules.
 - [x] SHIP-01 and SHIP-02 verify complete, consistent artifacts and notices.
 - [ ] DOC-01 and DOC-02 reconcile every affected public claim and open-work list.
 - [ ] PERF-01 and API-01 have measured implementations or documented decisions.
