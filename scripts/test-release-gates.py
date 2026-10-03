@@ -90,7 +90,9 @@ if recipe=='ci' and os.environ.get('QMC_TEST_REMOTE_ADVANCE'):
     subprocess.run(['git','--git-dir',os.environ['QMC_TEST_REMOTE_GIT'],'update-ref','refs/heads/main',os.environ['QMC_TEST_REMOTE_ADVANCE']],check=True)
 ''')
     mock_just.chmod(0o755)
-    environment = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1",
+    # The release workflow exports its own event identity; the fixture must not inherit it.
+    inherited = {key: value for key, value in os.environ.items() if not key.startswith("QMC_RELEASE_")}
+    environment = {**inherited, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1",
                    "QMC_TOOLS_DIR": str(mock.parent), "QMC_TEST_GATE_LOG": str(log),
                    "PATH": str(mock) + os.pathsep + os.environ["PATH"],
                    "GOTOOLCHAIN": "go1.23.0", "GOWORK": "/external/workspace", "GOFLAGS": "-tags=unexpected"}

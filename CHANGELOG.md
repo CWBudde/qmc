@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-03
+
+### Release tooling
+
+- The release-gate self-test no longer inherits the release workflow's
+  `QMC_RELEASE_*` event identity into its offline fixture, which made tag-push
+  release validation fail for v0.3.0. Library code is unchanged from v0.3.0.
+
 ## [0.3.0] - 2026-10-03
 
 ### Documentation and statistical labels
