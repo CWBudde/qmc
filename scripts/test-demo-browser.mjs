@@ -24,6 +24,8 @@ const server = createServer(async (req, res) => {
     res.writeHead(200, {
       "Content-Type": mime[extname(path)] || "application/octet-stream",
       "Content-Length": data.length,
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Embedder-Policy": "require-corp",
     });
     res.end(data);
   } catch {
@@ -197,7 +199,46 @@ try {
     check(plain('halton')!==plain('sobol'),'identical source descriptions');
     check(plain('sobol').includes('base 2') && plain('halton').includes('High prime'),'source-specific explanation');
     check(!el('docReference').textContent.includes('five seeds'),'stale seed summary');
-    return {cases,transitions:true,gaussianDimensions:[1,4,32],sourceDescriptions:true};
+    // Typed output must agree with a fresh result, including malformed sinks.
+    const request={dims:2,count:5,axisX:0,axisY:1,skip:0,seed:7};
+    const reference=qmc.points(request).xy;
+    const equal=(a,b)=>a instanceof Float32Array && a.length===b.length && Array.from(a).every((v,i)=>v===b[i]);
+    const make=(size=40,offset=0)=>{const buffer=new ArrayBuffer(size);return {f32:new Float32Array(buffer,offset),u8:new Uint8Array(buffer,offset)}};
+    let valid=make(80,8); valid.f32.fill(-7);
+    let output=qmc.points({...request,out:{xy:valid}});
+    check(equal(output.xy,reference),'matched nonzero-offset sink values');
+    check(output.xy.buffer===valid.f32.buffer && output.xy.byteOffset===8 && output.xy.length===10,'matched sink was not reused');
+    check(new Float32Array(valid.f32.buffer)[0]===0 && valid.f32[10]===-7,'sink wrote outside payload');
+    const detached=make(); structuredClone(detached.f32.buffer,{transfer:[detached.f32.buffer]});
+    const mismatches=[
+      {f32:new Float32Array(10),u8:new Uint8Array(40)},
+      {f32:new Float32Array(10),u8:new Uint8Array(1)},
+      {f32:new Float32Array(1),u8:new Uint8Array(4)},
+      {f32:new Float64Array(10),u8:new Uint8Array(80)},
+      {f32:new Float32Array(10),u8:new Uint8ClampedArray(40)},
+      {f32:new Float32Array(10),u8:[]},
+      {f32:[],u8:new Uint8Array(40)},
+      {f32:Object.create(Float32Array.prototype),u8:new Uint8Array(40)},
+      detached,
+      null,
+    ];
+    const shifted=make(80); shifted.u8=new Uint8Array(shifted.f32.buffer,4); mismatches.push(shifted);
+    const short=make(); short.u8=new Uint8Array(short.f32.buffer,0,1); mismatches.push(short);
+    for(const pair of mismatches) {
+      output=qmc.points({...request,out:{xy:pair}});
+      check(!output.error && equal(output.xy,reference),'malformed sink produced invalid floats');
+      if(pair && ArrayBuffer.isView(pair.f32))check(output.xy.buffer!==pair.f32.buffer,'malformed sink reused');
+    }
+    check(typeof SharedArrayBuffer==='function','shared-buffer regression needs isolation headers');
+    {
+      const buffer=new SharedArrayBuffer(40), pair={f32:new Float32Array(buffer),u8:new Uint8Array(buffer)};
+      output=qmc.points({...request,out:{xy:pair}});
+      check(equal(output.xy,reference) && output.xy.buffer!==buffer,'shared sink reused');
+    }
+    const matrix=qmc.correlate({dims:3,count:10}).matrix, pair=make(36);
+    output=qmc.correlate({dims:3,count:10,out:{matrix:pair}});
+    check(equal(output.matrix,matrix) && output.matrix.buffer===pair.f32.buffer,'correlation buffer reuse');
+    return {cases,transitions:true,gaussianDimensions:[1,4,32],sourceDescriptions:true,typedArrayCases:mismatches.length+3};
   })()`);
   assert.equal(errors.length, 0, JSON.stringify(errors));
   console.log("Browser sweep contracts passed:", JSON.stringify(result));

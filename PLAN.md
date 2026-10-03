@@ -478,16 +478,27 @@ are recorded, including behavior on a constrained device.
 
 ### DEMO-04 — Validate typed-array output buffers (P1)
 
-- [ ] Validate typed-array kinds, byte capacities, shared backing buffers,
+- [x] Validate typed-array kinds, byte capacities, shared backing buffers,
       offsets, and requested lengths before reusing a caller-provided sink.
-- [ ] Check the byte count returned by `js.CopyBytesToJS`.
-- [ ] Reject or safely replace mismatched, detached, and undersized views.
+- [x] Check the byte count returned by `js.CopyBytesToJS`.
+- [x] Reject or safely replace mismatched, detached, and undersized views.
 
 Evidence: `sinkFor` and `float32Sink.write` in
 [marshal.go](examples/wasm-demo/marshal.go).
 
 Acceptance: malformed output pairs cannot return plausible unchanged or partially
 written floats; the ordinary matched-buffer reuse path remains correct and efficient.
+
+Verification (2026-10-03): the extended real-Chrome test fails against the
+previous WASM build with `malformed sink produced invalid floats`. Fifteen
+buffer cases now pass: matched nonzero-offset point output with untouched
+prefix/tail, matched correlation output, twelve malformed/detached/undersized
+pairs, and a SharedArrayBuffer pair. Invalid pairs receive fresh ordinary
+ArrayBuffers, while valid pairs retain buffer identity and exact payload length.
+The test server enables cross-origin isolation to actually exercise shared
+buffers. `write` checks both sink capacity and the exact CopyBytesToJS count;
+an incomplete copy becomes a guarded failure rather than successful floats.
+Existing sweep/Gaussian browser checks and explicit js/wasm vet pass.
 
 ### DEMO-05 — Distinguish recovered request failures from runtime termination (P1)
 

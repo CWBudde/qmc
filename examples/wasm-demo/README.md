@@ -194,6 +194,13 @@ using the same clamp and formula as `converge()`. The Bench refreshes those valu
 when the dimension or integrand changes. Omitting options retains the shared
 default dimension behavior.
 
+The optional output sink is a pair `{f32: Float32Array, u8: Uint8Array}` over the
+same ordinary ArrayBuffer at the same byte offset. Both views must have room for
+the requested payload. Valid pairs are reused, including nonzero offsets;
+invalid, detached, shared, or undersized pairs receive new buffers. Returned
+float views contain exactly the requested elements, and bytes outside the payload
+are untouched.
+
 ## Layout
 
 | File             | Role                                                                        |

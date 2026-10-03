@@ -3,6 +3,7 @@
 package main
 
 import (
+	"fmt"
 	"syscall/js"
 	"unsafe"
 )
@@ -42,8 +43,10 @@ func newFloat32Sink(n int) float32Sink {
 	}
 }
 
-// sinkFor reuses the caller's view pair when it exists and is large enough,
-// and otherwise allocates. The page passes opts.out = {xy: {f32, u8}, ...} so
+// sinkFor reuses matching, attached Float32Array/Uint8Array views over the same
+// ordinary ArrayBuffer at the same byte offset, with room for the payload.
+// Invalid, shared, detached, and undersized pairs are replaced. The page passes
+// opts.out = {xy: {f32, u8}, ...} so
 // that dragging a slider re-renders without allocating a new buffer per frame;
 // a first call, or one that raised the point count, silently gets a new one.
 func sinkFor(out js.Value, key string, n int) float32Sink {
@@ -53,7 +56,7 @@ func sinkFor(out js.Value, key string, n int) float32Sink {
 			f32 := candidate.Get("f32")
 			u8 := candidate.Get("u8")
 
-			if isObject(f32) && isObject(u8) && f32.Length() >= n {
+			if validFloat32Pair(f32, u8, n) {
 				return float32Sink{f32: f32, u8: u8, capacity: f32.Length()}
 			}
 		}
@@ -62,13 +65,39 @@ func sinkFor(out js.Value, key string, n int) float32Sink {
 	return newFloat32Sink(n)
 }
 
+func validFloat32Pair(f32, u8 js.Value, n int) bool {
+	arrayBuffer := js.Global().Get("ArrayBuffer")
+	isView := arrayBuffer.Get("isView")
+	if !isView.Invoke(f32).Bool() || !isView.Invoke(u8).Bool() ||
+		!f32.InstanceOf(js.Global().Get("Float32Array")) ||
+		!u8.InstanceOf(js.Global().Get("Uint8Array")) {
+		return false
+	}
+
+	buffer := f32.Get("buffer")
+	if !buffer.InstanceOf(arrayBuffer) || !buffer.Equal(u8.Get("buffer")) ||
+		f32.Get("byteOffset").Int() != u8.Get("byteOffset").Int() {
+		return false
+	}
+
+	// A detached view has zero capacity. SharedArrayBuffer is intentionally
+	// excluded above: another agent must not mutate this output during a copy.
+	return n >= 0 && f32.Length() >= n && u8.Get("byteLength").Int() >= n*4
+}
+
 // write copies data into the sink and returns the JS view to hand back. When
 // the sink is larger than the payload (a reused buffer), the returned view is
 // a subarray of exactly the right length, so the page never has to track how
 // much of the buffer is live — reading result.xy.length is always correct.
 func (s float32Sink) write(data []float32) js.Value {
+	if len(data) > s.capacity {
+		panic("float32 output exceeds sink capacity")
+	}
 	if len(data) > 0 {
-		js.CopyBytesToJS(s.u8, float32Bytes(data))
+		payload := float32Bytes(data)
+		if copied := js.CopyBytesToJS(s.u8, payload); copied != len(payload) {
+			panic(fmt.Sprintf("float32 output: copied %d of %d bytes", copied, len(payload)))
+		}
 	}
 
 	if s.capacity == len(data) {

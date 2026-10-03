@@ -37,6 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `info({dims})`, agreeing with `converge().exact`. Unrandomized source descriptions
   distinguish Halton's high-prime ramps from Sobol; stale seed and cost comparisons
   were removed from the demo in favor of current results and reproduction docs.
+- Typed output buffers are reused only when their kinds, backing buffer,
+  offsets, and capacities match. Invalid, detached, shared, or undersized pairs
+  receive fresh buffers. The bridge checks the byte-copy count.
 
 ### Scientific contract corrections
 
