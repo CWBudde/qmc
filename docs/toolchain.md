@@ -104,25 +104,109 @@ and `GOTOOLCHAIN=go1.23.0 CGO_ENABLED=0 GOARCH=386 just test-fast`.
 Publishing deliberately uses a separate toolchain rather than changing the
 library's Go 1.23 requirement.
 
-| Command                             | Purpose                                                                        |
-| ----------------------------------- | ------------------------------------------------------------------------------ |
-| `just setup-deps`                   | Pinned user-owned developer tools                                              |
-| `just check`                        | Fast root and nested-module checks                                             |
-| `just ci`                           | Routine checks, race contracts, real Chrome, tool-gate regressions             |
-| `just test-statistical`             | Full ordinary statistical and contract suite, 10-minute test budget            |
-| `just test-race-statistical`        | Explicit full statistical race audit, 40-minute test budget                    |
-| `just check-wasm-demo`              | Nested-module tidy/verify, WASM build/vet, native stub                         |
-| `just lint-wasm-demo`               | Production and fixture WASM lint                                               |
-| `just test-browser [site]`          | Real-browser verification with the publishing toolchain                        |
-| `just build-wasm-demo [output]`     | Publishing build; defaults to `dist`, safely forwards paths                    |
-| `just check-demo-artifact [output]` | Exact inventory, hashes, build identity, and static-reference checks           |
-| `just test-demo-artifact`           | Offline publication, cleanup, destination safety, and failure regressions      |
-| `just release-check VERSION`        | Prospective release checks; full artifact/release alignment tracked as TOOL-04 |
+| Command                             | Purpose                                                                          |
+| ----------------------------------- | -------------------------------------------------------------------------------- |
+| `just setup-deps`                   | Pinned user-owned developer tools                                                |
+| `just check`                        | Fast root and nested-module checks                                               |
+| `just ci`                           | Routine checks, race contracts, real Chrome, tool-gate regressions               |
+| `just test-statistical`             | Full ordinary statistical and contract suite, 10-minute test budget              |
+| `just test-race-statistical`        | Explicit full statistical race audit, 40-minute test budget                      |
+| `just check-wasm-demo`              | Nested-module tidy/verify, WASM build/vet, native stub                           |
+| `just lint-wasm-demo`               | Production and fixture WASM lint                                                 |
+| `just test-browser [site]`          | Real-browser verification with the publishing toolchain                          |
+| `just build-wasm-demo [output]`     | Publishing build; defaults to `dist`, safely forwards paths                      |
+| `just check-demo-artifact [output]` | Exact inventory, hashes, build identity, and static-reference checks             |
+| `just test-demo-artifact`           | Offline publication, cleanup, destination safety, and failure regressions        |
+| `just release-verify`               | Shared computational release gates with a 25-minute total budget                 |
+| `just release-check VERSION SHA`    | Validate clean, documented source at the explicitly reviewed full SHA            |
+| `just release VERSION SHA`          | Check and create an annotated local tag from reviewed, up-to-date main           |
+| `just test-release-gates`           | Offline policy, literal-argument, source-drift, workflow and timeout regressions |
 
 Every required configuration is tracked. Optional ignored local tool/editor
 state is not part of setup and does not affect these commands. Pages builds use
 `just build-wasm-demo dist`, then test that exact artifact before upload.
-Release policy/action SHA pins remain TOOL-04 in [PLAN.md](../PLAN.md).
+
+## Workflows and releases
+
+Every external action is pinned to a full upstream commit SHA with a same-line
+major-version comment. Dependabot proposes weekly reviewed updates. The pins
+were resolved from official repository tag refs on 2026-10-03; review covered
+runtime/input metadata, Go's version-file parser, and the Pages upload dependency
+chain. GitHub's [action security guidance](https://docs.github.com/en/actions/reference/security/secure-use)
+describes these pin and permission practices.
+
+| Action                  | Reviewed commit                            | Version family |
+| ----------------------- | ------------------------------------------ | -------------- |
+| actions/checkout        | `11d5960a326750d5838078e36cf38b85af677262` | v4             |
+| actions/setup-go        | `40f1582b2485089dde7abd97c1529aa768e1baff` | v5             |
+| actions/setup-node      | `49933ea5288caeca8642d1e84afbd3f7d6820020` | v4             |
+| actions/cache           | `0057852bfaa89a56745cba8c7296529d2fc39830` | v4             |
+| actions/upload-artifact | `ea165f8d65b6e75b540449e92b4886f43607fa02` | v4             |
+| extractions/setup-just  | `dd310ad5a97d8e7b41793f8ef055398d51ad4de6` | v2             |
+| actions/configure-pages | `983d7736d9b0ae728b81ab479565c72886d7745b` | v5             |
+| actions/deploy-pages    | `d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e` | v4             |
+
+Workflow defaults grant `contents: read`. Pages write/OIDC permissions belong
+only to the deploy job, which waits for the verified build. Checkouts disable
+persisted credentials, all jobs have deadlines, and CI bootstraps Just 1.21.0,
+the version exercised locally. The Pages composite uploader's nested floating
+action is replaced by verified archive creation and the directly pinned generic
+uploader. `package-demo.py` creates only regular-file entries, checks every
+archived byte against the site manifest, includes notices, refuses existing
+archive destinations, and enforces the Pages size limit. This follows the
+[Pages artifact format](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).
+
+Before a release, commit and review the changes, add exactly one changelog
+section for the version with actual change entries, and record the full reviewed
+commit SHA. That SHA is the maintainer's review attestation: checks enforce its
+identity and record it in the tag. Pull-request approvals remain part of the
+maintainer's repository review process.
+
+```bash
+reviewed_commit="FULL_40_CHARACTER_SHA_YOU_REVIEWED"
+just release-check 0.4.0 "$reviewed_commit"
+just release 0.4.0 "$reviewed_commit"
+```
+
+Both commands use the same [SemVer 2.0 rules](https://semver.org/spec/v2.0.0.html)
+as the workflow: optional leading `v` and legacy `version=` are normalized;
+leading-zero core/numeric prerelease identifiers and empty identifiers are
+rejected. Build metadata is accepted. The current Go module path permits release
+majors 0 and 1; higher majors require semantic import versioning. Version input
+and SHA arguments are passed as literal environment/argument data.
+
+`release-check` requires HEAD to match the reviewed SHA, an entirely clean
+worktree including untracked files, complete metadata and an exact documented
+version section. Any existing version tag must identify that same commit. It
+runs `release-verify`, then repeats source/metadata checks.
+`release-verify` selects the publishing compiler, disables external Go workspaces
+and caller GOFLAGS, and runs shared `just ci` plus the full `test-statistical`
+suite. Thus both modules, strict formatting/lint, ordinary race contracts,
+WASM build/vet, real-browser artifact/notices and every failure regression are
+required. The portable runner bounds the total to 25 minutes and terminates
+the process group on failure/timeout; Go race/statistical commands retain their
+5-/10-minute limits and browser checks retain their two-minute deadline. The
+release workflow has a 30-minute job budget including tool setup. The optional
+40-minute full statistical race audit remains a separate scheduled/manual job.
+
+Local tag creation additionally requires branch `main`, an absent version tag,
+and fetched remote main matching HEAD before and after verification. The
+annotated tag contains `Reviewed-Commit: <full SHA>`. Publication remains an
+explicit subsequent Git command. The release workflow checks out its exact event
+revision with full history; tagged runs require that annotation, matching
+checkout/tag SHA and main ancestry. Manual candidate validation requires the
+reviewed SHA input and binds it to the event checkout. `release-verify` is also
+available for development branches without declaring a release version.
+
+`test-release-gates` uses private offline Git repositories, fake expensive gates,
+and real command/metadata boundaries to test injection, dirty/untracked source,
+HEAD/remote changes, wrong or duplicate changelog sections, gate failures,
+annotated-tag identity and total-deadline descendant cleanup. Its workflow
+checker covers the repository's formatted layout and rejects floating actions,
+broader permissions, persisted checkout credentials and missing budgets; required
+Prettier checks additionally parse YAML syntax. Archive regressions round-trip
+the site through a tar and revalidate it, including every notice and absence of
+symlink/hard-link entries. These fixtures complement actual release-verify runs.
 
 ## Demo artifact publication
 
@@ -190,7 +274,7 @@ transaction against uncooperative concurrent writers.
 
 Not worth adding for this repository, so that nobody adds them by reflex:
 
-- `.nojekyll` — `upload-pages-artifact` plus `deploy-pages` does not run Jekyll, so it would
+- `.nojekyll` — the archive/upload/deploy workflow does not run Jekyll, so it would
   be cargo cult here.
 - `CODEOWNERS` — does nothing without branch protection.
 - `SECURITY.md` — the library has no runtime dependencies or network activity.
@@ -199,7 +283,7 @@ Not worth adding for this repository, so that nobody adds them by reflex:
 - Issue and PR templates, `CODE_OF_CONDUCT.md`.
 - `doc.go` — the package comment in `halton.go` already does that job.
 - A `gomod` Dependabot updater — the module has no dependencies, by design. The
-  `github-actions` updater exists because the workflows pin floating majors.
+  `github-actions` updater proposes reviewed changes to the workflow SHA pins.
 
 A short `CONTRIBUTING.md` is borderline, and worth three lines only because the tooling above
 needs explaining.

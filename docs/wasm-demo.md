@@ -61,7 +61,6 @@ local, with no analytics, submissions, or third-party font requests.
 ## Remaining work
 
 All DEMO-01 through DEMO-09 findings have completion evidence in
-[PLAN.md](../PLAN.md). Workflow/release hardening remains TOOL-04,
-smaller maintenance decisions remain DEMO-10, and measurement/API
+[PLAN.md](../PLAN.md). Smaller maintenance decisions remain DEMO-10, and measurement/API
 proposals remain DOC-01/PERF-01/API-01. Use the task records and current demo
 README for implementation status.

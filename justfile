@@ -48,6 +48,10 @@ check-demo-artifact $qmc_demo_output="dist":
 test-demo-artifact:
     python3 ./scripts/test-demo-artifact.py
 
+# Release policy/orchestration regressions use private offline Git fixtures
+test-release-gates:
+    python3 ./scripts/test-release-gates.py
+
 # Build and serve the WebAssembly demo locally
 run-wasm-demo: build-wasm-demo
     @echo "Serving the demo at http://localhost:8090"
@@ -153,45 +157,16 @@ check-tidy:
 check: verify check-formatted check-tidy lint lint-wasm-demo check-wasm-demo test-fast
 
 # Routine CI contract, including race and real-browser verification
-ci: verify check-formatted check-tidy lint lint-wasm-demo check-wasm-demo test-race test-browser test-demo-artifact test-tool-setup test-formatting test-module-gates
+ci: verify check-formatted check-tidy lint lint-wasm-demo check-wasm-demo test-race test-browser test-demo-artifact test-tool-setup test-formatting test-module-gates test-release-gates
 
-# Validate a prospective release without creating a tag
-release-check version:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    release_version="{{version}}"
-    release_version="${release_version#version=}"
-    if [[ ! "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-        echo "Invalid semantic version: $release_version" >&2
-        exit 1
-    fi
-    grep -Fq "## [$release_version]" CHANGELOG.md
-    test -s LICENSE
-    test -s README.md
-    test "$(go list -m)" = "github.com/cwbudde/qmc"
-    just verify
-    just check-formatted
-    just check-tidy
-    just lint
-    go vet ./...
-    just test-race
-    just test-statistical
+# All computational release gates with the publishing compiler (no version/tag)
+release-verify:
+    bash ./scripts/verify-release.sh
 
-# Validate and create an annotated release tag locally
-release version:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    release_version="{{version}}"
-    release_version="${release_version#version=}"
-    release_tag="v$release_version"
-    just release-check "$release_version"
-    if [[ -n "$(git status --porcelain)" ]]; then
-        echo "Release requires a clean worktree" >&2
-        exit 1
-    fi
-    if git rev-parse --verify --quiet "refs/tags/$release_tag" >/dev/null; then
-        echo "Tag already exists: $release_tag" >&2
-        exit 1
-    fi
-    git tag -a "$release_tag" -m "Release $release_tag"
-    echo "Ready to push: git push origin main $release_tag"
+# Validate a clean prospective release at the explicitly reviewed full commit SHA
+release-check $qmc_release_version $qmc_reviewed_commit:
+    bash ./scripts/release.sh check "$qmc_release_version" "$qmc_reviewed_commit"
+
+# Validate and create an annotated local tag attesting the reviewed commit
+release $qmc_release_version $qmc_reviewed_commit:
+    bash ./scripts/release.sh tag "$qmc_release_version" "$qmc_reviewed_commit"

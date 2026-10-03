@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Release verification
+
+- Pin workflow actions to upstream commit SHAs, use read-only defaults and
+  deploy-only Pages/OIDC writes, and disable persisted checkout credentials.
+  Archive verified regular-file Pages payloads with a directly pinned uploader.
+- Local and CI release validation now share strict semantic version, exact
+  changelog, clean-source and reviewed-commit rules. Commands take a full reviewed
+  SHA, repeat identity checks after verification, and annotated local tags record
+  that review attestation. Version arguments are passed literally, fixing shell
+  evaluation of specially crafted input in the previous recipe.
+- Shared release gates require both modules, formatting/lint, race contracts,
+  full ordinary statistics, WASM and browser/artifact/notice checks with a portable
+  total deadline. Added offline policy, workflow, timeout, and archive regressions.
+
 ### Verification jobs
 
 - Added bounded fast, routine-race, full-statistical, and optional full-statistical

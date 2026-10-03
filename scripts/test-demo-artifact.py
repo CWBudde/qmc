@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import tarfile
 from concurrent.futures import ThreadPoolExecutor
 
 from demo_artifact import MANIFEST, NOTICES, build_id, digest, public_entry, validate
@@ -21,7 +22,7 @@ with tempfile.TemporaryDirectory(prefix="qmc-artifact-test-") as directory:
     copy = temporary / "source"
     scripts = copy / "scripts"
     scripts.mkdir(parents=True)
-    for name in ["build-wasm-demo.sh", "build-wasm-demo.py", "demo_artifact.py"]:
+    for name in ["build-wasm-demo.sh", "build-wasm-demo.py", "demo_artifact.py", "package-demo.py"]:
         shutil.copy(ROOT / "scripts" / name, scripts / name)
     shutil.copy(ROOT / "LICENSE", copy / "LICENSE")
     (copy / "third_party/joe-kuo").mkdir(parents=True)
@@ -88,6 +89,32 @@ else:
                       "notices/go-PATENTS.txt": toolchain.parent.parent / "PATENTS"}
     for name, source in notice_sources.items():
         assert (output / old_prefix / name).read_bytes() == source.read_bytes(), name
+    archive = temporary / "artifact.tar"
+
+    def package(destination=archive):
+        return subprocess.run([sys.executable, str(scripts / "package-demo.py"), str(output), str(destination)],
+                              capture_output=True, text=True, timeout=30)
+
+    success(package())
+    unpacked = temporary / "unpacked"
+    unpacked.mkdir()
+    with tarfile.open(archive) as bundled:
+        assert {entry.name for entry in bundled} == set(first["files"]) | {MANIFEST}
+        for entry in bundled:
+            assert entry.isfile() and not entry.issym() and not entry.islnk()
+            target = unpacked / entry.name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(bundled.extractfile(entry).read())
+    validate(unpacked)
+    caller_archive = temporary / "caller.tar"
+    caller_archive.write_text("preserve")
+    assert package(caller_archive).returncode != 0 and caller_archive.read_text() == "preserve"
+    assert package(output / "artifact.tar").returncode != 0 and not (output / "artifact.tar").exists()
+    notice = output / old_prefix / "notices/joe-kuo-LICENSE.txt"
+    saved_notice = notice.read_bytes()
+    notice.unlink()
+    assert package(temporary / "invalid.tar").returncode != 0 and not (temporary / "invalid.tar").exists()
+    notice.write_bytes(saved_notice)
     # A complete older managed build remains recognizable for replacement,
     # while the distribution checker refuses its missing notices/credits.
     legacy = temporary / "legacy managed build"

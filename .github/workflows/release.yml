@@ -10,68 +10,63 @@ on:
         description: Version to validate (for example, 0.4.0 or 0.4.0-rc.1)
         required: true
         type: string
+      reviewed_commit:
+        description: Full commit SHA explicitly reviewed for this candidate
+        required: true
+        type: string
 
 permissions:
   contents: read
+
+concurrency:
+  group: release-validation-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   validate:
     name: Validate release
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v7
+      - name: Checkout the workflow event commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: tools/go-version
           cache: true
 
       - name: Set up just
-        uses: extractions/setup-just@v2
+        uses: extractions/setup-just@dd310ad5a97d8e7b41793f8ef055398d51ad4de6 # v2
+        with:
+          just-version: "1.21.0"
 
-      - name: Resolve and validate version
+      - name: Resolve version and verify reviewed source
         id: version
         env:
-          INPUT_VERSION: ${{ inputs.version }}
-          REF_NAME: ${{ github.ref_name }}
-          EVENT_NAME: ${{ github.event_name }}
-        run: |
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            version="${INPUT_VERSION#v}"
-          else
-            version="${REF_NAME#v}"
-          fi
-          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "Invalid semantic version: $version" >&2
-            exit 1
-          fi
-          echo "Validating v$version"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+          QMC_RELEASE_EVENT: ${{ github.event_name }}
+          QMC_RELEASE_INPUT_VERSION: ${{ inputs.version }}
+          QMC_RELEASE_REVIEWED_COMMIT: ${{ inputs.reviewed_commit }}
+          QMC_RELEASE_REF: ${{ github.ref }}
+          QMC_RELEASE_EXPECTED_SHA: ${{ github.sha }}
+        run: python3 scripts/release-policy.py --workflow
 
-      - name: Validate package metadata
-        run: |
-          test -s LICENSE
-          test -s CHANGELOG.md
-          test -s README.md
-          grep -Fq '## [${{ steps.version.outputs.version }}]' CHANGELOG.md
-          test "$(go list -m)" = "github.com/cwbudde/qmc"
-          go mod verify
-          go mod tidy -diff
-          go vet ./...
-
-      - name: Run contract race checks
-        run: just test-race
-
-      - name: Run full ordinary statistical suite
-        run: just test-statistical
-
-      # Match the development linter pin in tools/versions.sh.
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v9
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          version: v2.13.1
-          args: --config ./.golangci.yml --timeout 5m ./...
+          node-version: "22"
+
+      - name: Install pinned development tools
+        run: just setup-deps
+
+      - name: Run shared release checks
+        env:
+          QMC_RELEASE_EXPECTED_SHA: ${{ github.sha }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          REVIEWED_COMMIT: ${{ steps.version.outputs.reviewed_commit }}
+        run: just release-check "$RELEASE_VERSION" "$REVIEWED_COMMIT"
