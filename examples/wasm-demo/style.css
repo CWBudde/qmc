@@ -427,6 +427,52 @@ canvas {
 }
 
 /* --------------------------------------------------------------------------
+   Guided tour — preset buttons stacked between the status line and the stage
+   -------------------------------------------------------------------------- */
+
+.tour {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
+  border: 1px solid var(--rule);
+  border-top: 0;
+}
+
+.tour[hidden],
+.tour-caption[hidden] {
+  display: none;
+}
+
+.tour button {
+  border: 0;
+  border-right: 1px solid var(--rule);
+  border-bottom: 2px solid transparent;
+  padding: 10px 12px;
+  text-align: left;
+  color: var(--dim);
+}
+
+.tour button:last-child {
+  border-right: 0;
+}
+
+.tour button[aria-pressed="true"] {
+  color: var(--action);
+  border-bottom-color: var(--action);
+  background: var(--rack);
+}
+
+.tour-caption {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--rule);
+  border-top: 0;
+  border-left: 2px solid var(--action);
+  color: var(--lume);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* --------------------------------------------------------------------------
    The side-by-side stage — the whole point of the Point Lab
    -------------------------------------------------------------------------- */
 

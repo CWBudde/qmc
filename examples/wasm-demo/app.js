@@ -54,6 +54,9 @@
   const randomizationSelect = el("randomization");
   const moneyNote = el("moneyNote");
   const digitPanel = el("digitPanel");
+  const tourNav = el("tour");
+  const tourCaption = el("tourCaption");
+  const projectionNote = el("projectionNote");
 
   const telemetry = {
     baseX: el("tBaseX"),
@@ -100,6 +103,12 @@
     refreshTimer: null,
     fullRefreshTimer: null,
     renderId: 0,
+
+    // The key of the tour step on screen, or null once a control has been
+    // edited and the view is the user's own. autoplay asks the next completed
+    // refresh to reveal the points from zero, which a step does on arrival.
+    tourStep: null,
+    autoplay: false,
 
     // The last answer from the leaps() export. Cached because refresh() has to
     // consult it before every draw and the answer only changes when the
@@ -358,7 +367,6 @@
   // in the library raises it in the UI without anyone editing markup.
   function populateControls() {
     const info = state.info;
-    const defaults = info.defaults || {};
 
     dimsInput.min = "2";
     dimsInput.max = String(info.maxDims);
@@ -371,32 +379,108 @@
     digitIndexInput.min = "0";
     digitIndexInput.max = String(info.maxIndex);
 
-    dimsInput.value = String(defaults.dims);
-    countInput.value = String(defaults.count);
-    skipInput.value = String(defaults.skip);
-    leapInput.value = String(defaults.leap);
-    seedInput.value = String(defaults.seed);
+    fillSourceSelect((info.defaults || {}).source);
+    buildTour();
 
-    fillDimensionSelect(axisXSelect, defaults.dims, defaults.axisX);
-    fillDimensionSelect(axisYSelect, defaults.dims, defaults.axisY);
-    fillDimensionSelect(digitDimSelect, defaults.dims, defaults.axisX);
+    buildInfo.textContent = `${info.goVersion} · ${info.goos}/${info.goarch}`;
+  }
 
-    // The defaults open on unrandomized Halton on purpose. That view is the
-    // defect the library's README documents; the two menus are the
-    // demonstration.
-    fillSourceSelect(defaults.source);
-    fillRandomizationSelect(defaults.randomization);
+  // The steps arrive from info().tour, already in the shape of info().defaults.
+  // A module without a tour still opens, on the defaults, with the row hidden.
+  function tourSteps() {
+    const tour = (state.info && state.info.tour) || [];
+
+    return tour.length
+      ? tour
+      : [Object.assign({ key: "defaults" }, state.info.defaults || {})];
+  }
+
+  function buildTour() {
+    const tour = (state.info && state.info.tour) || [];
+
+    tourNav.innerHTML = "";
+    tourNav.hidden = tour.length === 0;
+
+    for (const step of tour) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.step = step.key;
+      button.textContent = step.label;
+      button.setAttribute("aria-pressed", "false");
+      button.addEventListener("click", () => applySettings(step));
+      tourNav.append(button);
+    }
+  }
+
+  function renderTour() {
+    const step = tourSteps().find((s) => s.key === state.tourStep);
+
+    for (const button of tourNav.querySelectorAll("button")) {
+      button.setAttribute(
+        "aria-pressed",
+        String(button.dataset.step === state.tourStep),
+      );
+    }
+
+    tourCaption.hidden = !(step && step.caption);
+    tourCaption.textContent = step && step.caption ? step.caption : "";
+  }
+
+  // Any hand edit leaves the tour: the caption describes a step's settings,
+  // and keeping it on screen over different ones would describe a picture
+  // that is no longer there.
+  function leaveTour() {
+    state.autoplay = false;
+
+    if (state.tourStep !== null) {
+      state.tourStep = null;
+      renderTour();
+    }
+  }
+
+  // applySettings puts a whole request on the controls at once — a tour step
+  // or the defaults — and plays its reveal. The source goes first because it
+  // fixes the dimension ceiling and the randomization menu the rest is
+  // checked against.
+  function applySettings(settings) {
+    sourceSelect.value = String(settings.source);
+
+    dimsInput.value = String(settings.dims);
+    countInput.value = String(settings.count);
+    skipInput.value = String(settings.skip);
+    leapInput.value = String(settings.leap);
+    seedInput.value = String(settings.seed);
+
+    fillDimensionSelect(axisXSelect, settings.dims, settings.axisX);
+    fillDimensionSelect(axisYSelect, settings.dims, settings.axisY);
+    fillDimensionSelect(digitDimSelect, settings.dims, settings.axisX);
+
+    fillRandomizationSelect(settings.randomization);
     applySource();
     syncOutputs();
     refreshLeapCheck();
 
-    buildInfo.textContent = `${info.goVersion} · ${info.goos}/${info.goarch}`;
+    state.selected = -1;
+    digitIndexInput.value = "0";
+
+    state.tourStep = settings.key || null;
+    renderTour();
+
+    state.autoplay = true;
+    scheduleRefresh();
   }
 
   function syncOutputs() {
     dimsOut.textContent = dimsInput.value;
     countOut.textContent = Number(countInput.value).toLocaleString("en-US");
     skipOut.textContent = skipInput.value;
+
+    const hidden = intValue(dimsInput, 2) - 2;
+
+    projectionNote.innerHTML =
+      hidden > 0
+        ? `You are looking at a <b>projection</b>. The other ${hidden} coordinate${hidden === 1 ? " is" : "s are"} not on screen and the sequence still varies in every one of them.`
+        : "With two dimensions the plot is the <b>whole point set</b>. Raise the dimension count and it becomes a projection: two axes out of many.";
   }
 
   // --- the leap control --------------------------------------------------
@@ -534,7 +618,12 @@
     scrub.disabled = false;
     playButton.disabled = false;
 
-    if (!state.playing) {
+    if (state.autoplay && !preview) {
+      // A tour step arrives as an animation: the reveal is the argument.
+      state.autoplay = false;
+      setReveal(0);
+      setPlaying(true);
+    } else if (!state.playing) {
       setReveal(count);
     } else {
       setReveal(Math.min(state.reveal, count));
@@ -913,6 +1002,15 @@
   // --- wiring ------------------------------------------------------------
 
   function wireControls() {
+    // Every edit inside the controls section, by any control, leaves the tour.
+    // applySettings() writes values without dispatching events, so it does
+    // not trip this.
+    const controlsSection = document.querySelector("section.controls");
+
+    for (const type of ["input", "change"]) {
+      controlsSection.addEventListener(type, leaveTour);
+    }
+
     for (const input of [dimsInput, countInput, skipInput]) {
       input.addEventListener("input", () => {
         syncOutputs();
@@ -941,6 +1039,7 @@
         return;
       }
 
+      leaveTour();
       leapInput.value = String(state.leapCheck.suggested);
       refreshLeapCheck();
       scheduleRefresh();
@@ -972,17 +1071,12 @@
     });
 
     newSeedButton.addEventListener("click", () => {
+      leaveTour();
       seedInput.value = String(Math.floor(Math.random() * 100000) + 1);
       scheduleRefresh();
     });
 
-    resetButton.addEventListener("click", () => {
-      populateControls();
-      state.selected = -1;
-      digitIndexInput.value = "0";
-      setPlaying(false);
-      scheduleRefresh();
-    });
+    resetButton.addEventListener("click", () => applySettings(tourSteps()[0]));
 
     playButton.addEventListener("click", () => {
       if (!state.sequence) {
@@ -1091,7 +1185,7 @@
     digitNext.disabled = false;
 
     setStatus("WASM ready", "ready");
-    refresh();
+    applySettings(tourSteps()[0]);
   }
 
   initWasm().catch((err) => {

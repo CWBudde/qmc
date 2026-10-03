@@ -28,4 +28,34 @@ func verifyDemoCapabilities(t *testing.T) {
 			}
 		}
 	}
+
+	// Every tour step must be a request the page can make without the
+	// randomization menu or the dimension clamp quietly substituting another.
+	for _, step := range pointLabTour {
+		spec, ok := sources[step.source]
+		if !ok || spec.construct == nil {
+			t.Fatalf("tour step %s names unknown sequence %q", step.key, step.source)
+		}
+
+		offered := false
+
+		for _, key := range spec.randomizations {
+			offered = offered || key == step.randomization
+		}
+
+		if !offered {
+			t.Fatalf("tour step %s: %s does not offer randomization %q", step.key, step.source, step.randomization)
+		}
+
+		if step.dims < 2 || step.dims > spec.maxDims || step.count < 1 || step.count > maxPoints ||
+			step.skip < 0 || step.skip > maxSkip ||
+			step.axisX < 0 || step.axisX >= step.dims || step.axisY < 0 || step.axisY >= step.dims ||
+			step.axisX == step.axisY {
+			t.Fatalf("tour step %s is outside the page's limits: %+v", step.key, step)
+		}
+
+		if _, err := newGenerator(step.source, step.dims, step.skip, defaultLeap, step.randomization, defaultSeed); err != nil {
+			t.Fatalf("tour step %s is refused: %v", step.key, err)
+		}
+	}
 }

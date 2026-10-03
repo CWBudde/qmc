@@ -26,12 +26,17 @@
         #buildInfo      footer "go1.x · js/wasm"
         #reloadWasm     recovery button shown after terminal runtime failure
 
+      Tour (filled from info().tour; hidden until then):
+        #tour           <nav> of preset buttons, each with aria-pressed
+        #tourCaption    the selected step's caption; hidden once the user
+                        edits a control and the view is no longer a step
+
       Stage:
         #haltonCanvas   left scatter — the selected sequence's projection
         #randomCanvas   right scatter — pseudo-random, same count and axes
         #seqTitle       the left panel's heading, set from the source label
         #seqLegend      the left legend entry, set from the source label
-        #haltonMeta     "base 163 × 167" caption (the default axes 37 × 38)
+        #haltonMeta     "base 2 × base 3" caption, or "dims x × y" for Sobol
         #randomMeta     "uniform × uniform" caption
         #scatterSummary dynamic description shared by the two accessible images
 
@@ -52,7 +57,8 @@
                                 decides admissibility itself
         #seed                   randomization seed
         #newSeed                randomize the seed
-        #resetView              back to the info() defaults
+        #resetView              back to the first tour step
+        #projectionNote         what the projection hides at this dims count
         #source                 <select> of sequences, filled from
                                 info().sources (the ones flagged sequence)
         #randomization          <select> of randomizations, refilled whenever
@@ -92,26 +98,21 @@
       <header class="hero">
         <div class="hero__text">
           <p class="eyebrow">GO · WEBASSEMBLY · NO JS SEQUENCE</p>
-          <h1>Two dimensions out of thirty-nine</h1>
+          <h1>Evenly spread, not random</h1>
           <p class="lede">
-            Halton places its <i>d</i>-th coordinate by the radical inverse in
-            base <i>p<sub>d</sub></i
-            >, the <i>d</i>-th prime. At small raw indices, a large-base
-            coordinate moves in steps near <b>1/p</b> before its leading-digit
-            cycle wraps. Adjacent high-prime coordinates can move together,
-            producing correlated patterns while higher digits remain poorly
-            explored.
+            A quasi-Monte Carlo sequence places its points so they cover the
+            unit square evenly, with none of the clumps and gaps you get from
+            independent random draws. Averages over evenly spread points settle
+            down faster, and that is the whole reason to use one.
           </p>
           <p class="lede">
-            The left panel starts on dimensions 37 and 38 of a 39-dimensional
-            Halton sequence with no randomization, which illustrates that
-            pattern. <b>Compare randomizations</b> at the same budget and across
-            several seeds — or switch the sequence to <b>Sobol</b>, which is
-            base 2 in every dimension and has no high-prime ramp. Its projection
-            quality still depends on the direction table and sampled block.
-            Every coordinate below is computed by <b>github.com/cwbudde/qmc</b>
-            compiled to WebAssembly in this tab's worker; JavaScript coordinates
-            requests, controls and rendering.
+            The tour below starts with that picture, then shows where Halton
+            goes wrong in high dimensions, how scrambling fixes it, and why one
+            plot is never the whole story. After that, every control is yours.
+            Every coordinate is computed by
+            <b>github.com/cwbudde/qmc</b> compiled to WebAssembly in this tab's
+            worker; JavaScript only coordinates requests, controls and
+            rendering.
           </p>
         </div>
       </header>
@@ -130,6 +131,9 @@
         Loading WebAssembly…
       </div>
       <button id="reloadWasm" hidden>Reload WebAssembly</button>
+
+      <nav class="tour" id="tour" aria-label="Guided tour" hidden></nav>
+      <p class="tour-caption" id="tourCaption" aria-live="polite" hidden></p>
 
       <div class="stage">
         <div class="plot plot--halton">
@@ -303,12 +307,9 @@
           </div>
           <div class="button-row">
             <button id="newSeed" disabled>New seed</button>
-            <button id="resetView" disabled>Reset to defaults</button>
+            <button id="resetView" disabled>Restart the tour</button>
           </div>
-          <p class="field-note">
-            You are looking at a <b>projection</b>. The other 37 coordinates are
-            not on screen and the sequence still varies in every one of them.
-          </p>
+          <p class="field-note" id="projectionNote">—</p>
         </div>
       </section>
 

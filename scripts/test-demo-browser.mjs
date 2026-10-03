@@ -757,6 +757,31 @@ try {
     assert(Date.now() < pageDeadline, "Point Lab boot deadline");
     await new Promise((r) => setTimeout(r, 100));
   }
+  // The page opens on the tour's first step, every step sets the whole
+  // request, and a hand edit leaves the tour.
+  const tour = await evaluate(`(async () => {
+    const el=id=>document.getElementById(id), check=(v,msg)=>{if(!v)throw new Error(msg)};
+    const steps=qmc.info().tour;
+    check(Array.isArray(steps)&&steps.length>=2,'info() publishes no tour');
+    const buttons=Array.from(el('tour').querySelectorAll('button'));
+    check(!el('tour').hidden&&buttons.length===steps.length,'tour row not built from info()');
+    const settle=async label=>{const until=Date.now()+10000;while(el('status').dataset.state!=='ready'){check(Date.now()<until,'tour deadline '+label+': '+el('status').textContent);await new Promise(r=>setTimeout(r,10));}};
+    const expect=(step)=>{
+      check(buttons.every(b=>b.getAttribute('aria-pressed')===String(b.dataset.step===step.key)),'pressed state for '+step.key);
+      check(!el('tourCaption').hidden&&el('tourCaption').textContent===step.caption,'caption for '+step.key);
+      for(const key of ['source','randomization','dims','count','skip','leap','seed','axisX','axisY'])
+        check(el(key).value===String(step[key]),'tour step '+step.key+' did not set '+key+': '+el(key).value);
+      check(el('status').textContent.includes(step.dims+' dims · axes '+step.axisX+'×'+step.axisY),'status mismatch for '+step.key);
+    };
+    await settle('boot'); expect(steps[0]);
+    check(el('projectionNote').textContent.includes(steps[0].dims===2?'whole point set':'other'),'projection note');
+    for(const [i,step] of steps.entries()){buttons[i].click();await settle(step.key);expect(step);}
+    el('count').value='10'; el('count').dispatchEvent(new Event('input',{bubbles:true}));
+    check(el('tourCaption').hidden&&buttons.every(b=>b.getAttribute('aria-pressed')==='false'),'hand edit did not leave the tour');
+    el('resetView').click(); await settle('reset'); expect(steps[0]);
+    return steps.length;
+  })()`);
+  console.log("Point Lab tour steps verified:", tour);
   const switching = await evaluate(`(async () => {
     const el=id=>document.getElementById(id), check=(v,msg)=>{if(!v)throw new Error(msg)};
     const set=(id,value,event='change')=>{el(id).value=String(value);el(id).dispatchEvent(new Event(event,{bubbles:true}));};

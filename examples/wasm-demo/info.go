@@ -310,6 +310,9 @@ func jsInfo(opts js.Value) any {
 		// and never cached from here.
 		"discrepancies": metricList,
 
+		// The Point Lab opens on the first step, not on the defaults.
+		"tour": tourList(),
+
 		"defaults": map[string]any{
 			"dims":          defaultDims,
 			"count":         defaultCount,
@@ -323,6 +326,108 @@ func jsInfo(opts js.Value) any {
 			"metric":        defaultMetric,
 		},
 	}
+}
+
+// A tourStep is one preset of the Point Lab's guided opening: a complete
+// point-set request plus the caption that explains it.
+//
+// The shared defaults above aim at the library's headline defect, which is
+// the wrong first picture for a visitor who has not yet seen what a
+// low-discrepancy sequence is for. The tour therefore opens on the classic
+// two-dimensional comparison, reaches the defect as its second step and the
+// remedy as its third. The fourth is Sobol on the same pair, and it is not a
+// remedy: at 512 points these two direction numbers band, scrambled or not,
+// which is the honest reason to look at every pair rather than one. The steps live here, beside the menus they draw
+// keys from, so a renamed randomization breaks the fixture test and not the
+// page.
+type tourStep struct {
+	key     string
+	label   string
+	caption string
+
+	source        string
+	randomization string
+	dims          int
+	count         int
+	skip          int
+	axisX         int
+	axisY         int
+}
+
+var pointLabTour = []tourStep{
+	{
+		key:           "even",
+		label:         "1 · Even filling",
+		caption:       "Halton in bases 2 and 3 against independent random points, same count. Each new Halton point lands in a gap the earlier ones left, so the square fills evenly at every stage of the reveal; the random points clump in some places and leave holes in others. That evenness is what makes quasi-Monte Carlo averages converge faster.",
+		source:        "halton",
+		randomization: randomizationNone,
+		dims:          2,
+		count:         512,
+		skip:          0,
+		axisX:         0,
+		axisY:         1,
+	},
+	{
+		key:           "trap",
+		label:         "2 · The high-dimension trap",
+		caption:       "The same sequence at 39 dimensions, showing coordinates 37 and 38 — bases 163 and 167. Two large neighbouring primes advance almost in step, so the points fall on a few diagonal stripes instead of filling the square. Only two of 39 axes are on screen; the others vary as usual.",
+		source:        "halton",
+		randomization: randomizationNone,
+		dims:          defaultDims,
+		count:         defaultCount,
+		skip:          defaultSkip,
+		axisX:         defaultAxisX,
+		axisY:         defaultAxisY,
+	},
+	{
+		key:           "scramble",
+		label:         "3 · Fix it: scramble",
+		caption:       "Same request, with random-digit scrambling: one seeded permutation of the digits per dimension. The two coordinates no longer march together and the stripes break up. Change the seed to get a different, equally valid point set.",
+		source:        "halton",
+		randomization: "scramble",
+		dims:          defaultDims,
+		count:         defaultCount,
+		skip:          defaultSkip,
+		axisX:         defaultAxisX,
+		axisY:         defaultAxisY,
+	},
+	{
+		key:           "sobol",
+		label:         "4 · Sobol has weak pairs too",
+		caption:       "Sobol on the same two axes, Owen-scrambled. It is base 2 in every coordinate, so there is no large-prime ramp — but not every pair of its direction numbers is good, and dimensions 37 and 38 leave bands. Scrambling keeps them: it preserves the binary block structure it is applied to. One plot shows one pair; the Discrepancy Bench checks them all.",
+		source:        "sobol",
+		randomization: "owen",
+		dims:          defaultDims,
+		count:         512,
+		skip:          0,
+		axisX:         defaultAxisX,
+		axisY:         defaultAxisY,
+	},
+}
+
+// tourList renders pointLabTour in the shape of info().defaults, so the page
+// applies a step and the defaults with the same code.
+func tourList() []any {
+	out := make([]any, 0, len(pointLabTour))
+
+	for _, step := range pointLabTour {
+		out = append(out, map[string]any{
+			"key":           step.key,
+			"label":         step.label,
+			"caption":       step.caption,
+			"source":        step.source,
+			"randomization": step.randomization,
+			"dims":          step.dims,
+			"count":         step.count,
+			"skip":          step.skip,
+			"leap":          defaultLeap,
+			"seed":          defaultSeed,
+			"axisX":         step.axisX,
+			"axisY":         step.axisY,
+		})
+	}
+
+	return out
 }
 
 // randomizationList renders one source's menu, in randomizationOrder.

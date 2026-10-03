@@ -24,16 +24,28 @@ every prime base, every correlation and every integration error comes out of the
 Go library. The JavaScript owns the DOM, the canvas and the clock. A demo that
 reimplemented the radical inverse in JS would be demonstrating the JS.
 
-## The default view
+## The opening tour
 
-The Point Lab opens on Halton, 39 dimensions, axes 37 against 38, randomization
-**none**, with skip 64 and 600 points. These axes use prime bases 163 and 167.
-They have completed several leading-digit cycles at this budget; their slower
-higher digits remain poorly explored. The selected projection illustrates the
-pattern, while the Bench separately searches all adjacent pairs for the worst
-correlation. Compare a randomization at the same budget and across several seeds.
-Sobol uses base 2 throughout and does not have these high-prime ramps, although
-its projection quality still depends on the direction table and sampled block.
+The Point Lab opens on a four-step tour, defined in `info.go` (`pointLabTour`)
+and published through `info().tour`. Each step is a complete request plus a
+caption; clicking one sets every control and replays the reveal, and editing
+any control afterwards leaves the tour. **Restart the tour** returns to step 1.
+
+1. **Even filling.** Halton in 2 dimensions (bases 2 and 3), 512 points, no
+   burn-in, against pseudo-random. The classic picture of why QMC exists.
+2. **The high-dimension trap.** Halton, 39 dimensions, axes 37 against 38,
+   randomization **none**, skip 64, 600 points — the shared `info().defaults`.
+   These axes use prime bases 163 and 167. They have completed several
+   leading-digit cycles at this budget; their slower higher digits remain poorly
+   explored. The Bench separately searches all adjacent pairs for the worst
+   correlation.
+3. **Fix it: scramble.** The same request with random-digit scrambling.
+4. **Sobol has weak pairs too.** Owen-scrambled Sobol, 512 points, on the same
+   axes. Sobol is base 2 throughout and has no high-prime ramp, but this pair of
+   direction numbers bands, and scrambling preserves the block structure that
+   causes it.
+
+The Discrepancy Bench still opens on `info().defaults`.
 
 ## Sequences and randomizations
 
