@@ -823,6 +823,13 @@ WASM/pages/worker assets there. Workflow YAML parses and final strict formatting
 passes. These are local results and checked workflow definitions, not a claim
 that remote GitHub jobs have run. Release policy/artifacts remain TOOL-04/SHIP.
 
+Follow-up audit (2026-10-03): a broad recipe edit had inadvertently changed the
+root tidy check to a write and duplicated the demo check. Restored one `tidy
+-diff` per module. `just test-module-gates` now proves both root and demo drift
+fail without modifying go.mod or creating go.sum, and preserves the explicit
+compile-valid WASM vet mutation. It rejects the preceding committed root recipe
+and passes the corrected one. Routine CI and the WASM workflow require it.
+
 ### TOOL-04 — Pin workflow dependencies and match release validation to promises (P2)
 
 - [ ] Pin GitHub Actions to reviewed commit SHAs, retaining readable version

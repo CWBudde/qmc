@@ -162,6 +162,9 @@ jobs:
       - name: Check the WebAssembly demo builds
         run: just check-wasm-demo
 
+      - name: Verify read-only module gates
+        run: just test-module-gates
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:

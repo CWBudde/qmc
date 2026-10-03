@@ -132,17 +132,20 @@ test-formatting:
     bash ./scripts/check-tools.sh format
     node ./scripts/test-formatting.mjs
 
+# Read-only tidy and explicit WASM vet regressions in temporary source copies
+test-module-gates:
+    python3 ./scripts/test-module-gates.py
+
 # Fail if go.mod/go.sum are not tidy
 check-tidy:
-    go mod tidy
-    go -C examples/wasm-demo mod tidy -diff
+    go mod tidy -diff
     go -C examples/wasm-demo mod tidy -diff
 
 # Local fast checks for both modules; statistics and real-browser tests are explicit
 check: verify check-formatted check-tidy lint lint-wasm-demo check-wasm-demo test-fast
 
 # Routine CI contract, including race and real-browser verification
-ci: verify check-formatted check-tidy lint lint-wasm-demo check-wasm-demo test-race test-browser test-tool-setup test-formatting
+ci: verify check-formatted check-tidy lint lint-wasm-demo check-wasm-demo test-race test-browser test-tool-setup test-formatting test-module-gates
 
 # Validate a prospective release without creating a tag
 release-check version:
