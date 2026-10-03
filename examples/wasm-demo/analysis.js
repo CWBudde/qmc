@@ -32,6 +32,11 @@
 
   const heatmap = el("heatmap");
   const heatLegend = el("heatLegend");
+  const heatSummary = el("heatSummary");
+  const corrTable = el("corrTable");
+  const corrCaption = el("corrCaption");
+  const corrHead = el("corrHead");
+  const corrBody = el("corrBody");
   const cellReadout = el("cellReadout");
   const worstAdjacent = el("worstAdjacent");
   const worstPairLabel = el("worstPairLabel");
@@ -133,6 +138,7 @@
     matrix: null,
     corr: null,
     hover: null,
+    focusCell: { i: 0, j: 0 },
     corrTimer: null,
     fullCorrTimer: null,
     corrRunId: 0,
@@ -151,7 +157,6 @@
     convConfig: null,
     discConfig: null,
     disc: { seq: [], rnd: [], analytic: [] },
-    lastAnnounce: 0,
   };
 
   function setStatus(message, tone) {
@@ -159,16 +164,7 @@
     statusEl.dataset.state = tone || "";
   }
 
-  function announce(message) {
-    const now = Date.now();
-
-    if (now - state.lastAnnounce < LIVE_THROTTLE_MS) {
-      return;
-    }
-
-    state.lastAnnounce = now;
-    liveRegion.textContent = message;
-  }
+  const announce = Accessibility.announcer(liveRegion, LIVE_THROTTLE_MS);
 
   // --- the wasm call wrapper ---------------------------------------------
 
@@ -590,8 +586,8 @@
     const spec = sourceSpec(corrSource);
 
     return spec && spec.primeBases
-      ? "hover a cell for the pair, their bases and r"
-      : "hover a cell for the pair and r";
+      ? "hover a cell or use the keyboard explorer for the pair, their bases and r"
+      : "hover a cell or use the keyboard explorer for the pair and r";
   }
 
   function currentIntegrand() {
@@ -689,6 +685,7 @@
     state.matrix = null;
     state.corr = null;
     state.hover = null;
+    updateCorrelationValues();
     drawHeat();
     setStatus("Updating correlation…", "loading");
     const dragging = preview === true;
@@ -740,6 +737,7 @@
     state.matrix = result.matrix;
     state.hover = null;
 
+    updateCorrelationValues();
     drawHeat();
     updateVerdict(result);
 
@@ -756,6 +754,9 @@
 
   function drawHeat() {
     const corr = state.corr;
+    heatSummary.textContent = corr
+      ? `${corr.dims} by ${corr.dims} matrix over ${corr.count.toLocaleString("en-US")} points. ${corr.source}, ${corr.randomization}, skip ${corr.skip}, leap ${corr.leap}, seed ${corr.seed}. Worst adjacent coefficient ${coefficient(corr.worstAdjacent)}. Expand Correlation values and keyboard explorer for every pair.`
+      : "Correlation is being recomputed; no current matrix is displayed.";
 
     state.geo = Render.drawHeatmap(heatmap, {
       matrix: state.matrix,
@@ -765,6 +766,78 @@
     });
 
     Render.drawHeatLegend(heatLegend);
+  }
+
+  function updateCorrelationValues() {
+    const corr = state.corr;
+    const restoreFocus = corrTable.contains(document.activeElement);
+    corrTable.setAttribute("aria-busy", String(!corr));
+    corrCaption.textContent = corr
+      ? `Pearson r, ${corr.dims} dimensions, ${corr.count.toLocaleString("en-US")} points. Row and column headers are dimension indices.`
+      : "Waiting for the current correlation values.";
+    corrHead.replaceChildren();
+    corrBody.replaceChildren();
+    if (!corr) {
+      cellReadout.textContent = "Waiting for the current correlation values.";
+      return;
+    }
+    cellReadout.textContent = idlePrompt();
+    state.focusCell.i = Math.min(state.focusCell.i, corr.dims - 1);
+    state.focusCell.j = Math.min(state.focusCell.j, corr.dims - 1);
+    const header = document.createElement("tr");
+    const corner = document.createElement("th");
+    corner.textContent = "row / column";
+    corner.scope = "col";
+    header.append(corner);
+    for (let j = 0; j < corr.dims; j++) {
+      const th = document.createElement("th");
+      th.scope = "col";
+      th.textContent = String(j);
+      header.append(th);
+    }
+    corrHead.append(header);
+    const rows = document.createDocumentFragment();
+    for (let i = 0; i < corr.dims; i++) {
+      const row = document.createElement("tr");
+      const th = document.createElement("th");
+      th.scope = "row";
+      th.textContent = String(i);
+      row.append(th);
+      for (let j = 0; j < corr.dims; j++) {
+        const td = document.createElement("td");
+        const value = state.matrix[i * corr.dims + j];
+        td.role = "gridcell";
+        td.dataset.i = String(i);
+        td.dataset.j = String(j);
+        td.tabIndex =
+          i === state.focusCell.i && j === state.focusCell.j ? 0 : -1;
+        td.textContent = finite(value) ? value.toFixed(4) : "unavailable";
+        td.setAttribute(
+          "aria-label",
+          `Dimension ${i} versus dimension ${j}${pairBases(corr, [i, j])}, correlation ${td.textContent}`,
+        );
+        row.append(td);
+      }
+      rows.append(row);
+    }
+    corrBody.append(rows);
+    if (restoreFocus) focusCorrelationCell(state.focusCell);
+  }
+
+  function focusCorrelationCell(cell) {
+    const next = corrBody.querySelector(
+      `[data-i="${cell.i}"][data-j="${cell.j}"]`,
+    );
+    if (next) next.focus();
+  }
+
+  function inspectCell(cell) {
+    const corr = state.corr;
+    if (!corr) return;
+    state.hover = cell;
+    drawHeat();
+    const r = state.matrix[cell.i * corr.dims + cell.j];
+    cellReadout.textContent = `dim ${cell.i} × dim ${cell.j}${pairBases(corr, [cell.i, cell.j])}, r = ${finite(r) ? r.toFixed(4) : "unavailable"}${cell.i === cell.j ? " (against itself)" : ""}`;
   }
 
   function updateVerdict(result) {
@@ -825,6 +898,50 @@
   }
 
   function wireHeatmapHover() {
+    corrBody.addEventListener("focusin", (event) => {
+      const td = event.target.closest('[role="gridcell"]');
+      if (!td || !state.corr) return;
+      const previous = corrBody.querySelector('[tabindex="0"]');
+      if (previous) previous.tabIndex = -1;
+      td.tabIndex = 0;
+      state.focusCell = { i: Number(td.dataset.i), j: Number(td.dataset.j) };
+      inspectCell(state.focusCell);
+    });
+    corrBody.addEventListener("click", (event) => {
+      const td = event.target.closest('[role="gridcell"]');
+      if (td) td.focus();
+    });
+    corrBody.addEventListener("keydown", (event) => {
+      if (!state.corr || !event.target.matches('[role="gridcell"]')) return;
+      const cell = { ...state.focusCell };
+      const last = state.corr.dims - 1;
+      switch (event.key) {
+        case "ArrowRight":
+          cell.j = Math.min(last, cell.j + 1);
+          break;
+        case "ArrowLeft":
+          cell.j = Math.max(0, cell.j - 1);
+          break;
+        case "ArrowDown":
+          cell.i = Math.min(last, cell.i + 1);
+          break;
+        case "ArrowUp":
+          cell.i = Math.max(0, cell.i - 1);
+          break;
+        case "Home":
+          cell.j = 0;
+          if (event.ctrlKey) cell.i = 0;
+          break;
+        case "End":
+          cell.j = last;
+          if (event.ctrlKey) cell.i = last;
+          break;
+        default:
+          return;
+      }
+      event.preventDefault();
+      focusCorrelationCell(cell);
+    });
     heatmap.addEventListener("mousemove", (event) => {
       const cell = cellAt(event);
       const corr = state.corr;
@@ -839,15 +956,7 @@
         return;
       }
 
-      state.hover = cell;
-      drawHeat();
-
-      const r = state.matrix[cell.i * corr.dims + cell.j];
-
-      cellReadout.innerHTML =
-        cell.i === cell.j
-          ? `<b>dim ${cell.i}</b> against itself${corr.bases ? ` — base ${basisOf(corr, cell.i)}` : ""}, r = 1 by construction`
-          : `<b>dim ${cell.i} × dim ${cell.j}</b>${pairBases(corr, [cell.i, cell.j])}, r = <b>${r.toFixed(4)}</b>`;
+      inspectCell(cell);
     });
 
     heatmap.addEventListener("mouseleave", () => {
@@ -855,6 +964,10 @@
         return;
       }
 
+      if (corrBody.contains(document.activeElement)) {
+        inspectCell(state.focusCell);
+        return;
+      }
       state.hover = null;
       drawHeat();
       cellReadout.textContent = idlePrompt();
@@ -901,8 +1014,12 @@
     readout.qmc.textContent = "—";
     readout.mc.textContent = "—";
     readout.ratio.textContent = "—";
-    progressBar.style.width = "0%";
-    progressText.textContent = "idle — press Start for the current settings";
+    updateProgress(
+      { bar: progressBar, text: progressText },
+      0,
+      1,
+      "idle — press Start for the current settings",
+    );
     drawChart();
   }
 
@@ -917,6 +1034,18 @@
   function describeConfig(request) {
     const problem = request.integrand || request.metric;
     return `${request.source} · ${request.randomization} · ${request.dims} dimensions · skip ${request.skip} · leap ${request.leap} · seed ${request.seed} · ${problem} · ceiling ${request.ceiling.toLocaleString("en-US")}`;
+  }
+
+  function updateProgress(progress, done, total, message) {
+    progress.bar.style.width = `${(done / total) * 100}%`;
+    const indicator = progress.bar.parentElement;
+    indicator.setAttribute("aria-valuemax", String(total));
+    indicator.setAttribute("aria-valuenow", String(done));
+    indicator.setAttribute(
+      "aria-valuetext",
+      `${done} of ${total} rungs completed. ${message}`,
+    );
+    progress.text.textContent = message;
   }
 
   // runSweep is the ladder BOTH panels walk. It was extracted from the
@@ -954,7 +1083,8 @@
     state.sweep = job;
     job.buttons.start.disabled = true;
     job.buttons.stop.disabled = false;
-    job.progress.bar.style.width = "0%";
+    job.done = 0;
+    updateProgress(job.progress, 0, job.steps.length, "starting");
     setStatus(job.status, "loading");
 
     for (let step = 0; step < job.steps.length; step += 1) {
@@ -982,8 +1112,13 @@
       job.onResult(result, step);
 
       const done = step + 1;
-      job.progress.bar.style.width = `${(done / job.steps.length) * 100}%`;
-      job.progress.text.textContent = `${job.label(result)} · ${done} / ${job.steps.length}`;
+      job.done = done;
+      updateProgress(
+        job.progress,
+        done,
+        job.steps.length,
+        `${job.label(result)} · ${done} / ${job.steps.length}`,
+      );
       announce(job.announce(result));
 
       // Give DOM updates a turn between completed rungs. Worker termination
@@ -1005,7 +1140,8 @@
 
     job.buttons.start.disabled = false;
     job.buttons.stop.disabled = true;
-    job.progress.text.textContent = message;
+    updateProgress(job.progress, job.done, job.steps.length, message);
+    announce(message);
 
     if (statusEl.dataset.state !== "error") {
       setStatus(message, "ready");
@@ -1104,6 +1240,10 @@
   }
 
   function drawChart() {
+    const last = state.qmc.at(-1);
+    el("convSummary").textContent = last
+      ? `${state.qmc.length} completed convergence rungs. Latest N ${last.x}: absolute QMC error ${sci(last.y)}, Monte Carlo error ${sci(state.mc.at(-1).y)}. Circles show QMC, crosses show Monte Carlo; dotted lines show reference slopes. All measured values are in the Latest N table.`
+      : "No completed convergence rungs. Press Start to measure the current settings.";
     const qmcColor = Render.readVar("--halton", "#46e0c8");
     const mcColor = Render.readVar("--random", "#ffb04a");
     const refColor = Render.readVar("--mark", "#ff5d8f");
@@ -1283,9 +1423,12 @@
     discReadout.analytic.textContent = "—";
     discVerdict.textContent =
       "Press Start. The page opens on 39 dimensions and centred L2, which is the configuration in which this statistic says nothing.";
-    discProgressBar.style.width = "0%";
-    discProgressText.textContent =
-      "idle — press Start for the current settings";
+    updateProgress(
+      { bar: discProgressBar, text: discProgressText },
+      0,
+      1,
+      "idle — press Start for the current settings",
+    );
     drawDiscChart();
   }
 
@@ -1378,6 +1521,10 @@
   }
 
   function drawDiscChart() {
+    const last = state.disc.seq.at(-1);
+    el("discSummary").textContent = last
+      ? `${state.disc.seq.length} completed ${state.discConfig.metric} discrepancy rungs. Latest N ${last.x}: sequence ${sci(last.y)}, pseudo-random ${sci(state.disc.rnd.at(-1).y)}. Circles show the sequence and crosses show pseudo-random; the dotted baseline is shown when available. All measured values are in the discrepancy table.`
+      : "No completed discrepancy rungs. Press Start to measure an available metric.";
     const seqColor = Render.readVar("--halton", "#46e0c8");
     const rndColor = Render.readVar("--random", "#ffb04a");
     const refColor = Render.readVar("--mark", "#ff5d8f");

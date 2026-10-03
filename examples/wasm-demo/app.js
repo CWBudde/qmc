@@ -33,6 +33,7 @@
   const playButton = el("play");
   const scrub = el("scrub");
   const revealReadout = el("revealReadout");
+  const scatterSummary = el("scatterSummary");
 
   const dimsInput = el("dims");
   const dimsOut = el("dimsOut");
@@ -95,7 +96,6 @@
     playFrame: null,
     lastTick: 0,
     selected: -1,
-    lastAnnounce: 0,
     refreshTimer: null,
     fullRefreshTimer: null,
     renderId: 0,
@@ -113,16 +113,7 @@
 
   // The scatter redraws on every slider tick; an unthrottled live region would
   // read out hundreds of updates a second and drown the page in speech.
-  function announce(message) {
-    const now = Date.now();
-
-    if (now - state.lastAnnounce < LIVE_THROTTLE_MS) {
-      return;
-    }
-
-    state.lastAnnounce = now;
-    liveRegion.textContent = message;
-  }
+  const announce = Accessibility.announcer(liveRegion, LIVE_THROTTLE_MS);
 
   // --- the wasm call wrapper ---------------------------------------------
 
@@ -600,6 +591,13 @@
     const random = state.random;
     const axisX = intValue(axisXSelect, 0);
     const axisY = intValue(axisYSelect, 1);
+    scatterSummary.textContent = sequence
+      ? `${state.reveal.toLocaleString("en-US")} of ${sequence.count.toLocaleString("en-US")} points shown on dimensions ${sequence.axisX} and ${sequence.axisY} of ${sequence.dims}. ${sequence.source}, ${sequence.randomization}, skip ${sequence.skip}, leap ${sequence.leap}, seed ${sequence.seed}; filled circles. Pseudo-random comparison uses crosses. Use the reveal slider and digit inspector to inspect points without a mouse.`
+      : "Point sets are being recomputed; no current values are displayed.";
+    scrub.setAttribute(
+      "aria-valuetext",
+      `${state.reveal} of ${sequence ? sequence.count : 0} points shown`,
+    );
 
     Render.drawScatter(haltonCanvas, {
       xy: sequence && sequence.xy,

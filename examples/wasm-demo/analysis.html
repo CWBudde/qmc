@@ -229,11 +229,44 @@
                   id="heatmap"
                   role="img"
                   aria-label="Correlation matrix across all dimension pairs"
+                  aria-describedby="heatSummary heatLegendText"
                 ></canvas>
                 <canvas id="heatLegend" aria-hidden="true"></canvas>
+                <p class="field-note" id="heatSummary">
+                  Correlation is loading.
+                </p>
+                <p class="field-note" id="heatLegendText">
+                  Pearson correlation r ranges from −1 to +1: negative values
+                  use blue, zero is dark, and positive values use rose. The
+                  diagonal is 1. Values measure linear association, not general
+                  independence. Dimension indices start at zero.
+                </p>
                 <p class="cell-readout mono" id="cellReadout">
                   hover a cell for the pair, their bases and r
                 </p>
+                <details id="corrValues">
+                  <summary>Correlation values and keyboard explorer</summary>
+                  <p class="field-note" id="corrKeys">
+                    Tab enters the values. Arrow keys move by row or column;
+                    Home and End move within a row; Control + Home or End moves
+                    to the first or last value. Tab leaves the matrix.
+                  </p>
+                  <div class="table-wrap corr-values-wrap">
+                    <table
+                      id="corrTable"
+                      role="grid"
+                      aria-label="Correlation values"
+                      aria-describedby="corrKeys heatSummary"
+                      aria-busy="true"
+                    >
+                      <caption id="corrCaption">
+                        Waiting for correlation values.
+                      </caption>
+                      <thead id="corrHead"></thead>
+                      <tbody id="corrBody"></tbody>
+                    </table>
+                  </div>
+                </details>
               </div>
             </div>
           </div>
@@ -321,7 +354,16 @@
                 <button id="start" data-primary disabled>Start</button>
                 <button id="stop" disabled>Stop</button>
               </div>
-              <div class="progress">
+              <div
+                class="progress"
+                role="progressbar"
+                aria-label="Convergence sweep"
+                aria-valuemin="0"
+                aria-valuemax="1"
+                aria-valuenow="0"
+                aria-valuetext="Idle"
+                aria-describedby="progressText"
+              >
                 <div class="progress__bar" id="progressBar"></div>
               </div>
               <p class="field-note mono" id="progressText">idle</p>
@@ -367,7 +409,11 @@
             id="convChart"
             role="img"
             aria-label="Absolute integration error against N on log–log axes"
+            aria-describedby="convSummary convConfig"
           ></canvas>
+          <p class="field-note" id="convSummary">
+            No completed convergence rungs.
+          </p>
           <p class="field-note mono" id="convConfig">
             No results for the current settings.
           </p>
@@ -494,7 +540,16 @@
                 <button id="discStart" data-primary disabled>Start</button>
                 <button id="discStop" disabled>Stop</button>
               </div>
-              <div class="progress">
+              <div
+                class="progress"
+                role="progressbar"
+                aria-label="Discrepancy sweep"
+                aria-valuemin="0"
+                aria-valuemax="1"
+                aria-valuenow="0"
+                aria-valuetext="Idle"
+                aria-describedby="discProgressText"
+              >
                 <div class="progress__bar" id="discProgressBar"></div>
               </div>
               <p class="field-note mono" id="discProgressText">idle</p>
@@ -520,7 +575,11 @@
             id="discChart"
             role="img"
             aria-label="Discrepancy against N on log–log axes, sequence against pseudo-random"
+            aria-describedby="discSummary discConfig"
           ></canvas>
+          <p class="field-note" id="discSummary">
+            No completed discrepancy rungs.
+          </p>
           <p class="field-note mono" id="discConfig">
             No results for the current settings.
           </p>
@@ -581,7 +640,12 @@
         </p>
       </div>
 
-      <p class="sr-only" id="liveRegion" aria-live="polite"></p>
+      <p
+        class="sr-only"
+        id="liveRegion"
+        aria-live="polite"
+        aria-atomic="true"
+      ></p>
 
       <footer class="rack-footer mono">
         <span>github.com/cwbudde/qmc</span>
@@ -594,6 +658,7 @@
     <script src="render.js"></script>
     <script src="runtime.js"></script>
     <script src="compute.js"></script>
+    <script src="accessibility.js"></script>
     <script src="analysis.js"></script>
   </body>
 </html>

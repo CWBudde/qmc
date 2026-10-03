@@ -227,6 +227,7 @@ are untouched.
 | `runtime.js`        | Go runtime monitoring and recoverable request handling in each realm        |
 | `compute.js`        | UI worker client, request ownership, deadlines, and cancellation            |
 | `compute-worker.js` | Worker-hosted WASM exports and transferred output buffers                   |
+| `accessibility.js`  | Shared throttled live announcer, preserving the latest queued message       |
 | `app.js`            | Point Lab controller: scatter, transport, digit inspector                   |
 | `analysis.js`       | Bench controller: heatmap, hover, two cancellable N-sweeps                  |
 | `favicon.svg`       | An even point set and a clumped one, in 32 pixels                           |
@@ -368,6 +369,37 @@ budgets; the batched workload measurement gets 90 seconds within the overall
 120-second browser budget. Each worker has a 20-second boot and two-minute
 computation deadline. Timing thresholds bound responsiveness rather than
 promise throughput; see PLAN.md for recorded machine/toolchain evidence.
+
+## Accessibility verification
+
+Expand **Correlation values and keyboard explorer** for the full numerical
+matrix. Tab enters one cell; arrows move without wrapping, Home/End move within
+a row, and Control + Home/End reach the matrix corners. Tab leaves the matrix.
+Row and column headers name zero-based dimensions; each cell's accessible name
+includes its pair, bases when applicable, and coefficient. Keyboard focus updates
+the same heatmap highlight and readout as pointer inspection. Values are available
+at all supported correlation dimensions, including the full 48×48 matrix.
+
+Every canvas has a current textual summary. Convergence and discrepancy retain
+their full result tables and configuration snapshots. Both progressbars expose
+names, completed/total rungs, and completion, Stop, or reset state. The reveal
+slider describes the number of points shown. Focus outlines remain visible;
+reduced-motion preference stops playback animation and progress transitions.
+Polite, atomic live announcements publish at most every 700 ms and retain the
+latest pending message, including completion or cancellation.
+
+`just test-browser` compares textual matrices against Go results, sends real
+Chrome keyboard events, inspects Chrome's accessibility tree on both pages,
+checks progress and reset values, and verifies reduced-motion and announcement
+throttling. It also checks the 48×48 text matrix and correlation preview debounce.
+For a manual keyboard check, Tab to the explorer summary, expand it with Enter,
+Tab into the values, navigate with the keys above, and Tab out to the next control.
+Use the keyboard to start/stop a sweep and operate the Point Lab reveal slider.
+These regressions verify browser semantics and keyboard operation; they do not
+replace testing with specific screen-reader/browser combinations or constitute
+a full WCAG conformance audit. The grid interaction follows the
+[WAI data-grid pattern](https://www.w3.org/WAI/ARIA/apg/patterns/grid/), and progress
+values follow the [ARIA progressbar definition](https://www.w3.org/TR/wai-aria-1.2/#progressbar).
 
 ## Randomization interpretation
 

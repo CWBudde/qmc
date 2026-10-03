@@ -169,8 +169,16 @@ gate. `just test-browser dist` checks an existing upload artifact. Server startu
 page readiness, protocol requests, and the browser run have 5/30/20/120-second
 deadlines; the existing-artifact run passed in 5.790 seconds on Chrome
 144.0.7559.109 and Node 18.19.1. PR/Pages jobs use the same commands. Compile-only
-checks remain useful but do not establish runtime behavior. Accessibility and
-constrained-device responsiveness are tracked separately under DEMO-07/DEMO-03.
+checks remain useful but do not establish runtime behavior. The suite now also
+verifies dynamic canvas summaries, named/current progressbars, textual correlation
+values through 48×48 dimensions, real keyboard navigation, Chromium accessibility
+tree semantics on both pages, reduced motion, and throttled final announcements.
+All four heavy exports run in cancellable workers and undergo normal/6× DOM
+throttling checks; `QMC_BROWSER_CPUS=0 just test-browser` additionally constrains
+all Chrome threads to one permitted Linux CPU. The batched performance check has
+a 90-second protocol deadline within the overall browser budget. DEMO-03/DEMO-07
+in [PLAN.md](../PLAN.md) record workload evidence and verification limits;
+the demo README contains manual keyboard steps and assistive-technology caveats.
 
 At this verification milestone, the corrected routine race suite completed in
 109.685 seconds and executable 386 fast checks in 48.608 seconds. Full ordinary

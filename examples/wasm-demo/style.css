@@ -174,7 +174,7 @@ input[type="range"] {
 }
 
 :focus-visible {
-  outline: 1px solid var(--action);
+  outline: 2px solid var(--action);
   outline-offset: 2px;
 }
 
@@ -953,6 +953,26 @@ canvas {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 10px;
+}
+
+.corr-values-wrap {
+  max-height: 320px;
+  overflow: auto;
+}
+
+#corrTable caption {
+  text-align: left;
+  padding: 8px;
+}
+
+#corrTable td:focus-visible {
+  outline-offset: -2px;
+  background: var(--void);
+  color: var(--lume);
+}
+
+summary {
+  cursor: pointer;
 }
 
 .heatmap-wrap canvas#heatmap {

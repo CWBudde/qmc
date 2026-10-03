@@ -129,6 +129,7 @@
             id="haltonCanvas"
             role="img"
             aria-label="The selected sequence projected onto two dimensions"
+            aria-describedby="scatterSummary"
           ></canvas>
         </div>
 
@@ -142,6 +143,7 @@
             id="randomCanvas"
             role="img"
             aria-label="Independent pseudo-random points on the same axes"
+            aria-describedby="scatterSummary"
           ></canvas>
         </div>
       </div>
@@ -160,6 +162,7 @@
         />
         <span class="frame-readout mono" id="revealReadout">— / —</span>
       </div>
+      <p class="field-note" id="scatterSummary">Point sets are loading.</p>
 
       <div class="legend">
         <span class="halton"
@@ -394,7 +397,12 @@
         </p>
       </div>
 
-      <p class="sr-only" id="liveRegion" aria-live="polite"></p>
+      <p
+        class="sr-only"
+        id="liveRegion"
+        aria-live="polite"
+        aria-atomic="true"
+      ></p>
 
       <footer class="rack-footer mono">
         <span>github.com/cwbudde/qmc</span>
@@ -407,6 +415,7 @@
     <script src="render.js"></script>
     <script src="runtime.js"></script>
     <script src="compute.js"></script>
+    <script src="accessibility.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

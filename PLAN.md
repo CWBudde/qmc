@@ -611,11 +611,11 @@ Accessibility and constrained-device responsiveness remain DEMO-07/DEMO-03.
 
 ### DEMO-07 — Make heatmap and progress information accessible (P2)
 
-- [ ] Provide keyboard cell navigation and a textual matrix/table or equivalent
+- [x] Provide keyboard cell navigation and a textual matrix/table or equivalent
       accessible values for the correlation heatmap.
-- [ ] Add dynamic canvas summaries and an accessible explanation of its legend.
-- [ ] Add progressbar roles, names, and current values to both progress indicators.
-- [ ] Keep reduced-motion behavior, visible focus, and throttled live announcements.
+- [x] Add dynamic canvas summaries and an accessible explanation of its legend.
+- [x] Add progressbar roles, names, and current values to both progress indicators.
+- [x] Keep reduced-motion behavior, visible focus, and throttled live announcements.
 
 Evidence: [analysis.html](examples/wasm-demo/analysis.html),
 [analysis.js](examples/wasm-demo/analysis.js), [style.css](examples/wasm-demo/style.css).
@@ -623,6 +623,30 @@ Evidence: [analysis.html](examples/wasm-demo/analysis.html),
 Acceptance: keyboard-only and screen-reader users can inspect correlation values
 and follow sweep progress; automated accessibility checks and manual keyboard
 verification cover both pages.
+
+Verification (2026-10-03): the full correlation matrix is exposed as an
+expandable, labelled data grid with zero-based row/column headers and one tab
+stop. Real Chrome Input events verify Enter expansion, Tab entry/exit, every
+arrow direction, boundaries, Home/End and Control+Home/End, a two-pixel visible
+focus outline, and the synchronized heatmap readout. Sixteen values at four
+dimensions and all 2,304 values at the maximum 48 dimensions match independent
+Go-export results to their displayed precision. Chrome's accessibility tree
+exposes the grid, named gridcells, three described Bench images, and both named
+progressbars with current/minimum/maximum values and status text. Point Lab's
+two described images, named controls, and native keyboard reveal slider are
+also checked. Canvas summaries change with computed results and are cleared
+on invalidation. Sweep progress counts retained completed rows, describes Stop
+and completion, and resets to zero on configuration changes.
+
+Reduced-motion progress transitions and Point Lab playback are verified in
+Chrome. Polite atomic announcements are capped at one per 700 ms; a regression
+confirms a burst preserves its final message instead of discarding it. Both
+sliders' debounce tests pass, including correlation's [64, 1019] preview/full
+requests. The new regression fails against the preceding artifact without the
+keyboard explorer. Full browser verification passes with zero unexpected errors;
+manual keyboard-check steps and WAI references are in the demo README. These
+checks cover actual browser keyboard input and accessibility semantics, rather
+than claiming a full WCAG audit or tests with every screen-reader/browser pair.
 
 ### DEMO-08 — Remove unnecessary external font requests (P2)
 
@@ -874,7 +898,7 @@ behavior remain stable unless an intentional change is documented.
 
 - [x] SCI-01 and CORE-01 through CORE-08 are resolved with regressions and accurate contracts.
 - [x] TEST-01 through TEST-03 establish meaningful, bounded verification for supported targets.
-- [ ] DEMO-01 through DEMO-09 are verified in browser, accessibility, and failure-state checks.
+- [x] DEMO-01 through DEMO-09 are verified in browser, accessibility, and failure-state checks.
 - [ ] TOOL-01 through TOOL-04 run reproducibly in a clean environment for both modules.
 - [ ] SHIP-01 and SHIP-02 verify complete, consistent artifacts and notices.
 - [ ] DOC-01 and DOC-02 reconcile every affected public claim and open-work list.

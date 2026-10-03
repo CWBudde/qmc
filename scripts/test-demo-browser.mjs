@@ -334,6 +334,240 @@ try {
     check(!qmc.converge({integrand:'sum',dims:2,n:4}).error,'valid request after rejection');
     return {cases,transitions:true,gaussianDimensions:[1,4,32],sourceDescriptions:true,typedArrayCases:mismatches.length+3};
   })()`);
+  // Inspect actual browser semantics and dispatch real keyboard input.
+  await send("Accessibility.enable", {}, sessionId);
+  const auditPage = async (page) => {
+    await evaluate(`(() => {
+      const check=(v,msg)=>{if(!v)throw new Error(msg)};
+      for(const control of document.querySelectorAll('input,select,button')) {
+        if(!control.getClientRects().length)continue;
+        const labels=Array.from(control.labels||[],l=>l.textContent.trim()).join(' ');
+        check(control.getAttribute('aria-label')||control.getAttribute('aria-labelledby')||labels||(control.tagName==='BUTTON'&&control.textContent.trim()),'unnamed control '+control.id);
+      }
+      for(const image of document.querySelectorAll('canvas[role="img"]')) {
+        check(image.getAttribute('aria-label'),'unnamed canvas '+image.id);
+        const ids=(image.getAttribute('aria-describedby')||'').split(/\\s+/).filter(Boolean);
+        check(ids.length&&ids.every(id=>document.getElementById(id)?.textContent.trim()),'missing dynamic canvas summary '+image.id);
+      }
+      check(document.getElementById('liveRegion').getAttribute('aria-live')==='polite'&&document.getElementById('liveRegion').getAttribute('aria-atomic')==='true','live-region semantics');
+      return true;
+    })()`);
+    const { nodes } = await send("Accessibility.getFullAXTree", {}, sessionId);
+    const images = nodes.filter((n) => !n.ignored && n.role?.value === "image");
+    assert(
+      images.length >= (page === "analysis" ? 3 : 2),
+      "missing images in accessibility tree",
+    );
+    assert(
+      images.every((n) => n.name?.value && n.description?.value),
+      "canvas description absent from accessibility tree",
+    );
+    if (page === "analysis") {
+      const progress = nodes.filter(
+        (n) => !n.ignored && n.role?.value === "progressbar",
+      );
+      assert.equal(
+        progress.length,
+        2,
+        "missing progressbars in accessibility tree",
+      );
+      for (const node of progress) {
+        const props = Object.fromEntries(
+          node.properties.map((p) => [p.name, p.value.value]),
+        );
+        assert(
+          node.name?.value &&
+            Number.isFinite(node.value?.value) &&
+            props.valuemin === 0 &&
+            props.valuemax >= node.value.value &&
+            props.valuetext,
+          "invalid accessible progress range/name",
+        );
+      }
+      assert(
+        nodes.some(
+          (n) =>
+            !n.ignored &&
+            n.role?.value === "grid" &&
+            n.name?.value === "Correlation values",
+        ),
+        "missing accessible matrix",
+      );
+      assert.equal(
+        nodes.filter((n) => !n.ignored && n.role?.value === "gridcell").length,
+        16,
+        "missing accessible correlation values",
+      );
+    }
+  };
+  const press = async (key, code, virtual, modifiers = 0) => {
+    const params = {
+      key,
+      code,
+      windowsVirtualKeyCode: virtual,
+      modifiers,
+      ...(key === "Enter" ? { text: "\r" } : {}),
+    };
+    await send(
+      "Input.dispatchKeyEvent",
+      { ...params, type: "keyDown" },
+      sessionId,
+    );
+    await send(
+      "Input.dispatchKeyEvent",
+      { ...params, type: "keyUp" },
+      sessionId,
+    );
+  };
+  const matrix = await evaluate(`(async () => {
+    const el=id=>document.getElementById(id), check=(v,msg)=>{if(!v)throw new Error(msg)};
+    const set=(id,value,event='change')=>{el(id).value=String(value);el(id).dispatchEvent(new Event(event,{bubbles:true}));};
+    check(el('corrTable'),'missing keyboard correlation explorer');
+    set('corrSource','halton');set('corrRandom','none');set('corrDims',4,'input');set('corrCount',128,'change');
+    const until=Date.now()+10000;
+    while(el('corrTable').getAttribute('aria-busy')==='true'){check(Date.now()<until,'accessible matrix deadline');await new Promise(r=>setTimeout(r,5));}
+    const reference=qmc.correlate({source:'halton',randomization:'none',dims:4,count:128,skip:Number(el('corrSkip').value),leap:Number(el('corrLeap').value),seed:Number(el('corrSeed').value)});
+    const cells=Array.from(el('corrBody').querySelectorAll('[role="gridcell"]'));
+    check(cells.length===16&&cells.every((td,i)=>td.textContent===reference.matrix[i].toFixed(4)),'textual matrix differs from Go values');
+    check(el('corrHead').querySelectorAll('th[scope="col"]').length===5&&el('corrBody').querySelectorAll('th[scope="row"]').length===4,'missing dimension headers');
+    check(cells.filter(td=>td.tabIndex===0).length===1,'matrix has multiple tab stops');
+    el('corrValues').open=false;el('corrValues').querySelector('summary').focus();
+    return {cells:cells.length};
+  })()`);
+  await press("Enter", "Enter", 13);
+  assert(
+    await evaluate(`document.getElementById('corrValues').open`),
+    "Enter did not expand the matrix explorer",
+  );
+  await press("Tab", "Tab", 9);
+  const selectedCell = async () =>
+    evaluate(
+      `(() => {const td=document.activeElement;return {i:Number(td.dataset.i),j:Number(td.dataset.j),role:td.getAttribute('role')}})()`,
+    );
+  assert.deepEqual(
+    await selectedCell(),
+    { i: 0, j: 0, role: "gridcell" },
+    "Tab did not enter first cell",
+  );
+  await press("ArrowRight", "ArrowRight", 39);
+  await press("ArrowDown", "ArrowDown", 40);
+  assert.deepEqual(await selectedCell(), { i: 1, j: 1, role: "gridcell" });
+  await press("End", "End", 35);
+  assert.deepEqual(await selectedCell(), { i: 1, j: 3, role: "gridcell" });
+  await press("ArrowLeft", "ArrowLeft", 37);
+  await press("ArrowUp", "ArrowUp", 38);
+  assert.deepEqual(await selectedCell(), { i: 0, j: 2, role: "gridcell" });
+  await press("Home", "Home", 36);
+  assert.deepEqual(await selectedCell(), { i: 0, j: 0, role: "gridcell" });
+  await press("End", "End", 35, 2);
+  assert.deepEqual(await selectedCell(), { i: 3, j: 3, role: "gridcell" });
+  await press("ArrowRight", "ArrowRight", 39);
+  await press("ArrowDown", "ArrowDown", 40);
+  assert.deepEqual(
+    await selectedCell(),
+    { i: 3, j: 3, role: "gridcell" },
+    "matrix wraps at boundary",
+  );
+  await press("Home", "Home", 36, 2);
+  await press("ArrowRight", "ArrowRight", 39);
+  assert.deepEqual(await selectedCell(), { i: 0, j: 1, role: "gridcell" });
+  assert(
+    await evaluate(
+      `document.getElementById('cellReadout').textContent.includes('dim 0 × dim 1')&&getComputedStyle(document.activeElement).outlineWidth==='2px'&&document.activeElement.matches(':focus-visible')`,
+    ),
+    "keyboard readout/focus missing",
+  );
+  await auditPage("analysis");
+  await press("Tab", "Tab", 9);
+  assert(
+    await evaluate(
+      `!document.getElementById('corrBody').contains(document.activeElement)`,
+    ),
+    "Tab trapped inside matrix",
+  );
+  const correlationPreviews = await evaluate(`(async () => {
+    const el=id=>document.getElementById(id),check=(v,msg)=>{if(!v)throw new Error(msg)};
+    const set=(id,value,event='change')=>{el(id).value=String(value);el(id).dispatchEvent(new Event(event,{bubbles:true}));};
+    const ready=async count=>{const until=Date.now()+10000;while(el('corrTable').getAttribute('aria-busy')==='true'||!el('heatSummary').textContent.includes(count.toLocaleString('en-US')+' points')){check(Date.now()<until,'correlation preview deadline');await new Promise(r=>setTimeout(r,5));}};
+    set('corrRandom','nested');set('corrCount',1000);await ready(1000);
+    const counts=[],original=Worker.prototype.postMessage;
+    Worker.prototype.postMessage=function(data,...args){if(data.name==='correlate')counts.push(data.opts.count);return original.call(this,data,...args)};
+    for(let i=0;i<20;i++){set('corrCount',1000+i,'input');await new Promise(r=>setTimeout(r,5));}
+    await ready(1019);Worker.prototype.postMessage=original;
+    check(JSON.stringify(counts)===JSON.stringify([64,1019]),'correlation dragging not reduced/debounced: '+counts);
+    set('corrCount',128);set('corrDims',48,'change');await ready(128);
+    const cells=Array.from(el('corrBody').querySelectorAll('[role="gridcell"]'));
+    const reference=qmc.correlate({source:'halton',randomization:'nested',dims:48,count:128,skip:Number(el('corrSkip').value),leap:Number(el('corrLeap').value),seed:Number(el('corrSeed').value)});
+    check(cells.length===2304&&cells.every((td,i)=>td.textContent===reference.matrix[i].toFixed(4)),'maximum-dimension matrix values');
+    check(cells.filter(td=>td.tabIndex===0).length===1,'maximum matrix tab-stop count');
+    return counts;
+  })()`);
+  console.log(
+    "Debounced nested correlation preview/full counts:",
+    JSON.stringify(correlationPreviews),
+  );
+  // Progress must describe retained results, completion, and invalidation.
+  await evaluate(`(() => {
+    const el=id=>document.getElementById(id);
+    el('convSource').value='halton';el('convSource').dispatchEvent(new Event('change'));
+    el('convRandom').value='none';el('convRandom').dispatchEvent(new Event('change'));
+    el('convLeap').value='1';el('convLeap').dispatchEvent(new Event('input'));
+    el('convDims').value='2';el('convDims').dispatchEvent(new Event('input'));el('budget').value='4096';el('budget').dispatchEvent(new Event('change'));el('start').focus();return true;
+  })()`);
+  await press("Enter", "Enter", 13);
+  assert(
+    await evaluate(`!document.getElementById('stop').disabled`),
+    "Enter did not start the focused sweep button: " +
+      JSON.stringify(
+        await evaluate(
+          `({focus:document.activeElement.id,startDisabled:document.getElementById('start').disabled,status:document.getElementById('status').textContent,leap:document.getElementById('convLeapNote').textContent})`,
+        ),
+      ),
+  );
+  await evaluate(`(async () => {
+    const el=id=>document.getElementById(id),until=Date.now()+10000;
+    while(!el('convRows').children.length){if(Date.now()>until)throw new Error('keyboard Start deadline');await new Promise(r=>setTimeout(r,2));}
+    el('stop').focus();return true;
+  })()`);
+  await press("Enter", "Enter", 13);
+  await evaluate(`(async () => {
+    const el=id=>document.getElementById(id),check=(v,msg)=>{if(!v)throw new Error(msg)};
+    const indicator=el('progressBar').parentElement;
+    check(Number(indicator.getAttribute('aria-valuenow'))===el('convRows').children.length,'progress does not count retained rows');
+    check(indicator.getAttribute('aria-valuetext').includes('stopped'),'Stop progress status absent');
+    check(el('convSummary').textContent.includes('Latest N'),'missing dynamic convergence summary');
+    const set=(id,value)=>{el(id).value=String(value);el(id).dispatchEvent(new Event('input',{bubbles:true}));};
+    set('convDims',3);
+    check(indicator.getAttribute('aria-valuenow')==='0'&&el('convSummary').textContent.includes('No completed'),'stale progress after reset');
+    set('discDims',6);el('discMetric').value='star';el('discMetric').dispatchEvent(new Event('change'));el('discStart').click();
+    const until=Date.now()+10000;
+    while(!el('discStop').disabled){check(Date.now()<until,'completion progress deadline');await new Promise(r=>setTimeout(r,5));}
+    const disc=el('discProgressBar').parentElement;
+    check(Number(disc.getAttribute('aria-valuenow'))===el('discRows').children.length&&disc.getAttribute('aria-valuenow')===disc.getAttribute('aria-valuemax'),'completion progress values');
+    check(disc.getAttribute('aria-valuetext').includes('complete')&&el('discSummary').textContent.includes('star discrepancy'),'completion summary');
+    const region=document.createElement('p'), publish=Accessibility.announcer(region,700),changes=[];
+    const observer=new MutationObserver(()=>changes.push({time:performance.now(),text:region.textContent}));observer.observe(region,{childList:true});
+    publish('first');await new Promise(r=>setTimeout(r,10));
+    for(let i=0;i<30;i++)publish('update '+i);
+    publish('final');await new Promise(r=>setTimeout(r,750));observer.disconnect();
+    check(changes.length===2&&changes[1].text==='final'&&changes[1].time-changes[0].time>=650,'live updates flood or lose final announcement');
+    return true;
+  })()`);
+  await send(
+    "Emulation.setEmulatedMedia",
+    { features: [{ name: "prefers-reduced-motion", value: "reduce" }] },
+    sessionId,
+  );
+  assert(
+    await evaluate(
+      `parseFloat(getComputedStyle(document.getElementById('progressBar')).transitionDuration)<0.001`,
+    ),
+    "reduced-motion progress still animates",
+  );
+  await send("Emulation.setEmulatedMedia", { features: [] }, sessionId);
+  console.log(
+    "Accessibility: matrix values, real keyboard navigation, Chrome AX tree, progress, summaries, reduced motion, and throttled announcements passed.",
+  );
   if (runtimeFixture) {
     useFixture = true;
     for (const page of ["analysis.html", "index.html"]) {
@@ -452,6 +686,23 @@ try {
     return true;
   })()`);
   assert(switching);
+  await auditPage("points");
+  await evaluate(
+    `document.getElementById('scrub').value='3';document.getElementById('scrub').dispatchEvent(new Event('input'));document.getElementById('scrub').focus();true`,
+  );
+  await press("ArrowRight", "ArrowRight", 39);
+  assert(
+    await evaluate(
+      `document.getElementById('scrub').value==='4'&&document.getElementById('scatterSummary').textContent.includes('4 of 10 points shown')`,
+    ),
+    "native keyboard reveal did not update the summary",
+  );
+  assert(
+    await evaluate(
+      `document.getElementById('scatterSummary').textContent.includes('of 10 points shown')&&document.getElementById('scrub').getAttribute('aria-valuetext').includes('points shown')`,
+    ),
+    "dynamic scatter/reveal summary missing",
+  );
   const previews = await evaluate(`(async () => {
     const el=id=>document.getElementById(id), check=(v,msg)=>{if(!v)throw new Error(msg)};
     const set=(id,value,event='change')=>{el(id).value=String(value);el(id).dispatchEvent(new Event(event,{bubbles:true}));};
@@ -677,6 +928,11 @@ try {
     JSON.stringify({
       ...result,
       pointLabSwitching: true,
+      accessibility: {
+        matrixCells: matrix.cells,
+        keyboard: true,
+        chromiumAX: true,
+      },
       loadingFailureCases: 8,
       browserCPUs: browserCPUs || "unrestricted",
       unexpectedErrors: 0,
