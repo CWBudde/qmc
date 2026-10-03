@@ -8,6 +8,39 @@ release process, and third-party packaging findings from the repository review.
 The overall review rating was 7/10. Each item below has an implementation or
 decision task and an acceptance criterion.
 
+## Coverage and current status
+
+There are 32 remediation tasks: 24 have recorded completion evidence and eight
+remain open. Checkboxes track verified completion; unchecked tasks describe the
+work still required. Changes under development count as open until their
+acceptance criteria are met.
+
+| Review area                                                  | Tasks                                       | Current status |
+| ------------------------------------------------------------ | ------------------------------------------- | -------------- |
+| Scientific and statistical claims                            | SCI-01                                      | Verified       |
+| Numerical correctness and boundary handling                  | CORE-01, CORE-02, CORE-05, CORE-06, CORE-08 | Verified       |
+| Concurrency and allocation contracts                         | CORE-03, CORE-04, CORE-07                   | Verified       |
+| Test quality and verification budgets                        | TEST-01 through TEST-03                     | Verified       |
+| Demo correctness, failure handling, and browser verification | DEMO-01, DEMO-02, DEMO-04 through DEMO-06   | Verified       |
+| Responsiveness, accessibility, privacy, and idle work        | DEMO-03, DEMO-07 through DEMO-09            | Verified       |
+| Demo duplication and rendering maintenance                   | DEMO-10                                     | Open           |
+| Reproducible tooling and module coverage                     | TOOL-01 through TOOL-03                     | Verified       |
+| Workflow security and release validation                     | TOOL-04                                     | Open           |
+| Build consistency and distribution notices                   | SHIP-01, SHIP-02                            | Open           |
+| Documentation accuracy and contributor guidance              | DOC-01, DOC-02                              | Open           |
+| Performance evidence and API decisions                       | PERF-01, API-01                             | Open           |
+
+The basic improvements are organized around concrete failures first, then
+reliable checks and delivery, followed by documentation and measured design
+decisions. Each detailed task includes the affected files, specific actions,
+and an acceptance criterion so it can be implemented and reviewed independently.
+
+For the remaining work, finish SHIP-01 and SHIP-02 before TOOL-04 so release
+validation can require the final artifact and notice checks. Complete PERF-01
+before closing the related API-01 workspace/bulk decisions. Resolve DEMO-10's
+maintenance decisions and reconcile DOC-01 and DOC-02 with those outcomes, then
+run the final completion checklist.
+
 ## Working rules
 
 - Preserve deterministic outputs for existing valid configurations unless a
@@ -44,7 +77,9 @@ tests. These observations establish the starting point, not future acceptance:
 | Demo build and explicit js/wasm vet              | Passed                                                               |
 | Browser end-to-end checks                        | Incomplete; localhost serving was blocked and escalation was aborted |
 
-A complete race-clean run and browser behavioral verification remain outstanding.
+At review time, complete race and browser behavioral verification were outstanding.
+Subsequent task verification is recorded below; the final combined verification
+and updated category scores remain part of the completion checklist.
 Absolute benchmark timings gathered during parallel review work should not be
 used as a performance baseline.
 
@@ -55,7 +90,7 @@ used as a performance baseline.
 | P0       | Scientific guarantees that can mislead ordinary use                | SCI-01                                                                                      |
 | P1       | Correctness, API contracts, regressions, and reliable demo results | CORE-01 through CORE-08; TEST-01 through TEST-03; DEMO-01, DEMO-02, DEMO-04 through DEMO-06 |
 | P2       | Responsiveness, accessibility, reproducible checks, and delivery   | DEMO-03, DEMO-07 through DEMO-09; TOOL-01 through TOOL-04; SHIP-01, SHIP-02; DOC-01, DOC-02 |
-| P3       | Measured optimization and API design decisions                     | PERF-01; API-01                                                                             |
+| P3       | Measured optimization and API design decisions                     | DEMO-10; PERF-01; API-01                                                                    |
 
 Implement in small, reviewable changes:
 
@@ -692,6 +727,34 @@ and remains paused. Scrubbing, normal playback, runtime termination, and all
 existing smoke checks pass together (6.802 seconds). Redraws still occur in
 response to control/resize/DPR changes; no idle animation loop remains.
 
+### DEMO-10 — Resolve smaller demo maintenance and rendering gaps (P3)
+
+- [ ] Evaluate extracting the duplicated page WASM loaders into a shared helper.
+      Preserve progress reporting, streaming fallback, errors, runtime termination,
+      and reload behavior; record the decision if extraction adds little value.
+- [ ] Add a digit-inspector regression comparing its duplicated raw-index and
+      base-digit calculations with actual Halton coordinates for skips and leaps,
+      including supported randomizations and boundary/error cases. Evaluate shared
+      helpers without exporting library internals solely for the demo.
+- [ ] Reconcile the HTML DOM-contract comments with controller selectors and the
+      accessible controls added since the review.
+- [ ] Profile heatmap and legend redraws during hover. Evaluate retaining the
+      unchanged rendering layer; require invalidation on theme, data, resize, and
+      device-pixel-ratio changes for any added cache. Record the existing
+      theme-invalidation behavior and the decision if caching is unnecessary.
+
+Evidence: [Point Lab controller](examples/wasm-demo/app.js),
+[analysis controller](examples/wasm-demo/analysis.js),
+[digit inspector](examples/wasm-demo/digits.go),
+[renderer](examples/wasm-demo/render.js),
+[Point Lab markup](examples/wasm-demo/index.html),
+[analysis markup](examples/wasm-demo/analysis.html).
+
+Acceptance: both pages retain their browser-verified loader and failure behavior;
+digit descriptions agree with the library; documented DOM contracts match the
+markup and selectors; rendering changes have measured benefit and correct cache
+invalidation, or a recorded decision explains retaining the current approach.
+
 ## Tooling and CI
 
 ### TOOL-01 — Make formatting checks strict and reproducible (P2)
@@ -983,6 +1046,7 @@ behavior remain stable unless an intentional change is documented.
 - [x] SCI-01 and CORE-01 through CORE-08 are resolved with regressions and accurate contracts.
 - [x] TEST-01 through TEST-03 establish meaningful, bounded verification for supported targets.
 - [x] DEMO-01 through DEMO-09 are verified in browser, accessibility, and failure-state checks.
+- [ ] DEMO-10 resolves the smaller maintenance gaps with regressions or documented decisions.
 - [ ] TOOL-01 through TOOL-04 run reproducibly in a clean environment for both modules.
 - [ ] SHIP-01 and SHIP-02 verify complete, consistent artifacts and notices.
 - [ ] DOC-01 and DOC-02 reconcile every affected public claim and open-work list.
