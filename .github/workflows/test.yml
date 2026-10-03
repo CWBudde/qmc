@@ -57,7 +57,7 @@ jobs:
       # four or not at all. The args match the ones `just lint` uses, so a
       # local run and this job are the same check.
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@v9
         with:
           version: v2.13.1
           args: --config ./.golangci.yml --timeout 5m ./...
