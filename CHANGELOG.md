@@ -27,6 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Product integration comparisons now use forty streams; correlation summaries
   use thirty seeds and report per-seed-worst median, p90, and maximum.
 
+### Demo corrections
+
+- Analysis control changes now cancel the affected sweep and clear its results.
+  Stop preserves partial results with their configuration; restarting or switching
+  panels restores transport controls without mixing runs. Added a bounded Chrome
+  regression for sweep control changes and metric availability transitions.
+
 ### Scientific contract corrections
 
 - Fixed digit scrambling does not guarantee uniform marginals or unbiased

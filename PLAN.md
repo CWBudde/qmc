@@ -401,11 +401,11 @@ Browser completion depends on DEMO-06; this task is not yet marked done.
 
 ### DEMO-01 — Keep sweep results tied to their configuration (P1)
 
-- [ ] Cancel the relevant active job when source, randomization, dimensions,
+- [x] Cancel the relevant active job when source, randomization, dimensions,
       skip, leap, seed, integrand, metric, or sample budget changes.
-- [ ] Make resets invalidate old jobs and restore their transport controls.
-- [ ] Store result configuration and show it with partial/completed results.
-- [ ] Test transitions between convergence and discrepancy sweeps and between
+- [x] Make resets invalidate old jobs and restore their transport controls.
+- [x] Store result configuration and show it with partial/completed results.
+- [x] Test transitions between convergence and discrepancy sweeps and between
       available/unavailable metrics.
 
 Evidence: `resetSweep`, `resetDiscSweep`, `runSweep`, and control listeners in
@@ -413,6 +413,17 @@ Evidence: `resetSweep`, `resetDiscSweep`, `runSweep`, and control listeners in
 
 Acceptance: changing controls during a sweep never appends old results beneath
 new settings, leaves a stale chart presented as current, or strands disabled controls.
+
+Verification (2026-10-03): the real-Chrome regression fails against the previous
+controller with `stale convergence row after convDims`. The corrected controller
+passes fifteen control-change cases, both panel-switch directions, an inactive
+panel reset, Stop with retained partial configuration, restart without mixed
+results, and unavailable/available metric transitions. Run
+`node scripts/test-demo-browser.mjs /path/to/built/demo` after building the demo;
+the dependency-free CDP runner uses Chrome, bounded startup/request/overall
+deadlines, a private profile, and cleanup. Verified with Chrome 144.0.7559.109,
+Node 18.19.1, and Go 1.26.1 WASM. Full two-page/error/accessibility coverage and
+CI integration remain under DEMO-06/DEMO-07.
 
 ### DEMO-02 — Fix dimension-dependent values and source descriptions (P1)
 

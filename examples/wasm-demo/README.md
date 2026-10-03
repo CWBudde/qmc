@@ -168,6 +168,23 @@ committed. It is version-locked to the compiler that produced the `.wasm`, and a
 stale copy fails at runtime in ways that look like demo bugs rather than like a
 version mismatch.
 
+## Browser regression checks
+
+After building, run `node scripts/test-demo-browser.mjs dist` from the repository
+root. Node 18 or newer and Chrome on PATH are required (`CHROME_BIN` can select
+another Chrome executable). The runner serves the built files on an ephemeral
+local port, creates a private browser profile, and cleans up both processes.
+Startup, protocol requests, and the overall run have explicit deadlines.
+
+The initial sweep regression covers control changes, panel switching,
+Stop/restart, unavailable metrics, and result configuration snapshots. Broader
+two-page and failure-state coverage is tracked in PLAN.md under DEMO-06.
+
+Changing a sweep control clears that panel's results and cancels its active job.
+Stop keeps partial results and their displayed configuration. Starting again
+clears them; starting the other panel cancels the previous run and restores its
+buttons.
+
 ## Layout
 
 | File             | Role                                                                        |

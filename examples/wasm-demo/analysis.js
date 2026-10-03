@@ -72,6 +72,7 @@
   const progressText = el("progressText");
   const convChart = el("convChart");
   const convRows = el("convRows");
+  const convConfig = el("convConfig");
 
   const discMetric = el("discMetric");
   const discMetricNote = el("discMetricNote");
@@ -92,6 +93,7 @@
   const discProgressText = el("discProgressText");
   const discChart = el("discChart");
   const discRows = el("discRows");
+  const discConfig = el("discConfig");
   const discCeilingNote = el("discCeilingNote");
   const discVerdict = el("discVerdict");
 
@@ -166,6 +168,8 @@
     metrics: null,
     qmc: [],
     mc: [],
+    convConfig: null,
+    discConfig: null,
     disc: { seq: [], rnd: [], analytic: [] },
     lastAnnounce: 0,
   };
@@ -936,15 +940,31 @@
   }
 
   function resetSweep() {
+    cancelPanel("converge");
     state.qmc = [];
     state.mc = [];
+    state.convConfig = null;
+    convConfig.textContent = "No results for the current settings.";
     convRows.innerHTML = "";
     readout.exact.textContent = "—";
     readout.qmc.textContent = "—";
     readout.mc.textContent = "—";
     readout.ratio.textContent = "—";
     progressBar.style.width = "0%";
+    progressText.textContent = "idle — press Start for the current settings";
     drawChart();
+  }
+
+  function cancelPanel(exportName) {
+    if (state.sweep && state.sweep.exportName === exportName) {
+      state.runId += 1;
+      finishSweep(state.sweep, "settings changed — results cleared");
+    }
+  }
+
+  function describeConfig(request) {
+    const problem = request.integrand || request.metric;
+    return `${request.source} · ${request.randomization} · ${request.dims} dimensions · skip ${request.skip} · leap ${request.leap} · seed ${request.seed} · ${problem} · ceiling ${request.ceiling.toLocaleString("en-US")}`;
   }
 
   // runSweep is the ladder BOTH panels walk. It was extracted from the
@@ -1082,12 +1102,15 @@
       leap: convLeap ? convLeap.value() : 1,
       seed: intValue(convSeed, 1),
       integrand: integrandSelect.value,
+      ceiling: parseInt(budgetSelect.value, 10) || 16384,
     };
 
     resetSweep();
+    state.convConfig = Object.freeze(request);
+    convConfig.textContent = describeConfig(state.convConfig);
 
     return runSweep({
-      steps: sweepPoints(parseInt(budgetSelect.value, 10) || 16384),
+      steps: sweepPoints(request.ceiling),
       exportName: "converge",
       request: (n) => Object.assign({}, request, { n: n }),
       buttons: { start: startButton, stop: stopButton },
@@ -1279,7 +1302,9 @@
 
     discMetricNote.innerHTML = `<b>${escapeHTML(entry.label)}.</b> ${escapeHTML(entry.description)}`;
     discSuggest.hidden = true;
-    discStart.disabled = !state.ready || state.sweep !== null;
+    discStart.disabled =
+      !state.ready ||
+      (state.sweep !== null && state.sweep.exportName === "discrepancy");
     discReadout.ceiling.textContent = entry.maxPoints.toLocaleString("en-US");
     discCeilingNote.innerHTML = ceilingSentence(entry);
   }
@@ -1298,7 +1323,10 @@
   }
 
   function resetDiscSweep() {
+    cancelPanel("discrepancy");
     state.disc = { seq: [], rnd: [], analytic: [] };
+    state.discConfig = null;
+    discConfig.textContent = "No results for the current settings.";
     discRows.innerHTML = "";
     discReadout.ratio.textContent = "—";
     discReadout.ratio.dataset.tone = "";
@@ -1308,6 +1336,8 @@
     discVerdict.textContent =
       "Press Start. The page opens on 39 dimensions and centred L2, which is the configuration in which this statistic says nothing.";
     discProgressBar.style.width = "0%";
+    discProgressText.textContent =
+      "idle — press Start for the current settings";
     drawDiscChart();
   }
 
@@ -1337,9 +1367,12 @@
       skip: intValue(discSkip, 64),
       leap: discLeap ? discLeap.value() : 1,
       seed: intValue(discSeed, 1),
+      ceiling: entry.maxPoints,
     };
 
     resetDiscSweep();
+    state.discConfig = Object.freeze(request);
+    discConfig.textContent = describeConfig(state.discConfig);
 
     return runSweep({
       steps: sweepPoints(entry.maxPoints, DISC_FLOOR),
@@ -1513,6 +1546,8 @@
         if (input === convDims) {
           convLeap.refresh();
         }
+
+        resetSweep();
       });
     }
 
@@ -1529,6 +1564,8 @@
     });
 
     convRandom.addEventListener("change", resetSweep);
+    convSeed.addEventListener("input", resetSweep);
+    budgetSelect.addEventListener("change", resetSweep);
 
     for (const input of [discDims, discSkip]) {
       input.addEventListener("input", () => {
@@ -1560,7 +1597,7 @@
     });
 
     discRandom.addEventListener("change", resetDiscSweep);
-    discSeed.addEventListener("change", resetDiscSweep);
+    discSeed.addEventListener("input", resetDiscSweep);
 
     // Offered, never applied silently — the leap control's rule. The number on
     // screen has to be the number the measurement used.
