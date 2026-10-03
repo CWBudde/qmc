@@ -27,13 +27,13 @@ reimplemented the radical inverse in JS would be demonstrating the JS.
 ## The default view
 
 The Point Lab opens on Halton, 39 dimensions, axes 37 against 38, randomization
-**none**. The points sit on a lockstep diagonal ramp, because at 600 points
-neither coordinate has finished its first pass through its prime base — 163 and
-167 — and the two ramps advance together. Pick a randomization and the diagonal
-dissolves into a filled square. That single choice is the argument the library's
-README makes in a table; this page makes it in one gesture. Switching the
-sequence to Sobol makes the other half of the point: it is base 2 in every
-dimension, so it never had a large-base ramp to escape from.
+**none**, with skip 64 and 600 points. These axes use prime bases 163 and 167.
+They have completed several leading-digit cycles at this budget; their slower
+higher digits remain poorly explored. The selected projection illustrates the
+pattern, while the Bench separately searches all adjacent pairs for the worst
+correlation. Compare a randomization at the same budget and across several seeds.
+Sobol uses base 2 throughout and does not have these high-prime ramps, although
+its projection quality still depends on the direction table and sampled block.
 
 ## Sequences and randomizations
 
@@ -50,10 +50,11 @@ The library's constructors refuse an option that does not apply to the
 generator being built, naming it, and this page does not duplicate that rule —
 it only offers each sequence the menu `info()` reports for it, and falls back to
 the unrandomized entry when a selection does not survive a change of sequence.
-Every menu entry's description is the option's own doc comment, unflattering
-parts included: nested scrambling integrates about twice as well as
-random-digit scrambling and costs about forty times as much per point, and Owen
-scrambling is nearly free on `At` and three times the cost on `Next`.
+Menu descriptions summarize the option contracts and name their limitations.
+The unrandomized entries describe each source separately. Accuracy and cost
+comparisons belong to their measured configuration, not to a menu's promise.
+See [testing methodology](../../docs/testing-methodology.md) and
+[performance](../../docs/performance.md) for reproduction commands and limitations.
 
 Two things the page hides rather than guesses. Sobol has no prime bases — it is
 base 2 everywhere — so the base readouts blank out instead of reporting a number
@@ -87,9 +88,10 @@ generator and reading the error**, not by re-deriving coprimality in the demo:
 the library is the only place that says what a constructor accepts, and a second
 copy here is the copy that would go stale.
 
-The Bench's comparison against the README's quoted 0.81 and 0.14 is withdrawn as
-soon as a leap is set, the same way a changed burn-in withdraws it — those
-figures are measured unleaped, and a leaped run is a different experiment.
+The Bench reports the configuration of its current correlation result. A changed
+leap or burn-in is a different experiment. Historical five-seed coefficients are
+no longer used as UI baselines; current library correlation regressions summarize
+thirty seeds at their documented fixed configuration.
 
 ## Discrepancy
 
@@ -176,14 +178,21 @@ another Chrome executable). The runner serves the built files on an ephemeral
 local port, creates a private browser profile, and cleans up both processes.
 Startup, protocol requests, and the overall run have explicit deadlines.
 
-The initial sweep regression covers control changes, panel switching,
-Stop/restart, unavailable metrics, and result configuration snapshots. Broader
+The initial regression covers control changes, panel switching,
+Stop/restart, unavailable metrics, result configuration snapshots, source-specific
+descriptions, and Gaussian metadata/notes/readouts at dimensions 1, 4, and 32
+against an independent numerical integral. Broader
 two-page and failure-state coverage is tracked in PLAN.md under DEMO-06.
 
 Changing a sweep control clears that panel's results and cancels its active job.
 Stop keeps partial results and their displayed configuration. Starting again
 clears them; starting the other panel cancels the previous run and restores its
 buttons.
+
+`info({dims})` reports integrand exact values at the requested dimension count,
+using the same clamp and formula as `converge()`. The Bench refreshes those values
+when the dimension or integrand changes. Omitting options retains the shared
+default dimension behavior.
 
 ## Layout
 
@@ -244,11 +253,11 @@ sequence-against-random is the one comparison these pages exist to make.
   randomizations makes this randomized quasi-Monte Carlo, not plain QMC: each
   seed gives a different,
   equally valid point set, and both the worst correlated pair and the error
-  curve wobble between seeds. The library's quoted 0.14 is the worst of five
-  seeds, not the best of one. Fix the seed and everything is reproducible again.
+  curve wobble between seeds. One displayed seed is not a seed-distribution
+  summary. Fix the seed and everything is reproducible again.
 - **The heatmap's colour ramp is eased, not linear.** Magnitudes are raised to
-  the 0.65 power before they are coloured, because the interesting range here —
-  0.14 against 0.81 — would otherwise both render as ground. The legend says so.
+  the 0.65 power before they are coloured, making small coefficients easier to
+  inspect. The legend says so.
 - **The wasm timings are relative only.** Under `js/wasm` everything runs on one
   thread with no SIMD. Nothing on these pages quotes a wall-clock figure as a
   benchmark of the library, and you should not read one into the responsiveness

@@ -427,12 +427,12 @@ CI integration remain under DEMO-06/DEMO-07.
 
 ### DEMO-02 — Fix dimension-dependent values and source descriptions (P1)
 
-- [ ] Compute the Gaussian explanatory exact value for the selected dimensions;
+- [x] Compute the Gaussian explanatory exact value for the selected dimensions;
       use the authoritative returned value or a dimension-aware metadata export.
-- [ ] Preserve the chart's already-correct `converge().exact` calculation.
-- [ ] Give Halton and Sobol source-specific descriptions for the unrandomized
+- [x] Preserve the chart's already-correct `converge().exact` calculation.
+- [x] Give Halton and Sobol source-specific descriptions for the unrandomized
       option instead of attributing Halton's high-prime defect to both.
-- [ ] Reconcile the stale five-seed comparison, pair-correlation figures, and
+- [x] Reconcile the stale five-seed comparison, pair-correlation figures, and
       first-pass claims with the documented sample counts and prime bases.
 
 Evidence: [info.go](examples/wasm-demo/info.go),
@@ -442,6 +442,19 @@ Evidence: [info.go](examples/wasm-demo/info.go),
 
 Acceptance: Gaussian notes and result readouts agree at dimensions 1, 4, and 32;
 source descriptions and displayed comparison figures agree with reproducible evidence.
+
+Verification (2026-10-03): `info({dims})` now uses the same clamp and exact
+function as `converge()`. The extended Chrome regression fails against the
+previous controller with `stale Gaussian note 1` and passes at dimensions
+1/4/32. An independent 10000-interval Simpson integral checks the Gaussian
+reference to relative tolerance 1e-12; metadata, note, and result readout agree.
+Source-specific unrandomized descriptions are checked in browser. Historical
+five-seed and cost/accuracy figures were removed from demo descriptions rather
+than treated as current guarantees; the live correlation result names its full
+configuration and directs readers to the thirty-seed reproduction methodology.
+The base-163/167 explanation now correctly distinguishes leading-digit cycles
+from poorly explored higher digits. Existing sweep browser regressions and
+explicit js/wasm vet pass. Core sequence outputs and convergence math are unchanged.
 
 ### DEMO-03 — Bound work on the browser main thread (P2)
 

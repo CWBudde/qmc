@@ -118,26 +118,6 @@
 
   const LIVE_THROTTLE_MS = 700;
 
-  // The figures the library's README documents, so the big readout can be read
-  // against something instead of floating free.
-  // The figures are Halton's, at one configuration, with random-digit
-  // scrambling. Quoting them beside a Sobol run or a nested one would compare
-  // two different measurements, so the readout below checks the source and the
-  // randomization as well as the point set.
-  const DOCUMENTED = {
-    source: "halton",
-    dims: 39,
-    count: 600,
-    skip: 64,
-
-    // The README's figures are unleaped. A leap is a different experiment —
-    // the same generator sampled on a stride — so it disqualifies the
-    // comparison exactly the way a different burn-in does.
-    leap: 1,
-    plain: 0.81,
-    scrambled: 0.14,
-  };
-
   // Sweep ceilings. Each is a plausible sampling budget rather than a round
   // binary number for its own sake; the sweep walks up to the chosen one.
   const BUDGETS = [
@@ -686,7 +666,16 @@
       Math.max(low, Math.min(high, intValue(convDims, low))),
     );
 
-    integrandNote.innerHTML = `<b>${spec.label}.</b> ${spec.description} Exact value over the unit cube: <b>${Render.compact(spec.exact)}</b>. Defined for ${low}–${high} dimensions.`;
+    // Metadata is dimension-dependent (notably the Gaussian integral). Ask Go
+    // after clamping the slider, using the same formula as the measured result.
+    const info = call("info", { dims: intValue(convDims, low) });
+    const selected = info && info.integrands.find((s) => s.key === spec.key);
+    if (!selected) {
+      integrandNote.textContent = "Exact value unavailable.";
+      return;
+    }
+    integrandNote.dataset.exact = String(selected.exact);
+    integrandNote.innerHTML = `<b>${escapeHTML(spec.label)}.</b> ${escapeHTML(spec.description)} Exact value at ${selected.dims} dimensions: <b>${Render.compact(selected.exact)}</b>. Defined for ${low}–${high} dimensions.`;
     syncOutputs();
   }
 
@@ -708,23 +697,20 @@
   // The aside follows the source, because the two sequences fail differently
   // and the same sentence cannot describe both maps. primeBases is the flag
   // that separates them: one base per dimension is exactly what makes a
-  // high-dimensional coordinate ramp, and the ramp is what puts the band on
-  // the diagonal. Sobol is base 2 everywhere and has no band — at the defaults
-  // above, seed 1, its worst adjacent |r| is 0.027 against Halton's 0.808 — so
-  // promising a collapse there would have this text contradicting the picture
-  // next to it.
+  // high-dimensional coordinate ramp. The current map is the measurement;
+  // historical coefficients for another configuration are not UI baselines.
   function correlationAside(entry) {
     const ramps = (sourceSpec(corrSource) || {}).primeBases;
 
     if (entry.key === "none") {
       return ramps
-        ? " The bright band hugging the diagonal is adjacent high-dimensional coordinates walking up their ramps together; pick a randomization and it should collapse."
-        : " There is no band to collapse here: base 2 in every dimension leaves the unrandomized map already near-independent, worst adjacent |r| 0.027 against Halton's 0.808 at the defaults above, seed 1.";
+        ? " Inspect the off-diagonal band at the selected budget, then compare a randomization with the same settings."
+        : " Inspect this direction table at the selected budget. Small pairwise coefficients do not establish independence or integration accuracy.";
     }
 
     return ramps
-      ? " Watch the off-diagonal warmth fall away — and note that it does not fall to exactly zero, because a finite point set never has exactly independent coordinates."
-      : " Expect the map to stay much as it was. Pairwise correlation was never the defect this randomization is for; what it buys is a distribution over seeds, which is what the error curve below is drawn from.";
+      ? " Compare the off-diagonal warmth across several seeds. Correlation is one limited summary of the point set."
+      : " The scramble preserves the net's occupancy constraints. Inspect several seeds and integrands rather than treating pairwise correlation as an accuracy guarantee.";
   }
 
   // --- correlation -------------------------------------------------------
@@ -817,23 +803,7 @@
         ? `dimensions ${pair[0]} and ${pair[1]}${pairBases(result, pair)}`
         : "—";
 
-    // The README's pair of figures is a Halton measurement with random-digit
-    // scrambling. Comparing a Sobol run or a nested one against it would put
-    // two different experiments in the same sentence, so the comparison is
-    // only offered when every part of the configuration matches.
-    const scrambled = result.randomization === "scramble";
-    const target = scrambled ? DOCUMENTED.scrambled : DOCUMENTED.plain;
-    const sameSetup =
-      result.source === DOCUMENTED.source &&
-      (scrambled || result.randomization === "none") &&
-      result.dims === DOCUMENTED.dims &&
-      result.count === DOCUMENTED.count &&
-      result.skip === DOCUMENTED.skip &&
-      result.leap === DOCUMENTED.leap;
-
-    docReference.innerHTML = sameSetup
-      ? `At this exact configuration the README quotes <b>${target.toFixed(2)}</b> ${scrambled ? "(worst of five seeds)" : ""}. You are seeing <b>${coefficient(worst)}</b> at seed ${result.seed}.`
-      : `The README's figures — <b>0.81</b> unscrambled, <b>0.14</b> scrambled — are measured on Halton at 39 dimensions, 600 points, burn-in 64, no leap. This is ${result.source} with randomization ${result.randomization}, ${result.dims} dimensions, ${result.count.toLocaleString("en-US")} points, burn-in ${result.skip}, leap ${result.leap}, so the numbers are not directly comparable.`;
+    docReference.textContent = `This ${result.source} measurement uses ${result.randomization}, ${result.dims} dimensions, ${result.count.toLocaleString("en-US")} points, skip ${result.skip}, leap ${result.leap}, and seed ${result.seed}. It is one point set, not a summary over seeds. The library's correlation regressions use thirty seeds; their configuration and reproduction commands are in the testing documentation.`;
   }
 
   // A source without prime bases sends bases: null, so the clause naming them
@@ -1545,6 +1515,7 @@
 
         if (input === convDims) {
           convLeap.refresh();
+          applyIntegrand();
         }
 
         resetSweep();

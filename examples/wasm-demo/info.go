@@ -43,10 +43,10 @@ const (
 // The shared defaults. They are not neutral: they aim the demo straight at the
 // library's headline defect. A 39-dimensional generator drawn 600 times, with
 // the scatter plot showing dimensions 37 and 38 — bases 163 and 167 — is
-// exactly the configuration measured in correlation_test.go, where the
-// unscrambled sequence correlates those two coordinates at 0.65 after a
-// 64-point burn-in. Open the page and the diagonal stripe is the first thing
-// you see; pick a randomization and it dissolves.
+// the configuration measured in correlation_test.go. At this budget each base
+// has completed several leading-digit cycles, but the slower higher digits
+// remain poorly explored. The selected pair is illustrative; the worst pair
+// across all adjacent dimensions is reported separately by correlate().
 const (
 	defaultDims   = 39
 	defaultCount  = 600
@@ -103,7 +103,7 @@ var randomizations = map[string]randomizationSpec{
 	randomizationNone: {
 		key:         randomizationNone,
 		label:       "None",
-		description: "The deterministic sequence, identical on every run. Reproducible, and above roughly twenty dimensions not actually filling the box at practical sample counts.",
+		description: "The deterministic sequence, identical on every run.",
 	},
 	"scramble": {
 		key:         "scramble",
@@ -114,7 +114,7 @@ var randomizations = map[string]randomizationSpec{
 	"nested": {
 		key:         "nested",
 		label:       "Nested scrambling",
-		description: "A seeded Fisher–Yates permutation per node, conditioned on the digits above it. Finite hashes and truncated tails approximate ideal nested randomization; seed spread does not measure its bias. At 39 dimensions it integrates about twice as accurately as random-digit scrambling — 41x against Monte Carlo over 40 seeds, against 24x — and its worst adjacent-pair |r| over 30 seeds is 0.141 against 0.161. It costs roughly forty times as much per point, which is what the uniform draw buys.",
+		description: "A seeded Fisher–Yates permutation per node, conditioned on the digits above it. Finite hashes and truncated tails approximate ideal nested randomization; seed spread does not measure its bias. Building permutations per point can be expensive, especially at high prime bases. Accuracy depends on the integrand and sampling budget; compare repeated seeds.",
 		option:      qmc.WithNestedScrambling,
 	},
 	"shift": {
@@ -126,7 +126,7 @@ var randomizations = map[string]randomizationSpec{
 	"owen": {
 		key:         "owen",
 		label:       "Owen scrambling",
-		description: "Hash-based nested bit flips on a 32-bit grid. Node flips need not be independent; the scramble preserves dyadic occupancy and cannot repair a poor table. It changes positions within that constraint, and measured 1.08x more accurate than a digital shift on the package's 39-dimensional integrand. Nearly free on At, three times the cost on Next.",
+		description: "Hash-based nested bit flips on a 32-bit grid. Node flips need not be independent; the scramble preserves dyadic occupancy and cannot repair a poor table. Accuracy and cost comparisons depend on the integrand, sampling budget, and access method.",
 		option:      qmc.WithOwenScrambling,
 	},
 }
@@ -235,7 +235,8 @@ var sources = map[string]sourceSpec{
 // table above puts it in the dropdown without anyone editing a .html file —
 // and, more importantly, a limit can never disagree between the slider that
 // enforces it and the Go code that actually clamps it.
-func jsInfo(_ js.Value) any {
+func jsInfo(opts js.Value) any {
+	dims := clampInt(readInt(opts, "dims", defaultDims), 1, maxConvergeDims)
 	list := make([]any, 0, len(integrandOrder))
 
 	for _, key := range integrandOrder {
@@ -245,12 +246,9 @@ func jsInfo(_ js.Value) any {
 			"label":       spec.label,
 			"description": spec.description,
 
-			// Reported at the dimension count converge() will actually use for
-			// the shared default (39 clamped to maxConvergeDims), because the
-			// gaussian integrand's exact value depends on d. The authoritative
-			// value for a given call is the "exact" field converge() returns;
-			// the page must read that back rather than cache this one.
-			"exact":   jsNumber(spec.exact(clampInt(defaultDims, 1, maxConvergeDims))),
+			// Use the same dimension clamp and exact function as converge().
+			"exact":   jsNumber(spec.exact(dims)),
+			"dims":    dims,
 			"minDims": 1,
 			"maxDims": maxConvergeDims,
 		})
@@ -345,10 +343,19 @@ func randomizationList(spec sourceSpec) []any {
 		}
 
 		entry := randomizations[key]
+		description := entry.description
+		if key == randomizationNone {
+			switch spec.key {
+			case "halton":
+				description += " High prime bases can produce long coordinate ramps and strong correlations at small sample budgets. Burn-in does not guarantee a cure."
+			case "sobol":
+				description += " Uses base 2 in every dimension, without Halton's high-prime ramps. Projection quality depends on the direction table and the sampled block; use aligned power-of-two blocks for net guarantees."
+			}
+		}
 		out = append(out, map[string]any{
 			"key":         entry.key,
 			"label":       entry.label,
-			"description": entry.description,
+			"description": description,
 		})
 	}
 

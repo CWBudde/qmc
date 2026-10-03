@@ -33,6 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Stop preserves partial results with their configuration; restarting or switching
   panels restores transport controls without mixing runs. Added a bounded Chrome
   regression for sweep control changes and metric availability transitions.
+- Gaussian explanatory values now follow the selected dimensions through
+  `info({dims})`, agreeing with `converge().exact`. Unrandomized source descriptions
+  distinguish Halton's high-prime ramps from Sobol; stale seed and cost comparisons
+  were removed from the demo in favor of current results and reproduction docs.
 
 ### Scientific contract corrections
 

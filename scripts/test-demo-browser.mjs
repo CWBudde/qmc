@@ -174,7 +174,30 @@ try {
     await settle(); check(el('discStart').disabled && el('discStop').disabled,'unavailable metric controls');
     check(el('discRows').children.length===0,'unavailable metric retained old results');
     set('discDims',2,'input'); check(!el('discStart').disabled,'available metric did not recover');
-    return {cases,transitions:true};
+    // Independent composite Simpson reference for the separable Gaussian.
+    let integral=0;
+    const steps=10000, f=x=>Math.exp(-((x-0.5)**2)/(2*0.35**2));
+    for(let i=0;i<=steps;i++)integral+=(i===0||i===steps?1:i%2?4:2)*f(i/steps);
+    integral/=3*steps;
+    set('integrand','gaussian');
+    for(const dims of [1,4,32]) {
+      set('convDims',dims,'input');
+      const exact=integral**dims;
+      const metadata=qmc.info({dims}).integrands.find(s=>s.key==='gaussian');
+      const result=qmc.converge({integrand:'gaussian',dims,n:1});
+      check(Math.abs(result.exact/exact-1)<1e-12,'Gaussian reference '+dims);
+      check(metadata.exact===result.exact && metadata.dims===dims,'dimension-aware metadata '+dims);
+      check(el('integrandNote').textContent.includes(Render.compact(exact)),'stale Gaussian note '+dims);
+      el('start').click(); el('stop').click();
+      check(el('tExact').textContent===Render.compact(result.exact),'Gaussian readout '+dims);
+      check(el('integrandNote').textContent.includes(el('tExact').textContent),'note/readout disagreement '+dims);
+    }
+    const info=qmc.info();
+    const plain=source=>info.sources.find(s=>s.key===source).randomizations.find(r=>r.key==='none').description;
+    check(plain('halton')!==plain('sobol'),'identical source descriptions');
+    check(plain('sobol').includes('base 2') && plain('halton').includes('High prime'),'source-specific explanation');
+    check(!el('docReference').textContent.includes('five seeds'),'stale seed summary');
+    return {cases,transitions:true,gaussianDimensions:[1,4,32],sourceDescriptions:true};
   })()`);
   assert.equal(errors.length, 0, JSON.stringify(errors));
   console.log("Browser sweep contracts passed:", JSON.stringify(result));
