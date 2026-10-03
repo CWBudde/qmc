@@ -10,8 +10,8 @@ decision task and an acceptance criterion.
 
 ## Coverage and current status
 
-There are 32 remediation tasks: 30 have recorded completion evidence and two
-remain open. Checkboxes track verified completion; unchecked tasks describe the
+There are 32 remediation tasks: 31 have recorded completion evidence and one
+remains open. Checkboxes track verified completion; unchecked tasks describe the
 work still required. Changes under development count as open until their
 acceptance criteria are met.
 
@@ -28,7 +28,7 @@ acceptance criteria are met.
 | Workflow security and release validation                     | TOOL-04                                     | Verified       |
 | Build consistency                                            | SHIP-01                                     | Verified       |
 | Distribution notices                                         | SHIP-02                                     | Verified       |
-| Documentation accuracy and contributor guidance              | DOC-01, DOC-02                              | Open           |
+| Documentation accuracy and contributor guidance              | DOC-01, DOC-02                              | DOC-02 open    |
 | Performance evidence                                         | PERF-01                                     | Verified       |
 | API decisions                                                | API-01                                      | Verified       |
 
@@ -37,8 +37,8 @@ reliable checks and delivery, followed by documentation and measured design
 decisions. Each detailed task includes the affected files, specific actions,
 and an acceptance criterion so it can be implemented and reviewed independently.
 
-For the remaining work, reconcile DOC-01 and DOC-02 with the completed
-performance/API decisions, then run the final completion checklist.
+For the remaining work, finish DOC-02's contributor/status reconciliation,
+then record the final completion audit and updated category scores.
 
 ## Working rules
 
@@ -1068,15 +1068,15 @@ this records packaging evidence rather than a legal determination.
 
 ### DOC-01 — Consolidate measurements and remove contradictory claims (P2)
 
-- [ ] Correct `sqrt(E[CD2²])` versus `E[CD2]` terminology in package comments,
+- [x] Correct `sqrt(E[CD2²])` versus `E[CD2]` terminology in package comments,
       demo documentation, metadata, and baseline labels.
-- [ ] Reconcile the nested-scrambling 8×/40× cost discrepancy and the stale
+- [x] Reconcile the nested-scrambling 8×/40× cost discrepancy and the stale
       five-seed/ten-stream figures with one reproducible measurement source.
-- [ ] Record hardware, toolchain, configuration, seeds, sample sizes, uncertainty,
+- [x] Record hardware, toolchain, configuration, seeds, sample sizes, uncertainty,
       and generating commands alongside published measurements.
-- [ ] Audit blanket statements about independence, dimension limits, burn-in,
+- [x] Audit blanket statements about independence, dimension limits, burn-in,
       Sobol alignment, convergence, and universal superiority after SCI-01 is complete.
-- [ ] Move historical variants and repeated machine-specific tables out of source
+- [x] Move historical variants and repeated machine-specific tables out of source
       comments where they obscure the implementation. Keep invariants, contracts,
       formulas, and relevant references near the code.
 
@@ -1087,6 +1087,42 @@ Evidence: [README](README.md), [sequence.go](sequence.go), [nested.go](nested.go
 Acceptance: public descriptions agree across source, docs, and demo; each retained
 quantitative comparison identifies reproducible evidence and its limitations;
 historical explanations do not masquerade as current guarantees.
+
+Verification (2026-10-03): implementation committed as `4cfb311`. Source,
+README, topic docs, demo metadata and displayed labels distinguish
+`sqrt(E[CD2²])` from mean CD2. The saturation control now compares sampled
+squared CD2 with its analytic squared expectation. Exact independent rational
+references for identical marginals with different joint association give
+CD2² = 127/576 and 25/144; the new public regression passes. Worked examples
+retain their numbers with corrected RMS labels. Existing `analytic` fields
+remain compatible; additive kind/label fields identify RMS or no reference.
+The star panel hides its unavailable analytic legend/readout, and both pages
+provide no-JavaScript guidance.
+
+Current comparisons link the canonical PERF-01 report and raw environment/data
+instead of repeating unsupported historical timings or seed rankings. Named
+quality fixtures describe their actual seeds, sample windows, aggregation and
+distinct MC policies. Unsupported historical numerical narratives are removed
+from current source/guidance. Work-budget constants are labeled retained
+policies rather than current duration calibrations. Independence, net occupancy,
+unaligned windows, dimension/range limits, CD2 interpretation, and option
+recommendations now state their assumptions. Refusal wording is corrected and
+recorded in the changelog. A read-only token comparison confirms identical root
+production code outside the manually reviewed diagnostic body; generated-point
+algorithms and valid seeded values are unchanged.
+
+Shared `just release-verify` passes both modules, lint/build/vet, routine race
+(23.873 s), full ordinary/statistical tests (46.871 s), real Chrome (22.920 s,
+zero unexpected errors), and artifact/tooling/format/module/release regressions.
+After the final comment clarifications, fresh Chrome verification passes again
+(23.627 s, zero errors) with 21-file artifact
+`f717a6f7cfecbd38fe20cec62a1c25d4784479bb7ffa50efefb54ad711f4b33b`.
+It checks RMS metadata/formula/labels, conditional reference hiding, and existing
+loader, digit, capability, worker, numerical, accessibility, failure, cache and
+notice behavior. Minimum Go 1.23.0 routine amd64/executable 386 pass
+(5.425/11.408 s); its demo build/vet/stub/module checks also pass. Focused
+scientific/example checks and the complete small-sample discrepancy fixture pass.
+Pinned formatting checks 106 files with zero changes; diff checks pass.
 
 ### DOC-02 — Reconcile open work and document contribution/release commands (P2)
 
