@@ -67,6 +67,7 @@ func sinkFor(out js.Value, key string, n int) float32Sink {
 
 func validFloat32Pair(f32, u8 js.Value, n int) bool {
 	arrayBuffer := js.Global().Get("ArrayBuffer")
+
 	isView := arrayBuffer.Get("isView")
 	if !isView.Invoke(f32).Bool() || !isView.Invoke(u8).Bool() ||
 		!f32.InstanceOf(js.Global().Get("Float32Array")) ||
@@ -93,6 +94,7 @@ func (s float32Sink) write(data []float32) js.Value {
 	if len(data) > s.capacity {
 		panic("float32 output exceeds sink capacity")
 	}
+
 	if len(data) > 0 {
 		payload := float32Bytes(data)
 		if copied := js.CopyBytesToJS(s.u8, payload); copied != len(payload) {

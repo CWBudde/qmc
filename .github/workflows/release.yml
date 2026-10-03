@@ -27,7 +27,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version-file: tools/go-version
           cache: true
 
       - name: Set up just
@@ -69,9 +69,7 @@ jobs:
       - name: Run full ordinary statistical suite
         run: just test-statistical
 
-      # The version is mirrored in justfile (setup-deps),
-      # .github/workflows/test.yml and .trunk/trunk.yaml; change it in all four
-      # or not at all.
+      # Match the development linter pin in tools/versions.sh.
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:

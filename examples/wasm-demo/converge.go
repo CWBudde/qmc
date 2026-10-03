@@ -73,6 +73,7 @@ var integrands = map[string]integrand{
 		description: "prod (|4x-2| + i)/(1 + i); exact 1 in every dimension. The standard QMC benchmark, weighted so low dimensions dominate.",
 		fn: func(point []float64) float64 {
 			product := 1.0
+
 			for i, x := range point {
 				a := float64(i + 1)
 				product *= (math.Abs(4*x-2) + a) / (1 + a)
@@ -108,6 +109,7 @@ var integrands = map[string]integrand{
 		description: "prod exp(-(x-0.5)^2/(2s^2)) with s = 0.35; exact value is the truncated-gaussian 1-D integral raised to the d-th power.",
 		fn: func(point []float64) float64 {
 			product := 1.0
+
 			for _, x := range point {
 				d := x - 0.5
 				product *= math.Exp(-(d * d) / (2 * gaussianSigma * gaussianSigma))

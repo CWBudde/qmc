@@ -36,7 +36,7 @@ with tempfile.TemporaryDirectory(prefix="qmc-setup-test-") as temporary:
     (root / "scripts").mkdir()
     (root / "tools").mkdir()
     shutil.copy(ROOT / "scripts/setup-deps.sh", root / "scripts")
-    for name in ["versions.sh", "package.json", "package-lock.json"]:
+    for name in ["versions.sh", "go-version", "package.json", "package-lock.json"]:
         shutil.copy(ROOT / "tools" / name, root / "tools")
     assets = root / "assets"
     assets.mkdir()

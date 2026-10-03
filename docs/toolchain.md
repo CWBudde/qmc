@@ -5,8 +5,11 @@ deliberate.
 
 ## What runs where
 
-`justfile` is the local entry point; `.github/workflows/` is CI. `just check` runs
-`check-formatted`, `check-tidy`, `lint` and `test`; `just ci` adds `go mod verify`.
+`justfile` is the local entry point; workflows invoke the same recipes.
+`just check` runs both modules' verification, strict formatting, tidy diffs, lint,
+WASM compile/vet, and fast library tests. `just ci` uses routine race tests and
+adds real-browser verification plus installer/formatter failure regressions.
+It excludes the full statistical suite, which has separate bounded commands.
 
 Formatting is `treefmt` (`treefmt.toml`) dispatching gofumpt, gci, shfmt, prettier and
 shellcheck by file type. Development versions are tracked in `tools/versions.sh`.
@@ -53,7 +56,7 @@ with lifecycle scripts disabled. Installation errors stop setup.
 
 `tools/versions.sh` is the version source for local setup/checks: treefmt 2.5.0,
 gofumpt 0.10.0, gci 0.14.0, shfmt 3.12.0, Prettier 3.5.3, ShellCheck 0.11.0,
-and golangci-lint 2.13.1. Source-built tools use Go 1.26.1 through `GOTOOLCHAIN`;
+and golangci-lint 2.13.1. Source-built tools use `tools/go-version` (Go 1.26.1) through `GOTOOLCHAIN`;
 the Go command downloads that exact toolchain when necessary. This development
 toolchain is separate from the library's Go 1.23 compatibility requirement.
 Archive pins come from the official
@@ -78,30 +81,47 @@ unsupported platforms, and invalid destinations. CI runs it after setup. Linux
 amd64 installation is also exercised with real upstream downloads; the fixtures
 verify other platform routing without claiming native execution on macOS/arm64.
 
-## Trunk is dead configuration
+## Modules, compatibility, and publishing
 
-`.git/info/exclude` hides `/.trunk`, and no file under it is tracked. It duplicates what
-treefmt and golangci-lint already do, and it pins `go@1.21.0` against a module requiring 1.23.
-Markdown and YAML linting exist _only_ there, which means CI lints neither.
+`check-tidy`, `tidy` and `verify` cover both the root and `examples/wasm-demo`
+modules. `check-wasm-demo` verifies/tidies the demo, compiles production js/wasm,
+vets js/wasm with the real runtime fixture tag, and also compiles the native stub.
+`lint-wasm-demo` runs the same lint rules on its production code and fixture.
+There is no blanket examples exclusion; the only dependency-path exclusion is
+`node_modules`. The stub is a convenience build target, not WASM behavior evidence.
+`test-browser` checks production/runtime fixtures in actual Chrome.
 
-Either track it and drop treefmt, or delete the directory. Keeping it untracked and half-wired
-is the worst of the three states.
+The PR matrix executes routine root tests on amd64 and 386 for Go 1.23, 1.24,
+1.25 and 1.26.1 and compiles/vets the demo for each version. The 386 leg uses
+`CGO_ENABLED=0` and runs binaries, so it tests real 32-bit arithmetic. Race tests
+run on amd64; js/wasm and wasip1/wasm have a 64-bit int and do not replace 386.
 
-## The demo module has no quality gate
+`tools/go-version` pins Go 1.26.1 for source-built developer tools, published
+WASM, real-browser checks, statistical jobs, and release validation. Setup/PR
+format/lint/browser/Pages jobs use that same file. Compatibility recipes keep
+the caller's Go version: for example `GOTOOLCHAIN=go1.23.0 just check-wasm-demo`
+and `GOTOOLCHAIN=go1.23.0 CGO_ENABLED=0 GOARCH=386 just test-fast`.
+Publishing deliberately uses a separate toolchain rather than changing the
+library's Go 1.23 requirement.
 
-`.golangci.yml` excludes `examples/`, `check-tidy` only tidies the root module, and no job vets
-the demo. That is roughly 1500 lines of Go and JavaScript shipping to GitHub Pages with nothing
-checking it but the compiler. See [the WebAssembly demo](wasm-demo.md) for what that has cost.
+| Command                         | Purpose                                                                        |
+| ------------------------------- | ------------------------------------------------------------------------------ |
+| `just setup-deps`               | Pinned user-owned developer tools                                              |
+| `just check`                    | Fast root and nested-module checks                                             |
+| `just ci`                       | Routine checks, race contracts, real Chrome, tool-gate regressions             |
+| `just test-statistical`         | Full ordinary statistical and contract suite, 10-minute test budget            |
+| `just test-race-statistical`    | Explicit full statistical race audit, 40-minute test budget                    |
+| `just check-wasm-demo`          | Nested-module tidy/verify, WASM build/vet, native stub                         |
+| `just lint-wasm-demo`           | Production and fixture WASM lint                                               |
+| `just test-browser [site]`      | Real-browser verification with the publishing toolchain                        |
+| `just build-wasm-demo [output]` | Publishing build; defaults to `dist`, safely forwards paths                    |
+| `just release-check VERSION`    | Prospective release checks; full artifact/release alignment tracked as TOOL-04 |
 
-## Smaller open items
-
-- `just ci` calls itself the "full CI pipeline" but omits `test-race`, `check-wasm-demo` and
-  the version matrix, and no workflow invokes it, so it can rot undetected.
-- `wasm-demo-pages.yml` calls `scripts/build-wasm-demo.sh` directly while local users go
-  through the justfile, and the justfile does not forward arguments, so the script's `OUT_DIR`
-  parameter is unreachable through `just`. The two paths can drift.
-- Pages builds with `go-version-file: go.mod`, so the published demo is compiled by the oldest
-  supported toolchain rather than a current one.
+Every required configuration is tracked. Optional ignored local tool/editor
+state is not part of setup and does not affect these commands. Pages builds use
+`just build-wasm-demo dist`, then test that exact artifact before upload.
+Release policy, action SHA pins, clean artifact publication, and notices remain
+TOOL-04/SHIP-01/SHIP-02 in [PLAN.md](../PLAN.md).
 
 ## `scripts/build-wasm-demo.sh`
 

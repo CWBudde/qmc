@@ -7,7 +7,9 @@ export qmc_shfmt_version=3.12.0
 export qmc_prettier_version=3.5.3
 export qmc_shellcheck_version=0.11.0
 export qmc_golangci_version=2.13.1
-export qmc_development_go_version=1.26.1
+qmc_versions_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+qmc_development_go_version="$(cat "$qmc_versions_dir/go-version")"
+export qmc_development_go_version
 
 qmc_tools_dir="${QMC_TOOLS_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/qmc-tools}"
 export PATH="$qmc_tools_dir/bin:$HOME/go/bin:$PATH"

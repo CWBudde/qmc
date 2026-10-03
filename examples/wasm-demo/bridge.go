@@ -25,7 +25,7 @@ func guard(name string, fn func(js.Value) any) js.Func {
 
 		// Normalize the top-level options as well as individual fields. Exports
 		// that access optional output buffers can then safely call opts.Get.
-		opts := js.Undefined()
+		var opts js.Value
 		if len(args) > 0 && isObject(args[0]) {
 			opts = args[0]
 		} else {
@@ -105,31 +105,13 @@ func readInt(opts js.Value, key string, fallback int) int {
 	return int(number)
 }
 
-func readFloat(opts js.Value, key string, fallback float64) float64 {
-	if !isObject(opts) {
-		return fallback
-	}
-
-	value := opts.Get(key)
-	if value.Type() != js.TypeNumber {
-		return fallback
-	}
-
-	number := value.Float()
-	if math.IsNaN(number) || math.IsInf(number, 0) {
-		return fallback
-	}
-
-	return number
-}
-
 // readUint64 reads a scrambling seed.
 //
 // It goes through float64 because that is the only number JavaScript has: a
 // seed typed into the page arrives here as a double, never as an integer, so
-// reading it with readInt would truncate it against a 32-bit int under
-// GOARCH=wasm and quietly hand the library a different seed than the one on
-// screen. Negative values clamp to 0 rather than wrapping around to a huge
+// readUint64 keeps seed handling separate from signed point-count options.
+// GOARCH=wasm uses a 64-bit int, while JavaScript numbers have 53 bits of
+// integer precision. Negative values clamp to 0 rather than wrapping to a huge
 // uint64, and values beyond 2^53 are already not exactly representable on the
 // JavaScript side, so the page is told to keep seeds small.
 func readUint64(opts js.Value, key string, fallback uint64) uint64 {
@@ -169,19 +151,6 @@ func readString(opts js.Value, key, fallback string) string {
 	}
 
 	return value.String()
-}
-
-func readBool(opts js.Value, key string, fallback bool) bool {
-	if !isObject(opts) {
-		return fallback
-	}
-
-	value := opts.Get(key)
-	if value.Type() != js.TypeBoolean {
-		return fallback
-	}
-
-	return value.Bool()
 }
 
 func clampInt(value, low, high int) int {

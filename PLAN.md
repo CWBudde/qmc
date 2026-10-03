@@ -771,17 +771,17 @@ installation path; strict formatter and missing-tool failure gates remain TOOL-0
 
 ### TOOL-03 — Cover the nested module and align local verification with CI (P2)
 
-- [ ] Add explicit demo-module tidy checks, js/wasm vet, suitable linting, and
+- [x] Add explicit demo-module tidy checks, js/wasm vet, suitable linting, and
       behavioral tests. Native stub compilation does not validate the WASM code.
-- [ ] Replace the blanket examples lint exclusion with narrowly justified rules
+- [x] Replace the blanket examples lint exclusion with narrowly justified rules
       for demo production code versus actual teaching examples.
-- [ ] Define clear local commands for routine CI checks, slow statistical checks,
+- [x] Define clear local commands for routine CI checks, slow statistical checks,
       WASM checks, and release validation; share those commands with workflows.
-- [ ] Retain executable 386 testing and supported Go-version coverage. Test a
+- [x] Retain executable 386 testing and supported Go-version coverage. Test a
       deliberate publishing toolchain separately from minimum-version compatibility.
-- [ ] Remove references to untracked `.trunk` as part of the reproducible setup,
+- [x] Remove references to untracked `.trunk` as part of the reproducible setup,
       and update obsolete comments claiming the suite cannot compile for 386.
-- [ ] Make script arguments, including demo output location, reachable through
+- [x] Make script arguments, including demo output location, reachable through
       the corresponding just recipe.
 
 Evidence: [.golangci.yml](.golangci.yml), [justfile](justfile),
@@ -790,6 +790,38 @@ Evidence: [.golangci.yml](.golangci.yml), [justfile](justfile),
 Acceptance: local commands and workflows enforce the same documented checks for
 both modules; minimum-version compatibility and publishing-toolchain choices are
 explicit; no required configuration exists only in one developer's clone.
+
+Verification (2026-10-03): verify/tidy checks cover both modules. The WASM
+recipe compiles production code, explicitly vets js/wasm with the runtime-fixture
+tag, and separately builds the native stub. A new lint recipe applies the root
+rules to production WASM and fixture code; removing the blanket examples
+exclusion exposed and resolved ten findings (redundant initialization, two unused
+helpers, seven whitespace diagnostics). There is no teaching-example exemption
+because the only current example is the production demo. Node syntax/behavior
+is covered by strict JS/MJS formatting and the existing real-Chrome suite.
+
+`just check` is the fast local path; `just ci` is the shared routine verification
+including race, browser, and tool-gate regressions. Statistical and optional full
+statistical-race recipes remain explicit. Workflows use these same individual
+recipes. The compatibility matrix keeps executable 386 and Go 1.23/1.24/1.25,
+adds the publishing Go 1.26.1, and compiles/vets the nested module for each.
+`tools/go-version` is the tracked publishing/development compiler source used
+by setup, builds, browser checks, and workflow jobs, independently of minimum
+compatibility. Untracked Trunk configuration is no longer required or referenced
+as project setup. Stale claims that 386 cannot compile are removed.
+
+Current local evidence: shared `just ci` passes both module checks and lint,
+ordinary race contracts (29.785 s), the full browser regression (33.119 s,
+zero unexpected errors), installer tests, and formatter failure tests. Nested
+verify/tidy/build/vet/stub checks pass on Go 1.23.0, 1.24.0, 1.25.0 and 1.26.1.
+Routine amd64 tests pass on Go 1.23.0/1.24.0/1.25.0 and race tests on 1.26.1;
+executable 386 tests pass on all four. Isolated snapshots prove a compile-valid
+printf defect fails WASM vet and nested go.mod drift fails the shared tidy gate.
+`just --justfile /path/to/justfile build-wasm-demo /path/with-spaces` forwards
+its destination correctly from a different invoking directory and produces the
+WASM/pages/worker assets there. Workflow YAML parses and final strict formatting
+passes. These are local results and checked workflow definitions, not a claim
+that remote GitHub jobs have run. Release policy/artifacts remain TOOL-04/SHIP.
 
 ### TOOL-04 — Pin workflow dependencies and match release validation to promises (P2)
 

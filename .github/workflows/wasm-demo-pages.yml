@@ -26,14 +26,14 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version-file: tools/go-version
           cache: true
-
-      - name: Build the WebAssembly demo
-        run: ./scripts/build-wasm-demo.sh dist
 
       - name: Set up just
         uses: extractions/setup-just@v2
+
+      - name: Build the WebAssembly demo
+        run: just build-wasm-demo dist
 
       - name: Set up Node
         uses: actions/setup-node@v4

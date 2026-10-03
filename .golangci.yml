@@ -10,12 +10,6 @@ linters:
       # examples/wasm-demo; some npm packages ship stray .go files that are
       # vendored samples, not ours to lint.
       - node_modules
-      # Examples are teaching material. They are written to be read top to
-      # bottom by someone learning the API, which means inline error handling,
-      # long main functions and hard-coded constants that the library itself
-      # would rightly be criticised for. Holding them to library standards
-      # would only make them worse at their one job.
-      - examples/
 
   enable:
     - govet

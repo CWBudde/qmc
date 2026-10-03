@@ -16,5 +16,6 @@ func TestBrowserRuntimeFixture(_ *testing.T) {
 		os.Exit(0)
 		return nil
 	}
+
 	main()
 }

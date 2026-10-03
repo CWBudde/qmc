@@ -344,6 +344,7 @@ func randomizationList(spec sourceSpec) []any {
 
 		entry := randomizations[key]
 		description := entry.description
+
 		if key == randomizationNone {
 			switch spec.key {
 			case "halton":
@@ -352,6 +353,7 @@ func randomizationList(spec sourceSpec) []any {
 				description += " Uses base 2 in every dimension, without Halton's high-prime ramps. Projection quality depends on the direction table and the sampled block; use aligned power-of-two blocks for net guarantees."
 			}
 		}
+
 		out = append(out, map[string]any{
 			"key":         entry.key,
 			"label":       entry.label,

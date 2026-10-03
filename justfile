@@ -33,22 +33,41 @@ test-race-statistical:
 bench:
     go test -run '^$' -bench=. -benchmem ./...
 
-# Build the WebAssembly demo into ./dist
-build-wasm-demo:
-    ./scripts/build-wasm-demo.sh
+# Build with the publishing toolchain; optional output is forwarded safely
+build-wasm-demo $qmc_demo_output="dist":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source ./tools/versions.sh
+    GOTOOLCHAIN="go$qmc_development_go_version" bash ./scripts/build-wasm-demo.sh "$qmc_demo_output"
 
 # Build and serve the WebAssembly demo locally
 run-wasm-demo: build-wasm-demo
     @echo "Serving the demo at http://localhost:8090"
     python3 -m http.server -d dist 8090
 
-# Build the demo for js/wasm without emitting a binary (a fast compile check)
+# Compile/vet the nested module with the caller's compatibility toolchain
 check-wasm-demo:
-    cd examples/wasm-demo && GOOS=js GOARCH=wasm go build -o /dev/null . && go build -o /dev/null ./...
+    go -C examples/wasm-demo mod verify
+    go -C examples/wasm-demo mod tidy -diff
+    GOOS=js GOARCH=wasm go -C examples/wasm-demo build -o /dev/null .
+    GOOS=js GOARCH=wasm go -C examples/wasm-demo vet -tags=qmc_browser_fixture ./...
+    go -C examples/wasm-demo build -o /dev/null ./...
+
+# Production WASM code and test fixture use the same lint rules as the library
+lint-wasm-demo:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source ./tools/versions.sh
+    bash ./scripts/check-tools.sh lint
+    cd examples/wasm-demo
+    GOOS=js GOARCH=wasm golangci-lint run --config ../../.golangci.yml --build-tags qmc_browser_fixture --timeout 5m ./...
 
 # Bounded real-Chrome checks; optional site argument validates an existing build
 test-browser $qmc_browser_site="":
-    bash ./scripts/test-wasm-demo.sh
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source ./tools/versions.sh
+    GOTOOLCHAIN="go$qmc_development_go_version" bash ./scripts/test-wasm-demo.sh
 
 # Install pinned development tools into a user-owned directory
 setup-deps:
@@ -83,10 +102,12 @@ lint-fix:
 # Tidy up dependencies
 tidy:
     go mod tidy
+    go -C examples/wasm-demo mod tidy
 
 # Verify dependencies
 verify:
     go mod verify
+    go -C examples/wasm-demo mod verify
 
 # Clean build artifacts
 clean:
@@ -113,13 +134,15 @@ test-formatting:
 
 # Fail if go.mod/go.sum are not tidy
 check-tidy:
-    go mod tidy -diff
+    go mod tidy
+    go -C examples/wasm-demo mod tidy -diff
+    go -C examples/wasm-demo mod tidy -diff
 
-# Run all checks (format, lint, test)
-check: check-formatted check-tidy lint test
+# Local fast checks for both modules; statistics and real-browser tests are explicit
+check: verify check-formatted check-tidy lint lint-wasm-demo check-wasm-demo test-fast
 
-# Full CI pipeline
-ci: verify check
+# Routine CI contract, including race and real-browser verification
+ci: verify check-formatted check-tidy lint lint-wasm-demo check-wasm-demo test-race test-browser test-tool-setup test-formatting
 
 # Validate a prospective release without creating a tag
 release-check version:

@@ -31,10 +31,7 @@ node_modules/
 # Agent worktrees
 .claude/
 
-# Trunk's configuration, local cache and generated state. Nothing under it is
-# tracked — the CLI set this repository up in single-player mode — and it was
-# hidden only by .git/info/exclude, which lives in one clone and is never
-# pushed, so everyone else saw the whole tree as untracked.
+# Optional local Trunk state; project setup/checks use tracked tools instead.
 .trunk/
 
 # Editor and IDE state. Per-developer, never part of the build.
