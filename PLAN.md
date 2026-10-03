@@ -10,7 +10,7 @@ decision task and an acceptance criterion.
 
 ## Coverage and current status
 
-There are 32 remediation tasks: 29 have recorded completion evidence and three
+There are 32 remediation tasks: 30 have recorded completion evidence and two
 remain open. Checkboxes track verified completion; unchecked tasks describe the
 work still required. Changes under development count as open until their
 acceptance criteria are met.
@@ -30,16 +30,15 @@ acceptance criteria are met.
 | Distribution notices                                         | SHIP-02                                     | Verified       |
 | Documentation accuracy and contributor guidance              | DOC-01, DOC-02                              | Open           |
 | Performance evidence                                         | PERF-01                                     | Verified       |
-| API decisions                                                | API-01                                      | Open           |
+| API decisions                                                | API-01                                      | Verified       |
 
 The basic improvements are organized around concrete failures first, then
 reliable checks and delivery, followed by documentation and measured design
 decisions. Each detailed task includes the affected files, specific actions,
 and an acceptance criterion so it can be implemented and reviewed independently.
 
-For the remaining work, resolve API-01 against the completed PERF-01 measurements.
-Reconcile DOC-01 and DOC-02 with those outcomes, then run the final completion
-checklist.
+For the remaining work, reconcile DOC-01 and DOC-02 with the completed
+performance/API decisions, then run the final completion checklist.
 
 ## Working rules
 
@@ -1175,18 +1174,18 @@ public-surface proposals.
 
 ### API-01 — Resolve remaining API proposals explicitly (P3)
 
-- [ ] Evaluate optional capability metadata without unnecessarily expanding the
+- [x] Evaluate optional capability metadata without unnecessarily expanding the
       minimal `Sequence` interface or duplicating library policies in the demo.
-- [ ] Document why `Option` uses an unexported settings type, and distinguish
+- [x] Document why `Option` uses an unexported settings type, and distinguish
       immutable options from options owning consumable readers.
-- [ ] Decide whether checked indexed-access helpers would benefit callers;
+- [x] Decide whether checked indexed-access helpers would benefit callers;
       preserve existing methods and document panic boundaries if no change is warranted.
-- [ ] Explain and test aligned power-of-two Sobol usage. Evaluate whether a raw-origin
+- [x] Explain and test aligned power-of-two Sobol usage. Evaluate whether a raw-origin
       or aligned-block helper is needed; the current skip facility can already align
       later blocks, so a new API is not automatically required.
-- [ ] Review internal invalid-base guards and their intended preconditions after
+- [x] Review internal invalid-base guards and their intended preconditions after
       overflow fixes; remove or retain them with explicit reasoning.
-- [ ] Coordinate any bulk/workspace proposal with CORE-07 and PERF-01 rather than
+- [x] Coordinate any bulk/workspace proposal with CORE-07 and PERF-01 rather than
       introducing multiple overlapping allocation APIs.
 
 Evidence: [sequence.go](sequence.go), [options.go](options.go), [sobol.go](sobol.go),
@@ -1197,6 +1196,42 @@ Acceptance: each proposal has a recorded decision, compatibility implications,
 and evidence for any added API; existing interfaces and deterministic valid-input
 behavior remain stable unless an intentional change is documented.
 
+Verification (2026-10-03): implementation committed as `f0289e7`. API design
+records a decision for every proposal. Sequence retains its six methods; no
+descriptor is added because instance configuration, constructor/table capacity,
+and product workload limits have different meanings. The demo's copied 1024
+library ceiling is removed while its existing 64-dimension offer stays the same.
+The Go browser fixture validates all twelve offered sequence/randomization
+endpoint combinations against actual constructors. Prime/digit inspection stays
+on concrete Halton methods, and Go remains the validation authority.
+
+Option's private settings type and nil-option policy are documented, retaining
+the existing exported type; immutable value options and NewSobol's consumable
+reader lifecycle are distinguished. Checked indexed helpers/signature changes
+are deferred with explicit compatibility and arbitrary-Sequence limitations.
+Documented panic boundaries include the separate very-large-index permuted-digit
+reversal limit and potentially partial Into writes. A public-API regression
+reproduces reversal refusal at a representable raw index and verifies that the
+next stateful draw is still the first point.
+
+Existing skip expresses later aligned Sobol blocks via q\*N-1; no raw-origin or
+additional block helper is added. Thirty cases per architecture check blocks
+1/2/3/17 and the final complete block, N=16/256, plain/shift/Owen, indexed versus
+stateful agreement, and all aspect ratios of the known t=0 first projection.
+They pass on amd64 and minimum Go 1.23.0 executable 386. The origin exclusion,
+raw bounds, general 2^t occupancy, and Gray-order high-bit mapping are explicit.
+Cheap private invalid-base/index guards are retained with constructor preconditions
+and their existing direct regression. Bulk/workspace remains deferred using
+PERF-01's overlapping timings and CORE-07's allocation/ownership evidence.
+
+Shared `just check` passes both modules' verify/tidy/lint, explicit WASM
+build/vet/stub, pinned formatting (105 files, zero changes), and routine tests
+(3.629 s). Real Chrome passes production pages and the updated capability/runtime
+fixture (29.421 s, zero unexpected errors), retaining digit, loader, accessibility,
+worker, failure, cache, and notice checks. Focused public boundary/guard checks,
+demo lint, and diff checks pass. Public signatures and valid seeded behavior
+are unchanged; remaining historical claim/open-list consolidation stays DOC-01/02.
+
 ## Completion checklist
 
 - [x] SCI-01 and CORE-01 through CORE-08 are resolved with regressions and accurate contracts.
@@ -1206,7 +1241,7 @@ behavior remain stable unless an intentional change is documented.
 - [x] TOOL-01 through TOOL-04 run reproducibly in a clean environment for both modules.
 - [x] SHIP-01 and SHIP-02 verify complete, consistent artifacts and notices.
 - [ ] DOC-01 and DOC-02 reconcile every affected public claim and open-work list.
-- [ ] PERF-01 and API-01 have measured implementations or documented decisions.
+- [x] PERF-01 and API-01 have measured implementations or documented decisions.
 - [ ] Final ordinary, required race, statistical, WASM, browser, formatting, lint,
       and release-artifact checks pass under the agreed budgets.
 - [ ] Re-review category scores using evidence from the completed work; do not
