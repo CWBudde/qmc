@@ -11,20 +11,34 @@ deliberate.
 Formatting is `treefmt` (`treefmt.toml`) dispatching gofumpt, gci, shfmt, prettier and
 shellcheck by file type. Development versions are tracked in `tools/versions.sh`.
 Linting uses golangci-lint against `.golangci.yml`; workflow linter versions must
-match that source. Strict format enforcement remains tracked as TOOL-01 in
-[PLAN.md](../PLAN.md).
+match that source.
 
-## The format check can pass without checking anything
+## Required formatting and shell diagnostics
 
-This is the weakness worth knowing about first.
+`just check-formatted` requires the exact formatter versions from
+`tools/versions.sh`, runs ShellCheck as an explicit diagnostic gate, then
+runs every configured treefmt formatter without cache or missing-tool leniency.
+Missing, unusable, and wrong-version tools fail with setup instructions. Local
+`TREEFMT_*` overrides are cleared so excludes or formatter selections cannot
+silently weaken the required check. `just fmt` uses the same tools and shell
+gate before writing formatting changes; `just check-shell` runs only shell
+diagnostics. Like treefmt's normal check mode, a failed formatting check can
+leave corrections in the worktree for inspection.
 
-- `justfile` runs `treefmt --allow-missing-formatter`, which downgrades "formatter binary not
-  found" to a warning, and `setup-deps` swallows a prettier install failure with `|| echo`.
-  **If npm fails on the runner, every Markdown, JSON, YAML, JS, CSS and HTML file is skipped
-  and the job still goes green.**
-- `treefmt.toml` declares `shellcheck` for `*.sh`, but `setup-deps` never installs it, so
-  `scripts/build-wasm-demo.sh` has never been shellchecked anywhere. Note that shellcheck
-  never writes, so treefmt's change-detection contract does not apply to it either.
+Go uses gofumpt and gci; Markdown, JSON, YAML, JavaScript (including `.mjs`),
+CSS and HTML use pinned Prettier; shell uses shfmt plus diagnostic-only ShellCheck.
+Both tracked files and non-ignored new source files are included through Git's
+walker. The generated changelog, module files owned by Go, built assets, dependency
+folders and private local state have explicit exclusions in `treefmt.toml`.
+TOML and Python are not configured formatter targets; adding them requires a
+pinned tool and failure regression rather than a missing-tool exception.
+
+`just test-formatting` runs actual tools in isolated temporary Git worktrees.
+It checks invalid formatting/parser input in nine extensions, a ShellCheck-only
+undefined-variable diagnostic, six unusable executables, a near-matching wrong
+version, and treefmt overrides attempting to skip files. Correct fixtures must
+pass before and after failures. CI runs this gate after pinned setup; no fixture
+mutates the developer's real executables or repository files.
 
 ## Pinned development-tool installation
 

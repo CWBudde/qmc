@@ -35,12 +35,12 @@ for qmc_required in go node npm curl tar python3; do
     exit 1
   }
 done
-[[ "$qmc_tools_dir" == /* && "$qmc_tools_dir" != / && "$qmc_tools_dir" != "$HOME" ]] || {
+[[ $qmc_tools_dir == /* && $qmc_tools_dir != / && $qmc_tools_dir != "$HOME" ]] || {
   echo 'error: QMC_TOOLS_DIR must be an absolute dedicated directory' >&2
   exit 1
 }
 mkdir -p "$qmc_tools_dir"
-[[ -O "$qmc_tools_dir" && ! -L "$qmc_tools_dir" ]] || {
+[[ -O $qmc_tools_dir && ! -L $qmc_tools_dir ]] || {
   echo 'error: tool directory must be owned by this user and not a symlink' >&2
   exit 1
 }

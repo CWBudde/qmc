@@ -58,11 +58,9 @@ setup-deps:
 test-tool-setup:
     python3 ./scripts/test-tool-setup.py
 
-# Format all files with treefmt
+# Format source files with required pinned tools and shell diagnostics
 fmt:
-    #!/usr/bin/env bash
-    source ./tools/versions.sh
-    treefmt --allow-missing-formatter
+    bash ./scripts/format.sh fmt
 
 # Alias for `just fmt`
 treefmt: fmt
@@ -71,12 +69,14 @@ treefmt: fmt
 lint:
     #!/usr/bin/env bash
     source ./tools/versions.sh
+    bash ./scripts/check-tools.sh lint
     golangci-lint run --config ./.golangci.yml --timeout 5m ./...
 
 # Run linter (with fix)
 lint-fix:
     #!/usr/bin/env bash
     source ./tools/versions.sh
+    bash ./scripts/check-tools.sh lint
     golangci-lint fmt --config ./.golangci.yml
     golangci-lint run --config ./.golangci.yml --timeout 5m --fix ./...
 
@@ -95,11 +95,21 @@ clean:
     rm -f *.test *.prof
     rm -rf dist/
 
-# Fail if any file is not formatted
+# Required formatting gate: missing/wrong tools and ShellCheck failures fail
 check-formatted:
+    bash ./scripts/format.sh check
+
+# Explicit non-writing shell diagnostic gate
+check-shell:
+    bash ./scripts/check-shell.sh
+
+# Exercise required formatter failures in isolated temporary worktrees
+test-formatting:
     #!/usr/bin/env bash
+    set -euo pipefail
     source ./tools/versions.sh
-    treefmt --allow-missing-formatter --fail-on-change
+    bash ./scripts/check-tools.sh format
+    node ./scripts/test-formatting.mjs
 
 # Fail if go.mod/go.sum are not tidy
 check-tidy:

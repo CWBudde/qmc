@@ -696,12 +696,12 @@ response to control/resize/DPR changes; no idle animation loop remains.
 
 ### TOOL-01 — Make formatting checks strict and reproducible (P2)
 
-- [ ] Pin gofumpt, gci, shfmt, prettier, shellcheck, and treefmt versions.
-- [ ] Install every required tool and stop swallowing prettier setup failures.
-- [ ] Remove permissive missing-formatter behavior from required CI checks.
+- [x] Pin gofumpt, gci, shfmt, prettier, shellcheck, and treefmt versions.
+- [x] Install every required tool and stop swallowing prettier setup failures.
+- [x] Remove permissive missing-formatter behavior from required CI checks.
       An explicitly optional local mode may remain if documented.
-- [ ] Run shellcheck as an explicit diagnostic gate with its exit status respected.
-- [ ] Verify checks fail when a required formatter is unavailable and when a
+- [x] Run shellcheck as an explicit diagnostic gate with its exit status respected.
+- [x] Verify checks fail when a required formatter is unavailable and when a
       representative Go, Markdown, YAML, JavaScript, CSS, HTML, or shell file is invalid.
 
 Evidence: [justfile](justfile), [treefmt.toml](treefmt.toml),
@@ -709,6 +709,27 @@ Evidence: [justfile](justfile), [treefmt.toml](treefmt.toml),
 
 Acceptance: successful required checks mean every configured file type was checked;
 a fresh installation produces the same results as CI.
+
+Verification (2026-10-03): all formatter versions are pinned in the tracked
+tool environment and installed through TOOL-02. `just fmt` and
+`just check-formatted` require those exact versions; no required path allows
+missing tools or suppressed npm failures. ShellCheck is a separate exit-status
+preserving gate, also exposed by `just check-shell`, rather than a non-writing
+formatter whose diagnostics could be lost. Required treefmt invocations clear
+local `TREEFMT_*` overrides, disable caches, reject missing tools, and cover
+non-ignored tracked/new files, including the formerly omitted `.mjs` extension.
+
+`just test-formatting` runs actual pinned formatters in owned temporary Git
+worktrees. It verifies failure for malformed/unformatted Go, Markdown, JSON,
+YAML, JS, MJS, CSS, HTML, and shell; undefined-variable ShellCheck diagnostics
+fail independently of formatting changes. All six required tool executables
+are made individually unavailable and each is rejected; version 3.5.30 cannot
+stand in for pinned Prettier 3.5.3. Overrides attempting to select only one
+formatter or exclude every file cannot weaken the check. Correct fixtures pass
+before/after these mutations. Installer failure/reuse tests also pass again.
+CI now provisions Node explicitly and runs the same failure gates. The current
+whole-repository strict check passes: 94 files processed, zero changes, 1.426 s.
+Explicit exclusions and tool prerequisites are documented in the toolchain topic.
 
 ### TOOL-02 — Harden and broaden development-tool installation (P2)
 
